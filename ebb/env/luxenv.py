@@ -14,11 +14,21 @@ PLAYER1 = 'player_1'
 
 MAX_UNIT_NUM = 16
 
-MAX_GAME_STEPS = 504
+MAX_GAME_STEPS = 505
 MAX_MATCH_STEPS = 100
 
 # 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap
 MOVE_ACTION_NUM = 5
+
+MAP_WIDTH = 24
+MAP_HEIGHT = 24
+
+CELL_UNKONWN = 0
+CELL_SPACE = 1
+CELL_NEBULA = 2
+CELL_ASTERIOD = 3
+
+RELIC_NB_SIZE = 5
 
 # Let's use move action only first
 ACTION_SPACE = spaces.MultiDiscrete(
@@ -51,6 +61,57 @@ def game_win_loss(scores, player_id):
 
 def manhatten_distance(p1, p2):
   return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+
+
+from scipy.ndimage import maximum_filter
+
+
+def anti_diag_sym(A):
+  A = np.flipud(A)
+  A = np.fliplr(A)
+  A = A.T
+  return A
+
+
+class MapManager:
+
+  def __init__(self, player, env_cfg):
+    self.player_id = int(player[-1])
+    self.env_cfg = env_cfg
+    self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.visible = None
+    self.observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.is_relic_node = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.is_relic_neighbour = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+
+  def update(self, ob):
+    self.visible = ob['sensor_mask'].astype(np.int32)
+    self.observed |= self.visible
+
+    # adding 1 to start cell type from 0
+    cells = ob['map_features']['tile_type'] + 1
+
+    # Update map cell type
+    c = cells > CELL_UNKONWN
+    self.cell_type[c] = cells[c]
+
+    # also update the symmetrical positions
+    cells_sym = anti_diag_sym(cells)
+    ct = cells_sym > CELL_UNKONWN
+    self.cell_type[ct] = cells_sym[ct]
+
+    unit_masks = ob['units_mask'][self.player_id]
+    unit_positions = ob['units']['position'][self.player_id][unit_masks]
+    self.visited[unit_positions[:, 0], unit_positions[:, 1]] = 1
+
+    relic_nodes_mask = ob['relic_nodes_mask']
+    relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
+    self.is_relic_node[relic_nodes_positions[:, 0],
+                       relic_nodes_positions[:, 1]] = 1
+    self.is_relic_node |= anti_diag_sym(self.is_relic_node)
+    self.is_relic_neighbour = maximum_filter(
+        (self.is_relic_node == 1).astype(np.int32), size=RELIC_NB_SIZE)
 
 
 def gen_dummy_action():
