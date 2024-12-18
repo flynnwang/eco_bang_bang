@@ -10,8 +10,8 @@ import torch.nn.functional as F
 
 from torch.distributions.categorical import Categorical
 
-from rocket.env.const import *
-from rocket.env.delivery import MOVE_ACTION_SPACE, OBSERVATION_SPACE, ACTION_SPACE, GRAB_ACTION_SPACE
+from ebb.env.const import *
+from ebb.env.luxenv import OBSERVATION_SPACE, ACTION_SPACE
 
 
 class SqueezeExcitation(torch.nn.Module):

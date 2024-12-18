@@ -9,27 +9,6 @@ from luxai_s3.wrappers import LuxAIS3GymEnv, RecordEpisode
 
 from .const import *
 
-PLAYER0 = 'player_0'
-PLAYER1 = 'player_1'
-
-MAX_UNIT_NUM = 16
-
-MAX_GAME_STEPS = 505
-MAX_MATCH_STEPS = 100
-
-# 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap
-MOVE_ACTION_NUM = 5
-
-MAP_WIDTH = 24
-MAP_HEIGHT = 24
-
-CELL_UNKONWN = 0
-CELL_SPACE = 1
-CELL_NEBULA = 2
-CELL_ASTERIOD = 3
-
-RELIC_NB_SIZE = 5
-
 # Let's use move action only first
 ACTION_SPACE = spaces.MultiDiscrete(
     np.zeros((MAX_UNIT_NUM, ), dtype=int) + MOVE_ACTION_NUM)
@@ -85,7 +64,14 @@ class MapManager:
     self.is_relic_node = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.is_relic_neighbour = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
 
+    self.prev_team_point = 0
+    self.team_point_mass = np.ones((MAP_WIDTH, MAP_HEIGHT), np.float32)
+
   def update(self, ob):
+    # Match restarted
+    if ob['match_steps'] == 0:
+      self.prev_team_point = 0
+
     self.visible = ob['sensor_mask'].astype(np.int32)
     self.observed |= self.visible
 
@@ -112,6 +98,49 @@ class MapManager:
     self.is_relic_node |= anti_diag_sym(self.is_relic_node)
     self.is_relic_neighbour = maximum_filter(
         (self.is_relic_node == 1).astype(np.int32), size=RELIC_NB_SIZE)
+
+    self.update_team_point_mass(ob, unit_positions)
+    self.prev_team_point = team_point
+
+  def update_team_point_mass(self, ob, unit_positions):
+    """Update team point confidence"""
+    team_point = ob['team_points'][self.player_id]
+    # print(ob['steps'], ob['match_steps'], 'team_point=', team_point, 'prev_point', self.prev_team_point)
+    if ob['match_steps'] == 0 or len(unit_positions):
+      return
+
+    unit_pos_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    unit_pos_mask[unit_positions[:, 0], unit_positions[:, 1]] = True
+    unit_nearby_relic = (self.is_relic_neighbour > 0) & (unit_pos_mask)
+    if unit_nearby_relic.sum() == 0:
+      return
+
+    must_be_team_point = (self.team_point_mass
+                          >= TEAM_POINT_MASS) & (unit_nearby_relic)
+    non_team_point = (self.team_point_mass
+                      <= NON_TEAM_POINT_MASS) & (unit_nearby_relic)
+
+    delta = team_point - self.prev_team_point
+    delta -= must_be_team_point.sum()
+
+    team_point_candidate = unit_nearby_relic & (~must_be_team_point) & (
+        ~non_team_point)
+    num = team_point_candidate.sum()
+    if num > 0:
+      if delta == 0:
+        self.team_point_mass[team_point_candidate] = NON_TEAM_POINT_MASS
+        self.team_point_mass[anti_diag_sym(
+            team_point_candidate)] = NON_TEAM_POINT_MASS
+      elif num == delta:
+        self.team_point_mass[team_point_candidate] = TEAM_POINT_MASS
+        self.team_point_mass[anti_diag_sym(
+            team_point_candidate)] = TEAM_POINT_MASS
+      else:
+        assert delta < num
+        # print('>>>>>>>>>>>>>>', ob['steps'], delta, num, must_be_team_point.sum(), non_team_point.sum())
+        self.team_point_mass[anti_diag_sym(
+            team_point_candidate)] += delta / num
+      assert delta >= 0
 
 
 def gen_dummy_action():
