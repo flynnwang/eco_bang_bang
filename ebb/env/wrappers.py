@@ -6,7 +6,7 @@ import torch
 from gym import spaces
 
 from .const import *
-from rocket.env.delivery import ACTION_SPACE
+from ebb.env.luxenv import ACTION_SPACE
 
 
 class VecEnv(gym.Env):

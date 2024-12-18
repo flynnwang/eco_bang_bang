@@ -1,6 +1,4 @@
-from copy import deepcopy
 from collections import OrderedDict, deque, defaultdict
-from functools import lru_cache
 
 import gym
 import numpy as np
@@ -14,20 +12,20 @@ ACTION_SPACE = spaces.MultiDiscrete(
     np.zeros((MAX_UNIT_NUM, ), dtype=int) + MOVE_ACTION_NUM)
 
 OB = OrderedDict([
-    ('map_features',
-     spaces.MultiDiscrete(np.zeros(VIEW_SHAPE) + MAP_FEATURE_NUM)),
-    ('time_feature', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    ('delta_reward', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # ('map_features',
+    # spaces.MultiDiscrete(np.zeros(VIEW_SHAPE) + MAP_FEATURE_NUM)),
+    # ('time_feature', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # ('delta_reward', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
 
-    # agent
-    ('agent_position', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    ('agent_can_grab_num', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    ('agent_order_to_pick_num', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    ('agent_order_to_deliver_num', spaces.Box(low=0, high=1,
-                                              shape=VIEW_SHAPE)),
-    ('agent_total_reward', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    # potential_map
-    ('potential_map', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # # agent
+    # ('agent_position', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # ('agent_can_grab_num', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # ('agent_order_to_pick_num', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # ('agent_order_to_deliver_num', spaces.Box(low=0, high=1,
+    # shape=VIEW_SHAPE)),
+    # ('agent_total_reward', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # # potential_map
+    # ('potential_map', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
 ])
 OBSERVATION_SPACE = spaces.Dict(OB)
 
@@ -54,6 +52,8 @@ def anti_diag_sym(A):
 
 class MapManager:
 
+  ver = 1
+
   def __init__(self, player, env_cfg):
     self.player_id = int(player[-1])
     self.env_cfg = env_cfg
@@ -65,16 +65,21 @@ class MapManager:
     self.is_relic_neighbour = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
 
     self.prev_team_point = 0
-    self.team_point_mass = np.ones((MAP_WIDTH, MAP_HEIGHT), np.float32)
+    self.team_point_mass = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.float32)
 
-  def update(self, ob):
-    # Match restarted
-    if ob['match_steps'] == 0:
-      self.prev_team_point = 0
+    self.cell_energy = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.game_step = 0
+    self.match_step = 0
 
-    self.visible = ob['sensor_mask'].astype(np.int32)
-    self.observed |= self.visible
+  @property
+  def unit_move_cost(self):
+    return env_cfg['unit_move_cost']
 
+  @property
+  def unit_sensor_range(self):
+    return env_cfg['unit_sensor_range']
+
+  def update_cell_type(self, ob):
     # adding 1 to start cell type from 0
     cells = ob['map_features']['tile_type'] + 1
 
@@ -86,6 +91,19 @@ class MapManager:
     cells_sym = anti_diag_sym(cells)
     ct = cells_sym > CELL_UNKONWN
     self.cell_type[ct] = cells_sym[ct]
+
+  def update(self, ob):
+    # Match restarted
+    if ob['match_steps'] == 0:
+      self.prev_team_point = 0
+
+    self.game_step = ob['steps']
+    self.match_step = ob['match_steps']
+
+    self.visible = ob['sensor_mask'].astype(np.int32)
+    self.observed |= self.visible
+
+    self.update_cell_type(ob)
 
     unit_masks = ob['units_mask'][self.player_id]
     unit_positions = ob['units']['position'][self.player_id][unit_masks]
@@ -100,13 +118,24 @@ class MapManager:
         (self.is_relic_node == 1).astype(np.int32), size=RELIC_NB_SIZE)
 
     self.update_team_point_mass(ob, unit_positions)
-    self.prev_team_point = team_point
+    self.prev_team_point = ob['team_points'][self.player_id]
+
+    self.update_cell_energy(ob)
+
+  def update_cell_energy(self, ob):
+    energy = ob['map_features']['energy']
+    is_visible = (self.visible > 0)
+    self.cell_energy[is_visible] = energy[is_visible]
+
+    energy_tr = anti_diag_sym(energy)
+    is_visible_tr = anti_diag_sym(is_visible)
+    self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
   def update_team_point_mass(self, ob, unit_positions):
     """Update team point confidence"""
     team_point = ob['team_points'][self.player_id]
     # print(ob['steps'], ob['match_steps'], 'team_point=', team_point, 'prev_point', self.prev_team_point)
-    if ob['match_steps'] == 0 or len(unit_positions):
+    if ob['match_steps'] == 0 or len(unit_positions) == 0:
       return
 
     unit_pos_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)

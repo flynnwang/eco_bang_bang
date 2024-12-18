@@ -1,7 +1,7 @@
 import torch
 from typing import Optional
 
-from .delivery import DeliveryEnv
+from .luxenv import LuxS3Env, MapManager
 from .wrappers import VecEnv, PytorchEnv, DictEnv
 from .const import *
 
