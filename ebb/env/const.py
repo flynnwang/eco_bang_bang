@@ -1,7 +1,6 @@
 PLAYER0 = 'player_0'
 PLAYER1 = 'player_1'
 
-MAX_MATCH_STEP = 100
 MAX_UNIT_NUM = 16
 
 MAP_WIDTH = 24
@@ -11,6 +10,7 @@ CELL_UNKONWN = 0
 CELL_SPACE = 1
 CELL_NEBULA = 2
 CELL_ASTERIOD = 3
+MAX_CELL_TYPE = CELL_ASTERIOD
 
 RELIC_NB_SIZE = 5
 
@@ -22,3 +22,9 @@ MAX_MATCH_STEPS = 100
 
 # 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap
 MOVE_ACTION_NUM = 5
+
+MAX_MOVE_COST = 5
+MAX_SENSOR_RANGE = 4
+
+MAX_ENERTY_PER_TILE = 20
+MAX_UNIT_ENERGY = 400

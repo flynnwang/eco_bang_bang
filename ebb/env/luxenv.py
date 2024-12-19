@@ -11,23 +11,48 @@ from .const import *
 ACTION_SPACE = spaces.MultiDiscrete(
     np.zeros((MAX_UNIT_NUM, ), dtype=int) + MOVE_ACTION_NUM)
 
+MAP_SHAPE = (MAP_WIDTH, MAP_HEIGHT)
 OB = OrderedDict([
-    # ('map_features',
-    # spaces.MultiDiscrete(np.zeros(VIEW_SHAPE) + MAP_FEATURE_NUM)),
-    # ('time_feature', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    # ('delta_reward', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # Game params
+    ('unit_move_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('unit_sensor_range', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
-    # # agent
-    # ('agent_position', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    # ('agent_can_grab_num', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    # ('agent_order_to_pick_num', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    # ('agent_order_to_deliver_num', spaces.Box(low=0, high=1,
-    # shape=VIEW_SHAPE)),
-    # ('agent_total_reward', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
-    # # potential_map
-    # ('potential_map', spaces.Box(low=0, high=1, shape=VIEW_SHAPE)),
+    # Time & Match
+    ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+
+    # Map info
+    ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + MAX_CELL_TYPE)),
+    ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 ])
+
+
+# Unit info
+def _add_unit_info(prefix, i, max_time):
+  for t in range(max_time):
+    OB[f'{prefix}_{i}_loc_{t}'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    OB[f'{prefix}_{i}_energy_{t}'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+
+
+def _add_all_unit_info(max_time=1):
+  for i in range(MAX_UNIT_NUM):
+    _add_unit_info('unit', i, max_time)
+  for i in range(MAX_UNIT_NUM):
+    _add_unit_info('enemy', i, max_time)
+
+
+_add_all_unit_info()
 OBSERVATION_SPACE = spaces.Dict(OB)
+
+
+def sigmoid(x):
+  return 1 / (1 + np.exp(-x))
 
 
 def game_win_loss(scores, player_id):
@@ -52,7 +77,7 @@ def anti_diag_sym(A):
 
 class MapManager:
 
-  ver = 1
+  MAX_PAST_OB_NUM = 1
 
   def __init__(self, player, env_cfg):
     self.player_id = int(player[-1])
@@ -71,13 +96,19 @@ class MapManager:
     self.game_step = 0
     self.match_step = 0
 
+    self.past_obs = deque([])
+
+  @property
+  def enemy_id(self):
+    return 1 - self.player_id
+
   @property
   def unit_move_cost(self):
-    return env_cfg['unit_move_cost']
+    return self.env_cfg['unit_move_cost']
 
   @property
   def unit_sensor_range(self):
-    return env_cfg['unit_sensor_range']
+    return self.env_cfg['unit_sensor_range']
 
   def update_cell_type(self, ob):
     # adding 1 to start cell type from 0
@@ -109,6 +140,25 @@ class MapManager:
     unit_positions = ob['units']['position'][self.player_id][unit_masks]
     self.visited[unit_positions[:, 0], unit_positions[:, 1]] = 1
 
+    self.update_relic_node(ob)
+
+    self.update_team_point_mass(ob, unit_positions)
+    self.prev_team_point = ob['team_points'][self.player_id]
+
+    self.update_cell_energy(ob)
+
+    self.past_obs.appendleft(ob)
+    if len(self.past_obs) > self.MAX_PAST_OB_NUM:
+      self.past_obs.pop()
+
+  def get_unit_info(self, pid, i, t):
+    ob = self.past_obs[t]
+    mask = ob['units_mask'][pid][i]
+    position = ob['units']['position'][pid][i]
+    energy = ob['units']['energy'][pid][i]
+    return mask, position, energy
+
+  def update_relic_node(self, ob):
     relic_nodes_mask = ob['relic_nodes_mask']
     relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
     self.is_relic_node[relic_nodes_positions[:, 0],
@@ -116,11 +166,6 @@ class MapManager:
     self.is_relic_node |= anti_diag_sym(self.is_relic_node)
     self.is_relic_neighbour = maximum_filter(
         (self.is_relic_node == 1).astype(np.int32), size=RELIC_NB_SIZE)
-
-    self.update_team_point_mass(ob, unit_positions)
-    self.prev_team_point = ob['team_points'][self.player_id]
-
-    self.update_cell_energy(ob)
 
   def update_cell_energy(self, ob):
     energy = ob['map_features']['energy']
@@ -173,8 +218,7 @@ class MapManager:
 
 
 def gen_dummy_action():
-  # TODO:
-  pass
+  return np.zeros((MAX_UNIT_NUM, 3), np.int32)
 
 
 class LuxS3Env(gym.Env):
@@ -182,6 +226,8 @@ class LuxS3Env(gym.Env):
   def __init__(self, reward_schema=None):
     self.reward_schema = reward_schema
     self.game = LuxAIS3GymEnv(numpy_output=True)
+    self.mms = None
+    self.prev_raw_obs = None
 
   @property
   def total_agent_controls(self):
@@ -200,13 +246,21 @@ class LuxS3Env(gym.Env):
   def seed(self, seed):
     pass
 
+  def _update_mms(self, obs):
+    self.mms[0].update(obs[PLAYER0])
+    self.mms[1].update(obs[PLAYER1])
+
   def reset(self, seed=None):
     raw_obs, info = self.game.reset()
+
+    env_cfg = info['params']
+    self.mms = [MapManager(PLAYER0, env_cfg), MapManager(PLAYER1, env_cfg)]
+    self._update_mms(raw_obs)
 
     self.prev_raw_obs = raw_obs
     done = False
     reward = self._convert_reward(raw_obs, info)
-    action = [gen_dummy_action(), gen_dummy_action()]
+    action = {PLAYER0: gen_dummy_action(), PLAYER1: gen_dummy_action()}
     info = self.get_info(action, raw_obs, model_action=None)
 
     return self.observation(raw_obs), reward, done, info
@@ -214,23 +268,22 @@ class LuxS3Env(gym.Env):
   def _encode_action(self, action):
     """Translate the model action into game env action.
 
-    TODO: to encode SAP action, observation is required.
+    TODO: to encode SAP action, prev observation is required.
     """
+    unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
+    for i, a in enumerate(action):
+      unit_actions[i][0] = np.int32(a)
 
-    def _encode(single_player_actions):
-      unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int16)
-
-      for i, a in enumerate(single_player_actions):
-        unit_actions[i][0] = np.int16(a)
-
-      return _encode(action[0], self.prev_raw_obs[0])
+    return unit_actions
 
   def step(self, model_action):
     action = {
         PLAYER0: self._encode_action(model_action[0]),
         PLAYER1: self._encode_action(model_action[1]),
     }
-    raw_obs, step_reward, _, info = self.game.step(action)
+    raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
+    self._update_mms(raw_obs)
+
     done = False
     if raw_obs[PLAYER0]['steps'] >= MAX_GAME_STEPS:
       done = True
@@ -242,20 +295,59 @@ class LuxS3Env(gym.Env):
     self.prev_raw_obs = raw_obs
     return obs, reward, done, info
 
-  def observation(self, raw_obs, action=None):
+  def _convert_observation(self, ob, mm):
+    o = {}
+
+    def scalar(v, maxv):
+      return (np.zeros(MAP_SHAPE) + v) / maxv
+
+    # Game params
+    o['unit_move_cost'] = scalar(mm.unit_move_cost, MAX_MOVE_COST)
+    o['unit_sensor_range'] = scalar(mm.unit_sensor_range, MAX_SENSOR_RANGE)
+
+    # Time & Match
+    o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
+    o['match_step'] = scalar(mm.game_step, MAX_MATCH_STEPS)
+
+    # Map info
+    o['cell_type'] = mm.cell_type.copy()
+    o['visible'] = mm.visible.astype(np.float32)
+    o['observed'] = mm.observed.astype(np.float32)
+    o['visited'] = mm.visited.astype(np.float32)
+    o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
+    o['is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
+    o['team_point_prob'] = sigmoid(mm.team_point_mass / 20)
+    o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
+
+    def add_unit_feature(prefix, player_id, i, t):
+      mask, pos, energy = mm.get_unit_info(player_id, i, t)
+      unit_pos = np.zeros(MAP_SHAPE)
+      unit_energy = np.zeros(MAP_SHAPE)
+      if mask:
+        unit_pos[pos] = 1
+        unit_energy[pos] = energy / MAX_UNIT_ENERGY
+
+      o[f'{prefix}_{i}_loc_{t}'] = unit_pos
+      o[f'{prefix}_{i}_energy_{t}'] = unit_energy
+
+    # Unit info
+    for i in range(MAX_UNIT_NUM):
+      add_unit_feature('unit', mm.player_id, i, t=0)
+
+    for i in range(MAX_UNIT_NUM):
+      add_unit_feature('energy', mm.enemy_id, i, t=0)
+
+    assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
+    return o
+
+  def observation(self, raw_obs):
     assert len(
         raw_obs
     ) == 2, f"len(raw_obs)={len(raw_obs)}, self.total_agent_controls={self.total_agent_controls}"
-
     return [
-        self._convert_observation(raw_obs[0]),
-        self._convert_observation(raw_obs[1])
+        self._convert_observation(raw_obs[PLAYER0], self.mms[0]),
+        self._convert_observation(raw_obs[PLAYER1], self.mms[1])
     ]
-
-  def _convert_observation(self, raw_obs1):
-    # TODO:
-    obs = {}
-    return obs
 
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
@@ -279,16 +371,17 @@ class LuxS3Env(gym.Env):
       info = {}
 
       # action mask matches with given action for last state (for compute logits)
-      max_grab_num = MAX_DISTRIBUTE_NUM - len(agent['orders_to_pick'])
-      info['actions_taken_mask'] = self.get_actions_taken_mask(
-          model_action, max_grab_num)
+      info['actions_taken_mask'] = None
 
       # action mask for current state, (for sample action)
-      info['available_action_mask'] = self._get_action_mask(raw_obs1)
+      info['available_action_mask'] = None
 
       return info
 
+    if model_action is None:
+      model_action = [None, None]
+
     return [
-        _info(action[i], raw_obs[i], self.prev_raw_obs[i], model_action)
-        for i in range(len(raw_obs))
+        _info(action[player], raw_obs[player], self.prev_raw_obs[player],
+              model_action[i]) for i, player in enumerate([PLAYER0, PLAYER1])
     ]
