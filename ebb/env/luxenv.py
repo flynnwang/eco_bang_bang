@@ -273,7 +273,6 @@ class LuxS3Env(gym.Env):
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i, a in enumerate(action):
       unit_actions[i][0] = np.int32(a)
-
     return unit_actions
 
   def step(self, model_action):
@@ -358,23 +357,49 @@ class LuxS3Env(gym.Env):
     reward = team_wins - prev_team_wins
     return reward
 
-  def _get_action_mask(self, raw_obs1):
-    """Mask for unit action."""
-    return {}
+  def _get_available_action_mask(self, mm):
+    """Mask for unit action: compute available action based on unit position"""
+    actions_mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
+    for i in range(MAX_UNIT_NUM):
+      actions_mask[i][ACTION_CENTER] = 1  # can always stay
+      unit_mask, pos, _ = mm.get_unit_info(mm.player_id, i, t=0)
 
-  def get_actions_taken_mask(self, action):
-    return {}
+      # TODO: when use unit position inference, update here
+      if not unit_mask:
+        continue
+
+      for k in range(1, MOVE_ACTION_NUM):
+        nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+        if nx < 0 or nx >= MAP_WIDTH:
+          continue
+        if ny < 0 or ny >= MAP_HEIGHT:
+          continue
+        if mm.cell_type[nx][ny] == CELL_ASTERIOD:
+          continue
+        actions_mask[i][k] = 1
+
+    return actions_mask
+
+  def get_actions_taken_mask(self, model_action):
+    mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
+    if model_action is None:
+      mask[:, 0] = 1
+      return mask
+
+    for i, a in enumerate(model_action):
+      mask[i][a] = 1
+    return mask
 
   def get_info(self, action, raw_obs, model_action):
 
-    def _info(agent_action, raw_obs1, prev_obs1, model_action):
+    def _info(agent_action, raw_obs1, prev_obs1, model_action, mm):
       info = {}
 
       # action mask matches with given action for last state (for compute logits)
-      info['actions_taken_mask'] = None
+      info['actions_taken_mask'] = self.get_actions_taken_mask(model_action)
 
       # action mask for current state, (for sample action)
-      info['available_action_mask'] = None
+      info['available_action_mask'] = self._get_available_action_mask(mm)
 
       return info
 
@@ -383,5 +408,6 @@ class LuxS3Env(gym.Env):
 
     return [
         _info(action[player], raw_obs[player], self.prev_raw_obs[player],
-              model_action[i]) for i, player in enumerate([PLAYER0, PLAYER1])
+              model_action[i], self.mms[i])
+        for i, player in enumerate([PLAYER0, PLAYER1])
     ]
