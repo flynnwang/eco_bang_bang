@@ -8,8 +8,6 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from torch.distributions.categorical import Categorical
-
 from ebb.env.const import *
 from ebb.env.luxenv import OBSERVATION_SPACE, ACTION_SPACE
 
@@ -60,7 +58,6 @@ class RewardSpec(NamedTuple):
 
 def _index_select(embedding_layer: nn.Embedding,
                   x: torch.Tensor) -> torch.Tensor:
-  # __import__('ipdb').set_trace()
   out = embedding_layer.weight.index_select(0, x.view(-1))
   return out.view(*x.shape, -1)
 
@@ -87,11 +84,7 @@ class DictInputLayer(nn.Module):
   def forward(
       x: Dict[str, Union[Dict, torch.Tensor]]
   ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-    grab_action_id = None
-    if '_max_grab_num' in x["info"]:
-      grab_action_id = x["info"]["_max_grab_num"]
-
-    return x["obs"], x["info"]["available_action_mask"], grab_action_id
+    return x["obs"], x["info"]["available_action_mask"]
 
 
 class ConvEmbeddingInputLayer(nn.Module):
@@ -112,7 +105,7 @@ class ConvEmbeddingInputLayer(nn.Module):
       if key.startswith('_'):
         continue
 
-      assert val.shape == (1, BOARD_SIZE, BOARD_SIZE), f"{key}={val.shape}"
+      assert val.shape == (1, MAP_WIDTH, MAP_HEIGHT), f"{key}={val.shape}"
       if isinstance(val, gym.spaces.MultiBinary) or isinstance(
           val, gym.spaces.MultiDiscrete):
         if isinstance(val, gym.spaces.MultiBinary):
@@ -125,6 +118,7 @@ class ConvEmbeddingInputLayer(nn.Module):
                 f"Found: {np.unique(val.nvec)}")
           n_embeddings = val.nvec.ravel()[0]
           padding_idx = None
+          # print(f'add n embeddings for key={key}, n_embeddings={n_embeddings}')
         else:
           raise NotImplementedError(f"Got gym space: {type(val)}")
         embeddings[key] = nn.Embedding(n_embeddings,
@@ -167,22 +161,25 @@ class ConvEmbeddingInputLayer(nn.Module):
     for key, op in self.keys_to_op.items():
       in_tensor = xx[key]
       if op == "embedding":
-        # (b, 1, x, y, n_embeddings)
+        # out=(b, 1, x, y, n_embeddings)
         # drop 1, it's useless
         out = self.select(self.embeddings[key], in_tensor)
 
         # move channel into second column.
-        b, x, y, embedding_dim = out.shape
-        out = out.permute(0, 3, 1, 2)
+        # print(key, out.shape)
+        b, _, x, y, embedding_dim = out.shape
+        # out = out.permute(0, 3, 1, 2)
+        out = out.squeeze(1).permute(0, 3, 1, 2)
         assert len(
             out.shape
         ) == 4, f"Expect embedding to have 5 dims, get {len(out.shape)}: in_shape={in_tensor.shape}{out.shape}"
         embedding_outs[key] = out
       elif op == "continuous":
-        b, x, y = in_tensor.shape
+        # print(key, in_tensor.shape)
+        # b, x, y = in_tensor.shape
         # b*p, 1, x, y; where 1 is a channel of dim 1
-        out = in_tensor.view(b, x, y).unsqueeze(1)
-
+        # out = in_tensor.view(b, x, y).unsqueeze(1)
+        out = in_tensor
         assert len(out.shape) == 4, out.shape
         continuous_outs.append(out)
         # print("contiguous , ", key, out.shape, in_tensor.shape)
@@ -323,26 +320,12 @@ class DictActor(nn.Module):
 
       conv2d = nn.Conv2d(in_channels, out_channels, (1, 1))
       flatten = nn.Flatten(start_dim=1, end_dim=-1)
-      # TODO(wangfei): mul with action_dim?
-      linear = nn.Linear(out_channels * BOARD_SIZE * BOARD_SIZE,
+      linear = nn.Linear(out_channels * MAP_SIZE * MAP_SIZE,
                          n_actions * action_dim)
       actor = nn.Sequential(conv2d, flatten, linear)
 
       actors[key] = actor
     self.actors = nn.ModuleDict(actors)
-
-  # def reset_grab_action(self):
-  # self.action_space = ACTION_SPACE
-  # n_actions = 1
-  # action_dim = GRAB_ACTION_NUM
-
-  # conv2d = nn.Conv2d(self.in_channels, self.out_channels, (1, 1))
-  # flatten = nn.Flatten(start_dim=1, end_dim=-1)
-  # # TODO(wangfei): mul with action_dim?
-  # linear = nn.Linear(self.out_channels * BOARD_SIZE * BOARD_SIZE,
-  # n_actions * action_dim)
-  # actor = nn.Sequential(conv2d, flatten, linear)
-  # self.actors['grab_action'] = actor
 
   def forward(self,
               x: torch.Tensor,
@@ -358,14 +341,13 @@ class DictActor(nn.Module):
       actor = self.actors[key]
       logits = actor(x).view(-1, n_actions, action_dim)
 
+      # print(key, type(actions_mask), actions_mask)
       am = actions_mask[key]
       logits = torch.where(am > 0, logits,
                            torch.zeros_like(logits) + float("-inf"))
 
       actions = DictActor.logits_to_actions(logits.view(-1, action_dim),
-                                            sample,
-                                            am,
-                                            max_grab_num=max_grab_num)
+                                            sample, am)
       actions = actions.view(*logits.shape[:-1], -1)
 
       actions_out[key] = actions
@@ -377,14 +359,10 @@ class DictActor(nn.Module):
   def logits_to_actions(logits: torch.Tensor,
                         sample: bool,
                         actions_mask,
-                        max_grab_num=None) -> int:
-    actions_per_square = 1
-    if max_grab_num is not None:
-      actions_per_square = MAX_GRAB_PER_STEP
-
+                        actions_per_square=1) -> int:
     if sample:
       probs = F.softmax(logits, dim=-1)
-      # In case there are fewer than MAX_OVERLAPPING_ACTIONS available actions, we add a small eps value
+      # In case there are fewer than actions_per_square available actions, we add a small eps value
       probs = torch.where((probs > 0.).sum(dim=-1, keepdim=True)
                           >= actions_per_square, probs, probs + 1e-10)
 
@@ -393,13 +371,6 @@ class DictActor(nn.Module):
                                   replacement=False)
       return actions
     else:
-      # policy = Categorical(logits=logits)
-      # if policy.probs.shape[0] == 1:
-      # probs = list(policy.probs[0, :])
-      # for a, prob in enumerate(probs):
-      # d = str(ACTION_TO_DIRECTION[a]).split('.')[-1]
-      # logging.info(f"prob({d}) = {float(prob):.3f}")
-
       return logits.argsort(dim=-1, descending=True)[..., :actions_per_square]
 
 
@@ -427,55 +398,11 @@ class BaselineLayer(nn.Module):
     return x * (self.reward_max - self.reward_min) + self.reward_min
 
 
-class GrabActor(nn.Module):
-
-  def __init__(self,
-               hidden_dim: int,
-               num_grab_layers: int = 4,
-               activation: Callable = nn.ReLU):
-    super(GrabActor, self).__init__()
-
-    layers = [
-        nn.Linear(GRAB_MODEL_FEATURE_NUM, hidden_dim),
-        activation(),
-    ]
-    for i in range(num_grab_layers - 2):
-      layers.append(nn.Linear(hidden_dim, hidden_dim))
-      layers.append(activation())
-
-    layers.append(nn.Linear(hidden_dim, GRAB_ACTION_NUM))
-    self.actor = nn.Sequential(*layers)
-
-  def forward(self,
-              x: torch.Tensor,
-              actions_mask: torch.Tensor,
-              sample: bool,
-              grab_action_id=None) -> Tuple[torch.Tensor, torch.Tensor]:
-    n_actions = 1
-    action_dim = GRAB_ACTION_NUM
-
-    logits = self.actor(x).view(-1, n_actions, action_dim)
-
-    am = actions_mask
-    logits = torch.where(am > 0, logits,
-                         torch.zeros_like(logits) + float("-inf"))
-
-    actions = DictActor.logits_to_actions(logits, sample, am)
-    # __import__('ipdb').set_trace()
-
-    # if grab_action_id is None:
-    # actions = DictActor.logits_to_actions(logits, sample, am)
-    if grab_action_id is not None:
-      actions = grab_action_id.view(actions.shape)
-    return logits, actions
-
-
 class BasicActorCriticNetwork(nn.Module):
 
   def __init__(
       self,
       base_model: nn.Module,
-      grab_base: nn.Module,
       hidden_dim: int,
       base_out_channels: int,
       reward_space: RewardSpec,
@@ -496,10 +423,9 @@ class BasicActorCriticNetwork(nn.Module):
         n_layers=n_action_value_layers,
         n_channels=self.hidden_dim,
         activation=actor_critic_activation)
-    self.actor = DictActor(hidden_dim, self.base_out_channels,
-                           MOVE_ACTION_SPACE)
+    self.actor = DictActor(hidden_dim, self.base_out_channels, ACTION_SPACE)
 
-    self.baseline_base2 = self.make_spectral_norm_head_base(
+    self.baseline_base = self.make_spectral_norm_head_base(
         n_layers=n_action_value_layers,
         n_channels=self.hidden_dim,
         activation=actor_critic_activation)
@@ -507,66 +433,20 @@ class BasicActorCriticNetwork(nn.Module):
         in_channels=hidden_dim,
         reward_space=reward_space,
     )
-    # self.grab_actor = GrabActor(self.hidden_dim)
     self.n_action_value_layers = n_action_value_layers
     self.actor_critic_activation = actor_critic_activation
-
-    self.grab_base = grab_base
-    self.grab_base2 = self.make_spectral_norm_head_base(
-        n_layers=n_action_value_layers,
-        n_channels=hidden_dim,
-        activation=actor_critic_activation)
-    self.grab_actor2 = DictActor(self.hidden_dim, self.base_out_channels,
-                                 GRAB_ACTION_SPACE)
-
-  # self.grab_actor = GrabActor(self.hidden_dim)
-
-  # def reset_grab_action(self):
-  # self.grab_actor = GrabActor(self.hidden_dim)
-
-  # def reset_grab_action_model(self):
-  # self.grab_base2 = self.make_spectral_norm_head_base(
-  # n_layers=self.n_action_value_layers,
-  # n_channels=self.hidden_dim,
-  # activation=self.actor_critic_activation)
-  # self.grab_actor2 = DictActor(self.hidden_dim, self.base_out_channels,
-  # GRAB_ACTION_SPACE)
-  # # self.grab_actor = GrabActor(self.hidden_dim)
 
   def forward(self,
               x1: Dict[str, Union[dict, torch.Tensor]],
               sample: bool = True,
               **actor_kwargs) -> Dict[str, Any]:
-    x, actions_mask, max_grab_num = self.dict_input_layer(x1)
+    x, actions_mask = self.dict_input_layer(x1)
     base_out = self.base_model(x)
     policy_logits, actions = self.actor(self.actor_base(base_out),
                                         sample=sample,
                                         actions_mask=actions_mask,
                                         **actor_kwargs)
-
-    baseline = self.baseline(self.baseline_base2(base_out))
-
-    # if 'grab_action' not in self.actor.action_space.spaces:
-    # # for teacher
-    # x2 = x['_grab_model_feature']
-    # m2 = actions_mask['grab_action']
-    # grab_logits, grab_actions = self.grab_actor(x2, m2, sample,
-    # grab_action_id)
-
-    # policy_logits['grab_action'] = grab_logits
-    # actions['grab_action'] = grab_actions
-    # else:
-    grab_base_out = self.grab_base(x)
-    policy_logits2, actions2 = self.grab_actor2(self.grab_base2(grab_base_out),
-                                                sample=sample,
-                                                actions_mask=actions_mask,
-                                                max_grab_num=max_grab_num,
-                                                **actor_kwargs)
-    policy_logits['grab_action'] = policy_logits2['grab_action']
-    actions['grab_action'] = actions2['grab_action']
-
-    # else:
-    # rpint('good to go!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    baseline = self.baseline(self.baseline_base(base_out))
     return dict(actions=actions,
                 policy_logits=policy_logits,
                 baseline=baseline)
@@ -591,6 +471,7 @@ class BasicActorCriticNetwork(nn.Module):
     for i in range(n_layers - 2):
       layers.append(nn.Conv2d(n_channels, n_channels, (1, 1)))
       layers.append(activation())
+
     layers.append(
         nn.utils.spectral_norm(nn.Conv2d(n_channels, n_channels, (1, 1))))
     layers.append(activation())
@@ -601,17 +482,14 @@ def create_model(flags,
                  observation_space,
                  device: torch.device,
                  reset=False) -> nn.Module:
-  reward_spec = RewardSpec(
-      reward_min=-100.0,
-      reward_max=+100.0,
-      zero_sum=False,
-  )
-  if flags.reward_schema == 'win_loss':
+  reward_spec = None
+  if flags.reward_schema == 'match_win_loss':
     reward_spec = RewardSpec(
-        reward_min=-1.0,
-        reward_max=+1.0,
+        reward_min=-10,
+        reward_max=+10,
         zero_sum=False,
     )
+  assert reward_spec is not None
 
   md = _create_model(observation_space,
                      embedding_dim=flags.embedding_dim,
@@ -625,9 +503,9 @@ def create_model(flags,
 
 
 def _create_model(observation_space,
-                  embedding_dim=32,
-                  hidden_dim=128,
-                  base_out_channels=64,
+                  embedding_dim=16,
+                  hidden_dim=32,
+                  base_out_channels=32,
                   n_blocks=4,
                   device: torch.device = torch.device('cpu'),
                   reward_spec: RewardSpec = None,
@@ -636,16 +514,9 @@ def _create_model(observation_space,
       ConvEmbeddingInputLayer(observation_space, embedding_dim, hidden_dim), *[
           ResidualBlock(in_channels=hidden_dim,
                         out_channels=hidden_dim,
-                        height=BOARD_SIZE,
-                        width=BOARD_SIZE) for _ in range(n_blocks)
+                        height=MAP_HEIGHT,
+                        width=MAP_WIDTH) for _ in range(n_blocks)
       ])
-  grab_base = nn.Sequential(
-      ConvEmbeddingInputLayer(observation_space, embedding_dim, hidden_dim), *[
-          ResidualBlock(in_channels=hidden_dim,
-                        out_channels=hidden_dim,
-                        height=BOARD_SIZE,
-                        width=BOARD_SIZE) for _ in range(n_blocks)
-      ])
-  model = BasicActorCriticNetwork(base_model, grab_base, hidden_dim,
-                                  base_out_channels, reward_spec)
+  model = BasicActorCriticNetwork(base_model, hidden_dim, base_out_channels,
+                                  reward_spec)
   return model.to(device=device)

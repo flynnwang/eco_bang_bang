@@ -8,10 +8,13 @@ from luxai_s3.wrappers import LuxAIS3GymEnv, RecordEpisode
 from .const import *
 
 # Let's use move action only first
-ACTION_SPACE = spaces.MultiDiscrete(
-    np.zeros((MAX_UNIT_NUM, ), dtype=int) + MOVE_ACTION_NUM)
+ACTION_SPACE = spaces.Dict({
+    UNITS_ACTION:
+    spaces.MultiDiscrete(np.zeros(MAX_UNIT_NUM, dtype=int) + MOVE_ACTION_NUM)
+})
 
-MAP_SHAPE = (MAP_WIDTH, MAP_HEIGHT)
+MAP_SHAPE = (1, MAP_WIDTH, MAP_HEIGHT)
+MAP_SHAPE2 = (MAP_WIDTH, MAP_HEIGHT)
 OB = OrderedDict([
     # Game params
     ('unit_move_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -22,7 +25,7 @@ OB = OrderedDict([
     ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Map info
-    ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + MAX_CELL_TYPE)),
+    ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -295,10 +298,11 @@ class LuxS3Env(gym.Env):
     return obs, reward, done, info
 
   def _convert_observation(self, ob, mm):
+    """Construct all features using MAP_SHAPE2."""
     o = {}
 
     def scalar(v, maxv):
-      return (np.zeros(MAP_SHAPE) + v) / maxv
+      return (np.zeros(MAP_SHAPE2) + v) / maxv
 
     # Game params
     o['unit_move_cost'] = scalar(mm.unit_move_cost, MAX_MOVE_COST)
@@ -320,8 +324,8 @@ class LuxS3Env(gym.Env):
 
     def add_unit_feature(prefix, player_id, i, t):
       mask, pos, energy = mm.get_unit_info(player_id, i, t)
-      unit_pos = np.zeros(MAP_SHAPE)
-      unit_energy = np.zeros(MAP_SHAPE)
+      unit_pos = np.zeros(MAP_SHAPE2)
+      unit_energy = np.zeros(MAP_SHAPE2)
       if mask:
         unit_pos[pos] = 1
         unit_energy[pos] = energy / MAX_UNIT_ENERGY
@@ -334,9 +338,13 @@ class LuxS3Env(gym.Env):
       add_unit_feature('unit', mm.player_id, i, t=0)
 
     for i in range(MAX_UNIT_NUM):
-      add_unit_feature('energy', mm.enemy_id, i, t=0)
+      add_unit_feature('enemy', mm.enemy_id, i, t=0)
 
     assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
+    # expand all feature map with dummy dim 1
+    o = {k: np.expand_dims(v, 0) for k, v in o.items()}
+    for k, v in o.items():
+      print(k, v.shape)
     return o
 
   def observation(self, raw_obs):
@@ -378,17 +386,17 @@ class LuxS3Env(gym.Env):
           continue
         actions_mask[i][k] = 1
 
-    return actions_mask
+    return {UNITS_ACTION: actions_mask}
 
   def get_actions_taken_mask(self, model_action):
     mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
     if model_action is None:
       mask[:, 0] = 1
-      return mask
+      return {UNITS_ACTION: mask}
 
     for i, a in enumerate(model_action):
       mask[i][a] = 1
-    return mask
+    return {UNITS_ACTION: mask}
 
   def get_info(self, action, raw_obs, model_action):
 
