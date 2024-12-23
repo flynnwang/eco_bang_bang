@@ -284,17 +284,19 @@ class LuxS3Env(gym.Env):
     return unit_actions
 
   def step(self, model_action):
-    model_action = [
-        model_action, {
-            UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), np.int32)
-        }
-    ]
+    if SINGLE_PLAER:
+      model_action = [
+          model_action,
+          {
+              UNITS_ACTION: np.zeros(
+                  (MAX_UNIT_NUM, 1), np.int32
+              )  # use dummy action for the other player is not optimal
+          }
+      ]
+
     action = {
-        # PLAYER0: self._encode_action(model_action[0]),
-        # PLAYER1: self._encode_action(model_action[1]),
         PLAYER0: self._encode_action(model_action[0]),
-        PLAYER1:
-        self._encode_action(model_action[1])  # single player & empty action
+        PLAYER1: self._encode_action(model_action[1]),
     }
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     self._update_mms(raw_obs)
@@ -364,11 +366,14 @@ class LuxS3Env(gym.Env):
     assert len(
         raw_obs
     ) == 2, f"len(raw_obs)={len(raw_obs)}, self.total_agent_controls={self.total_agent_controls}"
-    # return [
-    # self._convert_observation(raw_obs[PLAYER0], self.mms[0]),
-    # self._convert_observation(raw_obs[PLAYER1], self.mms[1])
-    # ]
-    return [self._convert_observation(raw_obs[PLAYER0], self.mms[0])]
+    if SINGLE_PLAER:
+      return [self._convert_observation(raw_obs[PLAYER0],
+                                        self.mms[0])]  # single player
+    else:
+      return [
+          self._convert_observation(raw_obs[PLAYER0], self.mms[0]),
+          self._convert_observation(raw_obs[PLAYER1], self.mms[1])
+      ]
 
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
@@ -377,8 +382,11 @@ class LuxS3Env(gym.Env):
     team_wins = raw_obs[PLAYER0]['team_wins']
     prev_team_wins = self.prev_raw_obs[PLAYER0]['team_wins']
     reward = team_wins - prev_team_wins
-    # return reward
-    return [reward[0]]  # single player
+
+    if SINGLE_PLAER:
+      return [reward[0]]  # single player
+    else:
+      return reward
 
   def _get_available_action_mask(self, mm):
     """Mask for unit action: compute available action based on unit position"""
@@ -431,13 +439,14 @@ class LuxS3Env(gym.Env):
     if model_action is None:
       model_action = [None, None]
 
-    # return [
-    # _info(action[player], raw_obs[player], self.prev_raw_obs[player],
-    # model_action[i], self.mms[i])
-    # for i, player in enumerate([PLAYER0, PLAYER1])
-    # ]
-
-    return [
-        _info(action[PLAYER0], raw_obs[PLAYER0], self.prev_raw_obs[PLAYER0],
-              model_action[0], self.mms[0])
-    ]  # single player
+    if SINGLE_PLAER:
+      return [
+          _info(action[PLAYER0], raw_obs[PLAYER0], self.prev_raw_obs[PLAYER0],
+                model_action[0], self.mms[0])
+      ]  # single player
+    else:
+      return [
+          _info(action[player], raw_obs[player], self.prev_raw_obs[player],
+                model_action[i], self.mms[i])
+          for i, player in enumerate([PLAYER0, PLAYER1])
+      ]

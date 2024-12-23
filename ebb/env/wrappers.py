@@ -11,11 +11,10 @@ from ebb.env.luxenv import ACTION_SPACE
 
 class VecEnv(gym.Env):
 
-  def __init__(self, envs: List[gym.Env], dedup_num: int):
+  def __init__(self, envs: List[gym.Env]):
     assert len(envs) > 0
     self.envs = envs
     self.last_outs = [() for _ in range(len(self.envs))]
-    self.dedup_num = dedup_num
 
   @staticmethod
   def _stack_dict(x: List[Union[Dict, np.ndarray]],
@@ -39,7 +38,7 @@ class VecEnv(gym.Env):
       "For each env_out of [x1, x2], flatten it to x1, x2 ..."
       for env_out in env_outs:
         obs, reward, done, info = env_out
-        done = [done] * self.dedup_num
+        done = [done] * 2
         for out in zip(obs, reward, done, info):
           yield out
 
@@ -49,27 +48,30 @@ class VecEnv(gym.Env):
     reward_stacked = np.array(reward_list)
     done_stacked = np.array(done_list)
     info_stacked = VecEnv._stack_dict(info_list)
+    assert len(obs_list) == 2 * len(env_outs)
+    assert len(reward_list) == 2 * len(env_outs)
+    assert len(done_list) == 2 * len(env_outs)
+    assert len(info_list) == 2 * len(env_outs)
     return obs_stacked, reward_stacked, done_stacked, info_stacked
 
   def reset(self, force: bool = False, **kwargs):
     if force:
       # noinspection PyArgumentList
       self.last_outs = [env.reset(**kwargs) for env in self.envs]
-      return self._vectorize_env_outs(self.last_outs)
+      ret = self._vectorize_env_outs(self.last_outs)
+      return ret
 
     for i, env in enumerate(self.envs):
       # Check if env finished
       if self.last_outs[i][2]:
         # noinspection PyArgumentList
         self.last_outs[i] = env.reset(**kwargs)
-    return self._vectorize_env_outs(self.last_outs)
+    ret = self._vectorize_env_outs(self.last_outs)
+    return ret
 
   def step(self, actions: Dict[str, torch.Tensor]):
     assert len(actions) == len(
         ACTION_SPACE), 'number of actions match len(ACTION_SPACE)'
-    assert (
-        len(actions[UNITS_ACTION]) == len(self.envs) *
-        self.dedup_num), f"n_actions={len(actions)}, n_envs={len(self.envs)}"
 
     def groupby(iterable, n):
       """
@@ -87,15 +89,13 @@ class VecEnv(gym.Env):
       return x.detach().cpu().numpy()
 
     def merged_actions(actions):
-      # assert self.dedup_num == 2
       action_keys = list(ACTION_SPACE.keys())
 
-      groups = [groupby(_d(actions[k]), self.dedup_num) for k in action_keys]
+      groups = [groupby(_d(actions[k]), 2) for k in action_keys]
       for g in zip(*groups):
         x = {key: g[i][0] for i, key in enumerate(action_keys)}
-        # y = {key: g[i][1] for i, key in enumerate(action_keys)}
-        # yield x, y
-        yield x
+        y = {key: g[i][1] for i, key in enumerate(action_keys)}
+        yield x, y
 
     self.last_outs = [
         env.step(a) for env, a in zip(self.envs, merged_actions(actions))

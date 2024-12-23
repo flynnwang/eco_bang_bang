@@ -35,6 +35,7 @@ from torch.nn import functional as F
 from .core import prof, td_lambda, upgo, vtrace
 from .core.buffer_utils import (Buffers, create_buffers, fill_buffers_inplace,
                                 stack_buffers, split_buffers, buffers_apply)
+from .core.selfplay import split_env_output_by_player, pair_env_output_for_players
 
 from ..env import create_env
 from ..env.luxenv import ACTION_SPACE, OBSERVATION_SPACE
@@ -179,6 +180,18 @@ def compute_policy_gradient_loss(action_log_probs: torch.Tensor,
   return reduce(cross_entropy * advantages.detach(), reduction)
 
 
+def split_env_output(env_output):
+  lef_obs, rig_obs = split_env_output_by_player(env_output['obs'])
+  lef_info, rig_info = split_env_output_by_player(env_output['info'])
+  return {'info': lef_info, 'obs': lef_obs}, {'info': rig_info, 'obs': rig_obs}
+
+
+def get_merged_actions(env_agent_out):
+  lef_actions = env_agent_out[0][1]['actions']
+  rig_actions = env_agent_out[1][1]['actions']
+  return pair_env_output_for_players(lef_actions, rig_actions)
+
+
 @torch.no_grad()
 def act(
     flags: SimpleNamespace,
@@ -206,27 +219,45 @@ def act(
       env.seed(flags.seed + actor_index * flags.n_actor_envs)
     else:
       env.seed()
+
+    def actor_mode_apply(env_output):
+      lef_env_out, rig_env_out = split_env_output(env_output)
+      lef_agent_out = actor_model(lef_env_out)
+      rig_agent_out = actor_model(rig_env_out)
+      return [(lef_env_out, lef_agent_out), (rig_env_out, rig_agent_out)]
+
+    def _fill_buffers(indices, env_agent_output, step):
+      for i, idx in enumerate(indices):
+        env_out, agent_out = env_agent_output[i]
+        fill_buffers_inplace(buffers[idx], dict(**env_out, **agent_out), step)
+
     env_output = env.reset(force=True)
-    agent_output = actor_model(env_output)
+    env_agent_output = actor_mode_apply(env_output)
 
     while True:
-      index = free_queue.get()
-      if index is None:
+      left_index = free_queue.get()
+      if left_index is None:
         break
+      right_index = free_queue.get()
+      if right_index is None:
+        break
+      buffer_indices = [left_index, right_index]
 
       # Write old rollout end.
-      fill_buffers_inplace(buffers[index], dict(**env_output, **agent_output),
-                           0)
+      _fill_buffers(buffer_indices, env_agent_output, 0)
 
       # Do new rollout.
       for t in range(flags.unroll_length):
         timings.reset()
 
-        # print('done?: ', env_output["done"])
-        agent_output = actor_model(env_output)
+        # agent_output = actor_model(env_output)
+        env_agent_output = actor_mode_apply(env_output)
         timings.time("model")
 
-        env_output = env.step(agent_output["actions"])
+        # TODO: merge actions to step env
+        actions = get_merged_actions(env_agent_output)
+        env_output = env.step(actions)
+        # env_output = env.step(agent_output["actions"])
         if env_output["done"].any():
           # Cache reward, done and info from the terminal step
           cached_reward = env_output["reward"]
@@ -247,28 +278,11 @@ def act(
 
         timings.time("step")
 
-        # actions = agent_output['actions']
-        # actions_taken_mask = env_output['info']['actions_taken_mask']
-        # for i, a in enumerate(actions):
-        # if actions_taken_mask[i][a] == 0:
-        # __import__('ipdb').set_trace()
-        # print()
-
-        fill_buffers_inplace(buffers[index], dict(**env_output,
-                                                  **agent_output), t + 1)
-
-        # debug
-        # batch = buffers[index]
-        # __import__('ipdb').set_trace()
-        # actions = batch["actions"][0, :]
-        # actions_taken_mask = batch["info"]["actions_taken_mask"][0, :]
-        # for i, a in enumerate(actions):
-        # if actions_taken_mask[i][a] == 0:
-        # __import__('ipdb').set_trace()
-        # print()
+        _fill_buffers(buffer_indices, env_agent_output, t + 1)
 
         timings.time("write")
-      full_queue.put(index)
+      full_queue.put(left_index)
+      full_queue.put(right_index)
 
     if actor_index == 0:
       logging.info("Actor %i: %s", actor_index, timings.summary())

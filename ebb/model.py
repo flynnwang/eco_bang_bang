@@ -58,7 +58,8 @@ class RewardSpec(NamedTuple):
 
 def _index_select(embedding_layer: nn.Embedding,
                   x: torch.Tensor) -> torch.Tensor:
-  out = embedding_layer.weight.index_select(0, x.view(-1))
+  out = embedding_layer.weight.index_select(0, x.reshape(-1))
+  # out = embedding_layer.weight.index_select(0, x.view(-1))
   return out.view(*x.shape, -1)
 
 
@@ -176,6 +177,7 @@ class ConvEmbeddingInputLayer(nn.Module):
         ) == 4, f"Expect embedding to have 5 dims, get {len(out.shape)}: in_shape={in_tensor.shape}{out.shape}"
         embedding_outs[key] = out
       elif op == "continuous":
+        # __import__('ipdb').set_trace()
         b, x, y = in_tensor.shape
         # b*p, 1, x, y; where 1 is a channel of dim 1
         out = in_tensor.view(b, x, y).unsqueeze(1)
@@ -368,10 +370,12 @@ class DictActor(nn.Module):
       probs = torch.where((probs > 0.).sum(dim=-1, keepdim=True)
                           >= actions_per_square, probs, probs + 1e-10)
 
-      actions = torch.multinomial(probs,
-                                  num_samples=actions_per_square,
-                                  replacement=False)
-      # __import__('ipdb').set_trace()
+      try:
+        actions = torch.multinomial(probs,
+                                    num_samples=actions_per_square,
+                                    replacement=False)
+      except:
+        __import__('ipdb').set_trace()
       return actions
     else:
       return logits.argsort(dim=-1, descending=True)[..., :actions_per_square]

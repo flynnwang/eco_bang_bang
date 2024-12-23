@@ -26,7 +26,7 @@ def get_default_flags(flags: DictConfig) -> DictConfig:
   flags.setdefault(
       "num_buffers",
       max(2 * flags["num_actors"],
-          flags["batch_size"] // flags["n_actor_envs"]))
+          flags["batch_size"] // flags["n_actor_envs"]) + 2)
   flags.setdefault("obs_space_kwargs", {})
   flags.setdefault("reward_space_kwargs", {})
 

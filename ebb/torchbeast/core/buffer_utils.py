@@ -7,6 +7,8 @@ import torch
 
 from ebb.env.const import *
 
+from .selfplay import split_env_output_by_player
+
 Buffers = List[Dict[str, Union[Dict, torch.Tensor]]]
 
 
@@ -18,7 +20,6 @@ def fill_buffers_inplace(buffers: Union[Dict, torch.Tensor],
     for key, val in copy(fill_vals).items():
       fill_buffers_inplace(buffers[key], val, step, key_hint=key)
   else:
-
     try:
       buffers[step, ...] = fill_vals[:]
     except:
@@ -144,9 +145,13 @@ def create_buffers(
       done=dict(size=(t + 1, n), dtype=torch.bool),
   )
 
+  # for self-play, we will expand env output into two buffer, that's why we need
+  # to split it into half here.
+  _, splited_info = split_env_output_by_player(example_info)
+
   buffers: Buffers = []
   for _ in range(flags.num_buffers):
     new_buffer = _create_buffers_from_specs(specs)
-    new_buffer["info"] = _create_buffers_like(example_info, t + 1)
+    new_buffer["info"] = _create_buffers_like(splited_info, t + 1)
     buffers.append(new_buffer)
   return buffers

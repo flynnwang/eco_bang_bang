@@ -1,3 +1,5 @@
+SINGLE_PLAER = False
+
 PLAYER0 = 'player_0'
 PLAYER1 = 'player_1'
 
