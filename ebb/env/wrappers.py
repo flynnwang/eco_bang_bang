@@ -68,7 +68,7 @@ class VecEnv(gym.Env):
     assert len(actions) == len(
         ACTION_SPACE), 'number of actions match len(ACTION_SPACE)'
     assert (
-        len(actions['move_action']) == len(self.envs) *
+        len(actions[UNITS_ACTION]) == len(self.envs) *
         self.dedup_num), f"n_actions={len(actions)}, n_envs={len(self.envs)}"
 
     def groupby(iterable, n):
@@ -94,6 +94,7 @@ class VecEnv(gym.Env):
       for g in zip(*groups):
         x = {key: g[i][0] for i, key in enumerate(action_keys)}
         # y = {key: g[i][1] for i, key in enumerate(action_keys)}
+        # yield x, y
         yield x
 
     self.last_outs = [

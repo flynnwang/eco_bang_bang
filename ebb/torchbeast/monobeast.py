@@ -37,8 +37,7 @@ from .core.buffer_utils import (Buffers, create_buffers, fill_buffers_inplace,
                                 stack_buffers, split_buffers, buffers_apply)
 
 from ..env import create_env
-from ..env.const import USE_GRAB_ACTOR
-from ..env.delivery import ACTION_SPACE, OBSERVATION_SPACE
+from ..env.luxenv import ACTION_SPACE, OBSERVATION_SPACE
 from ..model import create_model
 from ..utils import flags_to_namespace
 
@@ -100,8 +99,9 @@ def combine_policy_logits_to_log_probs(
   # print()
 
   # sum over all actors and drop last dim
-  ret = log_probs.sum(dim=-1).squeeze(dim=-1)
-  return ret
+  # ret = log_probs.sum(dim=-1).squeeze(dim=-1)
+  # return ret
+  return torch.flatten(log_probs, start_dim=-2, end_dim=-1).sum(dim=-1)
 
 
 def combine_policy_entropy(
@@ -324,8 +324,8 @@ def learn(
   """Performs a learning (optimization) step."""
   warnings.filterwarnings("ignore")
 
-  # learner_batch_size = flags.batch_size * 2  # for game of 2 teams self-play
-  learner_batch_size = flags.batch_size  # for game of single player
+  learner_batch_size = flags.batch_size  # for game of 2 teams self-play
+  # learner_batch_size = flags.batch_size  # for game of single player
   with lock:
     with amp.autocast(enabled=flags.use_mixed_precision):
       flattened_batch = buffers_apply(
@@ -467,82 +467,46 @@ def learn(
       total_games_played += games_played
       done = batch["done"]
 
-      _timeout_order_num = batch["info"]['_timeout_order_num']
-      _pick_timeout_order_num = batch["info"]['_pick_timeout_order_num']
-      _pick_timeout_reward_order_num = batch["info"][
-          '_pick_timeout_reward_order_num']
-      _deliver_timeout_order_num = batch["info"]['_deliver_timeout_order_num']
-      _deliver_timeout_reward_order_num = batch["info"][
-          '_deliver_timeout_reward_order_num']
+      # _timeout_order_num = batch["info"]['_timeout_order_num']
+      # _pick_timeout_order_num = batch["info"]['_pick_timeout_order_num']
+      # _pick_timeout_reward_order_num = batch["info"][
+      # '_pick_timeout_reward_order_num']
+      # _deliver_timeout_order_num = batch["info"]['_deliver_timeout_order_num']
+      # _deliver_timeout_reward_order_num = batch["info"][
+      # '_deliver_timeout_reward_order_num']
 
-      _picked_order_num = batch["info"]['_picked_order_num']
-      _delivered_order_num = batch["info"]['_delivered_order_num']
+      # _picked_order_num = batch["info"]['_picked_order_num']
+      # _delivered_order_num = batch["info"]['_delivered_order_num']
 
-      _total_reward = batch["info"]['_total_reward']
-      _step_reward = batch["info"]['_step_reward']
+      # _total_reward = batch["info"]['_total_reward']
+      # _step_reward = batch["info"]['_step_reward']
 
-      _action_move_up = batch["info"]['_action_move_up']
-      _action_move_down = batch["info"]['_action_move_down']
-      _action_move_left = batch["info"]['_action_move_left']
-      _action_move_right = batch["info"]['_action_move_right']
+      # _action_move_up = batch["info"]['_action_move_up']
+      # _action_move_down = batch["info"]['_action_move_down']
+      # _action_move_left = batch["info"]['_action_move_left']
+      # _action_move_right = batch["info"]['_action_move_right']
 
-      _agent_num_order_to_pick = batch["info"]['_agent_num_order_to_pick']
-      _agent_num_order_to_deliver = batch["info"][
-          '_agent_num_order_to_deliver']
+      # _agent_num_order_to_pick = batch["info"]['_agent_num_order_to_pick']
+      # _agent_num_order_to_deliver = batch["info"][
+      # '_agent_num_order_to_deliver']
 
-      _ignore_pick_position = batch['info']['_ignore_pick_position']
+      # _ignore_pick_position = batch['info']['_ignore_pick_position']
 
       def compute_mean_count_done(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
-      total_move = (_action_move_up.sum().item() +
-                    _action_move_down.sum().item() +
-                    _action_move_left.sum().item() +
-                    _action_move_right.sum().item())
-      x, y = _agent_num_order_to_pick.shape
-      nn = x * y
+      # total_move = (_action_move_up.sum().item() +
+      # _action_move_down.sum().item() +
+      # _action_move_left.sum().item() +
+      # _action_move_right.sum().item())
+      # x, y = _agent_num_order_to_pick.shape
+      # nn = x * y
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
       stats = {
-          "Env": {
-              'timeout_order_num':
-              _timeout_order_num.sum().detach().item(),
-              'pick_timeout_order_num':
-              _pick_timeout_order_num.sum().detach().item(),
-              'pick_timeout_reward_order_num':
-              _pick_timeout_reward_order_num.sum().detach().item(),
-              'deliver_timeout_order_num':
-              _deliver_timeout_order_num.sum().detach().item(),
-              'deliver_timeout_reward_order_num':
-              _deliver_timeout_reward_order_num.sum().detach().item(),
-              #
-              'picked_order_num':
-              _picked_order_num.sum().detach().item(),
-              'ignore_pick_position':
-              _ignore_pick_position.sum().detach().item(),
-              'delivered_order_num':
-              _delivered_order_num.sum().detach().item(),
-              'total_reward':
-              compute_mean_count_done(_total_reward),
-              'step_reward':
-              _step_reward.sum().detach().item(),
-              #
-              'action_move_up':
-              _action_move_up.sum().detach().item() / total_move,
-              'action_move_down':
-              _action_move_down.sum().detach().item() / total_move,
-              'action_move_left':
-              _action_move_left.sum().detach().item() / total_move,
-              'action_move_right':
-              _action_move_right.sum().detach().item() / total_move,
-              #
-              'agent_num_order_to_pick':
-              _agent_num_order_to_pick.sum().detach().item() / nn,
-              'agent_num_order_to_deliver':
-              _agent_num_order_to_deliver.sum().detach().item() / nn,
-          },
+          "Env": {},
           "Loss": {
               "td_lambda_returns_mean": td,
               "baseline_values_mean": baseline_values,
@@ -565,8 +529,8 @@ def learn(
           },
       }
 
-      if games_played <= 0:
-        stats['Env'].pop('total_reward')
+      # if games_played <= 0:
+      # stats['Env'].pop('total_reward')
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

@@ -167,20 +167,22 @@ class ConvEmbeddingInputLayer(nn.Module):
 
         # move channel into second column.
         # print(key, out.shape)
-        b, _, x, y, embedding_dim = out.shape
-        # out = out.permute(0, 3, 1, 2)
-        out = out.squeeze(1).permute(0, 3, 1, 2)
+        # b, _, x, y, embedding_dim = out.shape
+        # out = out.squeeze(1).permute(0, 3, 1, 2)
+        b, x, y, embedding_dim = out.shape
+        out = out.permute(0, 3, 1, 2)
         assert len(
             out.shape
         ) == 4, f"Expect embedding to have 5 dims, get {len(out.shape)}: in_shape={in_tensor.shape}{out.shape}"
         embedding_outs[key] = out
       elif op == "continuous":
-        # print(key, in_tensor.shape)
-        # b, x, y = in_tensor.shape
+        b, x, y = in_tensor.shape
         # b*p, 1, x, y; where 1 is a channel of dim 1
-        # out = in_tensor.view(b, x, y).unsqueeze(1)
-        out = in_tensor
-        assert len(out.shape) == 4, out.shape
+        out = in_tensor.view(b, x, y).unsqueeze(1)
+
+        # out = in_tensor
+        # print(key, out.shape)
+        assert len(out.shape) == 4, (key, out.shape)
         continuous_outs.append(out)
         # print("contiguous , ", key, out.shape, in_tensor.shape)
       else:
@@ -369,6 +371,7 @@ class DictActor(nn.Module):
       actions = torch.multinomial(probs,
                                   num_samples=actions_per_square,
                                   replacement=False)
+      # __import__('ipdb').set_trace()
       return actions
     else:
       return logits.argsort(dim=-1, descending=True)[..., :actions_per_square]

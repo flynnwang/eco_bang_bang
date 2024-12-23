@@ -6,8 +6,8 @@ from pathlib import Path
 from torch import multiprocessing as mp
 import wandb
 
-from rocket.utils import flags_to_namespace
-from rocket.torchbeast.monobeast import train
+from ebb.utils import flags_to_namespace
+from ebb.torchbeast.monobeast import train
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -60,7 +60,7 @@ def get_default_flags(flags: DictConfig) -> DictConfig:
   return OmegaConf.create(flags)
 
 
-@hydra.main(config_path="conf", config_name="autodl_teacher_config_post_v2")
+@hydra.main(config_path="conf", config_name="autodl_teacher_config_zero")
 def main(flags: DictConfig):
   cli_conf = OmegaConf.from_cli()
   if Path("config.yaml").exists():

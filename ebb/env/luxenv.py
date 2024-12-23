@@ -215,9 +215,13 @@ class MapManager:
       else:
         assert delta < num
         # print('>>>>>>>>>>>>>>', ob['steps'], delta, num, must_be_team_point.sum(), non_team_point.sum())
-        self.team_point_mass[anti_diag_sym(
-            team_point_candidate)] += delta / num
-      assert delta >= 0
+        self.team_point_mass[team_point_candidate] += (delta / num / 4)
+        self.team_point_mass[anti_diag_sym(team_point_candidate)] += (delta /
+                                                                      num / 4)
+      try:
+        assert delta >= 0, f"steps={ob['steps']}, delta={delta}, candi_num={num}, must_be_team_point={must_be_team_point.sum()}, non_team_point={non_team_point.sum()}"
+      except:
+        __import__('ipdb').set_trace()
 
 
 def gen_dummy_action():
@@ -273,15 +277,24 @@ class LuxS3Env(gym.Env):
 
     TODO: to encode SAP action, prev observation is required.
     """
+    action = action[UNITS_ACTION]
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i, a in enumerate(action):
       unit_actions[i][0] = np.int32(a)
     return unit_actions
 
   def step(self, model_action):
+    model_action = [
+        model_action, {
+            UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), np.int32)
+        }
+    ]
     action = {
+        # PLAYER0: self._encode_action(model_action[0]),
+        # PLAYER1: self._encode_action(model_action[1]),
         PLAYER0: self._encode_action(model_action[0]),
-        PLAYER1: self._encode_action(model_action[1]),
+        PLAYER1:
+        self._encode_action(model_action[1])  # single player & empty action
     }
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     self._update_mms(raw_obs)
@@ -343,18 +356,19 @@ class LuxS3Env(gym.Env):
     assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
     # expand all feature map with dummy dim 1
     o = {k: np.expand_dims(v, 0) for k, v in o.items()}
-    for k, v in o.items():
-      print(k, v.shape)
+    # for k, v in o.items():
+    # print(k, v.shape)
     return o
 
   def observation(self, raw_obs):
     assert len(
         raw_obs
     ) == 2, f"len(raw_obs)={len(raw_obs)}, self.total_agent_controls={self.total_agent_controls}"
-    return [
-        self._convert_observation(raw_obs[PLAYER0], self.mms[0]),
-        self._convert_observation(raw_obs[PLAYER1], self.mms[1])
-    ]
+    # return [
+    # self._convert_observation(raw_obs[PLAYER0], self.mms[0]),
+    # self._convert_observation(raw_obs[PLAYER1], self.mms[1])
+    # ]
+    return [self._convert_observation(raw_obs[PLAYER0], self.mms[0])]
 
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
@@ -363,7 +377,8 @@ class LuxS3Env(gym.Env):
     team_wins = raw_obs[PLAYER0]['team_wins']
     prev_team_wins = self.prev_raw_obs[PLAYER0]['team_wins']
     reward = team_wins - prev_team_wins
-    return reward
+    # return reward
+    return [reward[0]]  # single player
 
   def _get_available_action_mask(self, mm):
     """Mask for unit action: compute available action based on unit position"""
@@ -394,7 +409,9 @@ class LuxS3Env(gym.Env):
       mask[:, 0] = 1
       return {UNITS_ACTION: mask}
 
-    for i, a in enumerate(model_action):
+    # __import__('ipdb').set_trace()
+    units_action = model_action[UNITS_ACTION]
+    for i, a in enumerate(units_action):
       mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
@@ -414,8 +431,13 @@ class LuxS3Env(gym.Env):
     if model_action is None:
       model_action = [None, None]
 
+    # return [
+    # _info(action[player], raw_obs[player], self.prev_raw_obs[player],
+    # model_action[i], self.mms[i])
+    # for i, player in enumerate([PLAYER0, PLAYER1])
+    # ]
+
     return [
-        _info(action[player], raw_obs[player], self.prev_raw_obs[player],
-              model_action[i], self.mms[i])
-        for i, player in enumerate([PLAYER0, PLAYER1])
-    ]
+        _info(action[PLAYER0], raw_obs[PLAYER0], self.prev_raw_obs[PLAYER0],
+              model_action[0], self.mms[0])
+    ]  # single player

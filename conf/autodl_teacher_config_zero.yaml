@@ -1,0 +1,99 @@
+defaults:
+- override hydra/job_logging: default
+- override hydra/hydra_logging: default
+
+hydra:
+  run:
+    dir: /Users/flynnwang/repo/flynn/runs/${now:%m-%d}/${now:%H-%M-%S}
+
+name: debug_run_20251221
+
+
+## WANDB params
+# The wandb project name
+project: lux_s3
+# The wandb user to log to
+entity: pyflynn
+# The wandb group for the run
+group: lux_s3_debug_run
+
+## ENV params
+obs_space_kwargs: {}
+reward_space_kwargs: {}
+reward_schema: match_win_loss
+
+## TRAINING params
+total_steps: 3e8
+num_actors: 1
+n_actor_envs: 8
+
+unroll_length: 16
+batch_size: 16
+discounting: 0.999
+
+## MODEL params
+model_arch: conv_model
+n_blocks: 4
+hidden_dim: 32
+base_out_channels: 32
+embedding_dim: 16
+n_merge_layers: 1
+normalize: False
+sum_player_embeddings: False
+use_index_select: False
+rescale_value_input: True
+rescale_se_input: True
+# Conv-specific params
+kernel_size: 3
+
+
+## OPTIMIZER params
+optimizer_class: Adam
+optimizer_kwargs:
+  lr: 5e-5
+  # See https://arxiv.org/pdf/2105.05246.pdf
+  eps: 0.0003
+  #alpha: 0.9
+min_lr_mod: 0.01
+
+## LOSS params
+entropy_cost: 0.001
+baseline_cost: 1.
+teacher_kl_cost: 0.005
+teacher_baseline_cost: 0.0
+# lambda parameter for TD-lambda and UPGO losses
+lmb: 0.9
+reduction: sum
+
+# Pretrained model for KL loss
+use_teacher: False
+teacher_load_dir:
+teacher_checkpoint_file:
+
+# MISCELLANEOUS params
+use_mixed_precision: True
+max_one_gpu_actor_num: 0
+#actor_device: cuda:0
+#learner_device: cuda:1
+
+actor_device: cpu
+learner_device: cpu
+model_log_freq: 100
+
+# in minutes
+checkpoint_freq: 20
+# file_descriptor or file_system
+sharing_strategy: file_system
+#disable_wandb: False
+#debug: False
+
+disable_wandb: True
+debug: True
+
+load_dir:
+checkpoint_file:
+#load_dir:
+#checkpoint_file:
+#
+weights_only: False
+n_value_warmup_batches: 0

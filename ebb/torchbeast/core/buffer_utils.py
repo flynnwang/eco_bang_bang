@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch
 
-from rocket.env.const import *
+from ebb.env.const import *
 
 Buffers = List[Dict[str, Union[Dict, torch.Tensor]]]
 
@@ -18,7 +18,11 @@ def fill_buffers_inplace(buffers: Union[Dict, torch.Tensor],
     for key, val in copy(fill_vals).items():
       fill_buffers_inplace(buffers[key], val, step, key_hint=key)
   else:
-    buffers[step, ...] = fill_vals[:]
+
+    try:
+      buffers[step, ...] = fill_vals[:]
+    except:
+      __import__('ipdb').set_trace()
 
 
 def stack_buffers(buffers: Buffers,
@@ -97,7 +101,8 @@ def create_buffers(
     flags, obs_space, example_info: Dict[str, Union[Dict, np.ndarray,
                                                     torch.Tensor]]) -> Buffers:
   t = flags.unroll_length
-  # n = flags.n_actor_envs * 2  # team model
+  # n = flags.n_actor_envs * 2  # two players
+  # n = flags.batch_size * 2  # two players
   n = flags.n_actor_envs  # single player mode
 
   # observation_space is expected to be a dict of simple spaces.
@@ -123,20 +128,14 @@ def create_buffers(
       #
       # action needs to be int64 for torch.gather
       actions={
-          "move_action":
-          dict(size=(t + 1, n, 1, 1), dtype=torch.int64),
-          "grab_action":
-          dict(size=(t + 1, n, 1, MAX_GRAB_PER_STEP), dtype=torch.int64),
-          # "pick_action":
-          # dict(size=(t + 1, n, MAX_DISTRIBUTE_NUM), dtype=torch.int64),
+          UNITS_ACTION:
+          # dict(size=(t + 1, n, MAX_UNIT_NUM, MOVE_ACTION_NUM),
+          dict(size=(t + 1, n, MAX_UNIT_NUM, 1), dtype=torch.int64),
       },
       policy_logits={
-          "move_action":
-          dict(size=(t + 1, n, 1, MOVE_ACTION_NUM), dtype=torch.float32),
-          "grab_action":
-          dict(size=(t + 1, n, 1, GRAB_ACTION_NUM), dtype=torch.float32),
-          # "pick_action":
-          # dict(size=(t + 1, n, MAX_DISTRIBUTE_NUM, 2), dtype=torch.float32),
+          UNITS_ACTION:
+          dict(size=(t + 1, n, MAX_UNIT_NUM, MOVE_ACTION_NUM),
+               dtype=torch.float32),
       },
       #
       baseline=dict(size=(t + 1, n, 1), dtype=torch.float32),
