@@ -511,8 +511,6 @@ def learn(
       buffer_num = flags.batch_size * flags.unroll_length
       stats = {
           "Env": {
-              'match_team_points':
-              sum_non_nan(_match_team_points) / flags.batch_size,
               'step_team_points':
               _step_team_points.sum().detach().item() / buffer_num,
               'step_reward': _step_reward.sum().detach().item() / buffer_num,
@@ -551,8 +549,9 @@ def learn(
           },
       }
 
-      if match_played <= 0:
-        v = stats['Env'].pop('match_team_points')
+      if match_played > 0:
+        stats['Env']['match_team_points'] = sum_non_nan(
+            _match_team_points) / match_played
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:
