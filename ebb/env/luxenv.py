@@ -179,6 +179,9 @@ class MapManager:
     is_visible_tr = anti_diag_sym(is_visible)
     self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
+  def get_team_point(self):
+    return ob['team_points'][self.player_id]
+
   def update_team_point_mass(self, ob, unit_positions):
     """Update team point confidence"""
     team_point = ob['team_points'][self.player_id]
@@ -192,36 +195,52 @@ class MapManager:
     if unit_nearby_relic.sum() == 0:
       return
 
+    delta = team_point - self.prev_team_point
+    assert delta >= 0
+
+    # because team points is non-decreating, a delta of 0 means all unit position
+    # nearby relic is not a team point position.
+    if delta == 0:
+      self.team_point_mass[unit_nearby_relic] = NON_TEAM_POINT_MASS
+      self.team_point_mass[anti_diag_sym(
+          unit_nearby_relic)] = NON_TEAM_POINT_MASS
+      return
+
+    # when delta > 0
     must_be_team_point = (self.team_point_mass
                           >= TEAM_POINT_MASS) & (unit_nearby_relic)
-    non_team_point = (self.team_point_mass
-                      <= NON_TEAM_POINT_MASS) & (unit_nearby_relic)
 
-    delta = team_point - self.prev_team_point
+    # exclude the cell that must be team points, whatever remains is new team points position
     delta -= must_be_team_point.sum()
 
+    non_team_point = (self.team_point_mass
+                      <= NON_TEAM_POINT_MASS) & (unit_nearby_relic)
     team_point_candidate = unit_nearby_relic & (~must_be_team_point) & (
         ~non_team_point)
     num = team_point_candidate.sum()
-    if num > 0:
-      if delta == 0:
-        self.team_point_mass[team_point_candidate] = NON_TEAM_POINT_MASS
-        self.team_point_mass[anti_diag_sym(
-            team_point_candidate)] = NON_TEAM_POINT_MASS
-      elif num == delta:
-        self.team_point_mass[team_point_candidate] = TEAM_POINT_MASS
-        self.team_point_mass[anti_diag_sym(
-            team_point_candidate)] = TEAM_POINT_MASS
-      else:
-        assert delta < num
-        # print('>>>>>>>>>>>>>>', ob['steps'], delta, num, must_be_team_point.sum(), non_team_point.sum())
-        self.team_point_mass[team_point_candidate] += (delta / num / 4)
-        self.team_point_mass[anti_diag_sym(team_point_candidate)] += (delta /
-                                                                      num / 4)
-      try:
-        assert delta >= 0, f"steps={ob['steps']}, delta={delta}, candi_num={num}, must_be_team_point={must_be_team_point.sum()}, non_team_point={non_team_point.sum()}"
-      except:
-        __import__('ipdb').set_trace()
+    if num == 0:
+      return
+
+    change = 10
+    if delta == 0:
+      # No new team points
+      self.team_point_mass[team_point_candidate] -= change
+      self.team_point_mass[anti_diag_sym(team_point_candidate)] -= change
+    elif delta < 0:
+      # Means some wrong happens in the curr team point mass
+      self.team_point_mass[must_be_team_point] -= change
+      self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
+    elif num == delta:
+      # Every candidate position is a team point position
+      self.team_point_mass[team_point_candidate] += change
+      self.team_point_mass[anti_diag_sym(team_point_candidate)] += change
+    else:
+      # num < delta, some of the point is team point
+      assert delta < num
+      # print('>>>>>>>>>>>>>>', ob['steps'], delta, num, must_be_team_point.sum(), non_team_point.sum())
+      self.team_point_mass[team_point_candidate] += (delta / num)
+      self.team_point_mass[anti_diag_sym(team_point_candidate)] += (delta /
+                                                                    num)
 
 
 def gen_dummy_action():
@@ -268,7 +287,7 @@ class LuxS3Env(gym.Env):
     done = False
     reward = self._convert_reward(raw_obs, info)
     action = {PLAYER0: gen_dummy_action(), PLAYER1: gen_dummy_action()}
-    info = self.get_info(action, raw_obs, model_action=None)
+    info = self.get_info(action, raw_obs, reward, model_action=None)
 
     return self.observation(raw_obs), reward, done, info
 
@@ -307,7 +326,7 @@ class LuxS3Env(gym.Env):
 
     obs = self.observation(raw_obs)
     reward = self._convert_reward(raw_obs, info)
-    info = self.get_info(action, raw_obs, model_action)
+    info = self.get_info(action, raw_obs, reward, model_action, done)
 
     self.prev_raw_obs = raw_obs
     return obs, reward, done, info
@@ -423,9 +442,20 @@ class LuxS3Env(gym.Env):
       mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
-  def get_info(self, action, raw_obs, model_action):
+  def get_info(self, action, raw_obs, reward, model_action, done=False):
 
-    def _info(agent_action, raw_obs1, prev_obs1, model_action, mm):
+    def count_actions(info, agent_action):
+      action_count = {a: 0 for a in ACTION_ID_TO_NAME.values()}
+      for i in range(MAX_UNIT_NUM):
+        a = agent_action[i][0]
+        name = ACTION_ID_TO_NAME[a]
+        action_count[name] += 1
+
+      # append '_' for each action name
+      info.update([('_' + a.lower(), c) for a, c in action_count.items()])
+
+    def _info(agent_action, raw_obs1, prev_obs1, agent_reward, model_action,
+              mm):
       info = {}
 
       # action mask matches with given action for last state (for compute logits)
@@ -434,6 +464,18 @@ class LuxS3Env(gym.Env):
       # action mask for current state, (for sample action)
       info['available_action_mask'] = self._get_available_action_mask(mm)
 
+      info['_step_reward'] = reward
+
+      # Team points stats
+      tp0 = raw_obs1['team_points'][mm.player_id]
+      tp1 = prev_obs1['team_points'][mm.player_id]
+      info['_step_team_points'] = tp0 - tp1
+
+      info['_game_team_points'] = 0
+      if done:
+        info['_game_team_points'] = tp0
+
+      count_actions(info, agent_action)
       return info
 
     if model_action is None:
@@ -447,6 +489,6 @@ class LuxS3Env(gym.Env):
     else:
       return [
           _info(action[player], raw_obs[player], self.prev_raw_obs[player],
-                model_action[i], self.mms[i])
+                reward[i], model_action[i], self.mms[i])
           for i, player in enumerate([PLAYER0, PLAYER1])
       ]

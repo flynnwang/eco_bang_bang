@@ -221,7 +221,7 @@ def act(
       env.seed()
 
     def actor_mode_apply(env_output):
-      lef_env_out, rig_env_out = split_env_output(env_output)
+      lef_env_out, rig_env_out = split_env_output_by_player(env_output)
       lef_agent_out = actor_model(lef_env_out)
       rig_agent_out = actor_model(rig_env_out)
       return [(lef_env_out, lef_agent_out), (rig_env_out, rig_agent_out)]
@@ -285,6 +285,7 @@ def act(
       full_queue.put(right_index)
 
     if actor_index == 0:
+
       logging.info("Actor %i: %s", actor_index, timings.summary())
 
   except KeyboardInterrupt:
@@ -481,46 +482,46 @@ def learn(
       total_games_played += games_played
       done = batch["done"]
 
-      # _timeout_order_num = batch["info"]['_timeout_order_num']
-      # _pick_timeout_order_num = batch["info"]['_pick_timeout_order_num']
-      # _pick_timeout_reward_order_num = batch["info"][
-      # '_pick_timeout_reward_order_num']
-      # _deliver_timeout_order_num = batch["info"]['_deliver_timeout_order_num']
-      # _deliver_timeout_reward_order_num = batch["info"][
-      # '_deliver_timeout_reward_order_num']
+      _step_reward = batch["info"]['_step_reward']
+      _game_team_points = batch["info"]['_game_team_points']
+      _step_team_points = batch["info"]['_step_team_points']
 
-      # _picked_order_num = batch["info"]['_picked_order_num']
-      # _delivered_order_num = batch["info"]['_delivered_order_num']
-
-      # _total_reward = batch["info"]['_total_reward']
-      # _step_reward = batch["info"]['_step_reward']
-
-      # _action_move_up = batch["info"]['_action_move_up']
-      # _action_move_down = batch["info"]['_action_move_down']
-      # _action_move_left = batch["info"]['_action_move_left']
-      # _action_move_right = batch["info"]['_action_move_right']
-
-      # _agent_num_order_to_pick = batch["info"]['_agent_num_order_to_pick']
-      # _agent_num_order_to_deliver = batch["info"][
-      # '_agent_num_order_to_deliver']
-
-      # _ignore_pick_position = batch['info']['_ignore_pick_position']
+      _action_move_up = batch["info"]['_action_up']
+      _action_move_down = batch["info"]['_action_down']
+      _action_move_left = batch["info"]['_action_left']
+      _action_move_right = batch["info"]['_action_right']
+      _action_sap = batch["info"]['_action_sap']
 
       def compute_mean_count_done(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
-      # total_move = (_action_move_up.sum().item() +
-      # _action_move_down.sum().item() +
-      # _action_move_left.sum().item() +
-      # _action_move_right.sum().item())
+      total_move = (_action_move_up.sum().item() +
+                    _action_move_down.sum().item() +
+                    _action_move_left.sum().item() +
+                    _action_move_right.sum().item() + _action_sap.sum().item())
       # x, y = _agent_num_order_to_pick.shape
       # nn = x * y
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
       stats = {
-          "Env": {},
+          "Env": {
+              'game_team_points': compute_mean_count_done(_game_team_points),
+              'step_team_points': _step_team_points.sum().detach().item(),
+              'step_reward': _step_reward.sum().detach().item(),
+
+              #
+              'action_move_up':
+              _action_move_up.sum().detach().item() / total_move,
+              'action_move_down':
+              _action_move_down.sum().detach().item() / total_move,
+              'action_move_left':
+              _action_move_left.sum().detach().item() / total_move,
+              'action_move_right':
+              _action_move_right.sum().detach().item() / total_move,
+              'action_sap': _action_sap.sum().detach().item() / total_move,
+          },
           "Loss": {
               "td_lambda_returns_mean": td,
               "baseline_values_mean": baseline_values,
@@ -543,8 +544,8 @@ def learn(
           },
       }
 
-      # if games_played <= 0:
-      # stats['Env'].pop('total_reward')
+      if games_played <= 0:
+        stats['Env'].pop('game_team_points')
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

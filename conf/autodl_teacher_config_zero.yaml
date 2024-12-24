@@ -24,10 +24,11 @@ reward_schema: match_win_loss
 
 ## TRAINING params
 total_steps: 3e8
-num_actors: 1
-n_actor_envs: 8
+num_actors: 2
+n_actor_envs: 4
 
 unroll_length: 16
+# Batch must be multiple of `n_actor_envs`
 batch_size: 16
 discounting: 0.999
 
