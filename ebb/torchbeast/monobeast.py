@@ -517,6 +517,8 @@ def learn(
               'step_reward': _step_reward.sum().detach().item() / buffer_num,
 
               #
+              'action_move_center':
+              _action_move_center.sum().detach().item() / total_move,
               'action_move_up':
               _action_move_up.sum().detach().item() / total_move,
               'action_move_down':
