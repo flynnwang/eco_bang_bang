@@ -488,6 +488,7 @@ def learn(
       _match_team_points = batch["info"]['_match_team_points']
       _step_team_points = batch["info"]['_step_team_points']
 
+      _action_move_center = batch["info"]['_action_center']
       _action_move_up = batch["info"]['_action_up']
       _action_move_down = batch["info"]['_action_down']
       _action_move_left = batch["info"]['_action_left']
@@ -502,9 +503,9 @@ def learn(
         return v[~v.isnan()].sum().detach().item()
 
       total_move = (
-          _action_move_up.sum().item() + _action_move_down.sum().item() +
-          _action_move_left.sum().item() + _action_move_right.sum().item() +
-          _action_sap.sum().item()) + 1
+          _action_move_center.sum().item() + _action_move_up.sum().item() +
+          _action_move_down.sum().item() + _action_move_left.sum().item() +
+          _action_move_right.sum().item() + _action_sap.sum().item()) + 1
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()

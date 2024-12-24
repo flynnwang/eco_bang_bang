@@ -22,7 +22,7 @@ RELIC_NB_SIZE = 5
 TEAM_POINT_MASS = 100
 NON_TEAM_POINT_MASS = -100
 
-MAX_GAME_STEPS = 504
+MAX_GAME_STEPS = 505
 MAX_MATCH_STEPS = 100
 
 # 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap

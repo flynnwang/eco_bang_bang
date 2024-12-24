@@ -400,7 +400,15 @@ class LuxS3Env(gym.Env):
 
     team_wins = raw_obs[PLAYER0]['team_wins']
     prev_team_wins = self.prev_raw_obs[PLAYER0]['team_wins']
-    reward = team_wins - prev_team_wins
+    diff = team_wins - prev_team_wins
+    max_v = max(diff[0], diff[1])
+
+    reward = [0, 0]
+    if max_v > 0:
+      if diff[0] > diff[1]:
+        reward = [1, -1]
+      if diff[1] >= diff[0]:
+        reward = [-1, 1]
 
     if SINGLE_PLAER:
       return [reward[0]]  # single player
@@ -464,7 +472,8 @@ class LuxS3Env(gym.Env):
       # action mask for current state, (for sample action)
       info['available_action_mask'] = self._get_available_action_mask(mm)
 
-      info['_step_reward'] = reward
+      step_reward = reward[mm.player_id]
+      info['_step_reward'] = step_reward
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
@@ -481,6 +490,8 @@ class LuxS3Env(gym.Env):
         info['_match_team_points'] = tp0
         info['_match_played'] = 1
 
+      step = raw_obs[PLAYER0]['steps']
+      # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
       count_actions(info, agent_action)
       return info
 
