@@ -17,6 +17,9 @@ logging.basicConfig(
     level=0,
 )
 
+# Set logging level to WARNING or higher
+logging.getLogger('jax').setLevel(logging.WARNING)
+
 
 def get_default_flags(flags: DictConfig) -> DictConfig:
   flags = OmegaConf.to_container(flags)
@@ -83,10 +86,12 @@ def main(flags: DictConfig):
   OmegaConf.save(flags, "config.yaml")
 
   logging.info("disable_wandb? = %s", flags.disable_wandb)
+
+  config = OmegaConf.to_container(flags, resolve=True)
   if not flags.disable_wandb:
     wandb.init(
-        config=vars(flags),
         project=flags.project,
+        config=config,
         entity=flags.entity,
         group=flags.group,
         name=flags.name,
