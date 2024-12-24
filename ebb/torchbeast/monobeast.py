@@ -482,8 +482,10 @@ def learn(
       total_games_played += games_played
       done = batch["done"]
 
+      match_played = batch["info"]['_match_played'].sum().item()
+
       _step_reward = batch["info"]['_step_reward']
-      _game_team_points = batch["info"]['_game_team_points']
+      _match_team_points = batch["info"]['_match_team_points']
       _step_team_points = batch["info"]['_step_team_points']
 
       _action_move_up = batch["info"]['_action_up']
@@ -496,19 +498,21 @@ def learn(
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
+      def sum_non_nan(v):
+        return v[~v.isnan()].sum().detach().item()
+
       total_move = (
           _action_move_up.sum().item() + _action_move_down.sum().item() +
           _action_move_left.sum().item() + _action_move_right.sum().item() +
           _action_sap.sum().item()) + 1
-      # x, y = _agent_num_order_to_pick.shape
-      # nn = x * y
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
-      buffer_num = flags.num_buffers * flags.unroll_length
+      buffer_num = flags.batch_size * flags.unroll_length
       stats = {
           "Env": {
-              'game_team_points': compute_mean_count_done(_game_team_points),
+              'match_team_points':
+              sum_non_nan(_match_team_points) / flags.batch_size,
               'step_team_points':
               _step_team_points.sum().detach().item() / buffer_num,
               'step_reward': _step_reward.sum().detach().item() / buffer_num,
@@ -543,11 +547,12 @@ def learn(
           "Misc": {
               "learning_rate": last_lr,
               "total_games_played": total_games_played,
+              "match_played_in_batch": match_played,
           },
       }
 
-      if games_played <= 0:
-        stats['Env'].pop('game_team_points')
+      if match_played <= 0:
+        v = stats['Env'].pop('match_team_points')
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

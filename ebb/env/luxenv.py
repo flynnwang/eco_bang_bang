@@ -230,7 +230,7 @@ class MapManager:
       # Means some wrong happens in the curr team point mass
       self.team_point_mass[must_be_team_point] -= change
       self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
-    elif num == delta:
+    elif delta >= num:
       # Every candidate position is a team point position
       self.team_point_mass[team_point_candidate] += change
       self.team_point_mass[anti_diag_sym(team_point_candidate)] += change
@@ -469,11 +469,17 @@ class LuxS3Env(gym.Env):
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
       tp1 = prev_obs1['team_points'][mm.player_id]
+      # print(
+      # f"step={raw_obs[PLAYER0]['steps']}, match_steps={match_step} done={done}, player_id={mm.player_id} team_point={tp0}"
+      # )
       info['_step_team_points'] = max(tp0 - tp1, 0)
 
-      info['_game_team_points'] = 0
-      if done:
-        info['_game_team_points'] = tp0
+      info['_match_team_points'] = 0
+      info['_match_played'] = 0
+      match_step = raw_obs[PLAYER0]['match_steps']
+      if match_step == MAX_MATCH_STEPS:
+        info['_match_team_points'] = tp0
+        info['_match_played'] = 1
 
       count_actions(info, agent_action)
       return info
