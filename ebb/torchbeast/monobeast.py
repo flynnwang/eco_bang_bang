@@ -496,20 +496,22 @@ def learn(
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
-      total_move = (_action_move_up.sum().item() +
-                    _action_move_down.sum().item() +
-                    _action_move_left.sum().item() +
-                    _action_move_right.sum().item() + _action_sap.sum().item())
+      total_move = (
+          _action_move_up.sum().item() + _action_move_down.sum().item() +
+          _action_move_left.sum().item() + _action_move_right.sum().item() +
+          _action_sap.sum().item()) + 1
       # x, y = _agent_num_order_to_pick.shape
       # nn = x * y
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
+      buffer_num = flags.num_buffers * flags.unroll_length
       stats = {
           "Env": {
               'game_team_points': compute_mean_count_done(_game_team_points),
-              'step_team_points': _step_team_points.sum().detach().item(),
-              'step_reward': _step_reward.sum().detach().item(),
+              'step_team_points':
+              _step_team_points.sum().detach().item() / buffer_num,
+              'step_reward': _step_reward.sum().detach().item() / buffer_num,
 
               #
               'action_move_up':

@@ -469,7 +469,7 @@ class LuxS3Env(gym.Env):
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
       tp1 = prev_obs1['team_points'][mm.player_id]
-      info['_step_team_points'] = tp0 - tp1
+      info['_step_team_points'] = max(tp0 - tp1, 0)
 
       info['_game_team_points'] = 0
       if done:
