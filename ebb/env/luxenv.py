@@ -361,8 +361,8 @@ class LuxS3Env(gym.Env):
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
       if mask:
-        unit_pos[*pos] = 1
-        unit_energy[*pos] = energy / MAX_UNIT_ENERGY
+        unit_pos[pos[0]][pos[1]] = 1
+        unit_energy[pos[0]][pos[1]] = energy / MAX_UNIT_ENERGY
 
       o[f'{prefix}_{i}_loc_{t}'] = unit_pos
       o[f'{prefix}_{i}_energy_{t}'] = unit_energy
