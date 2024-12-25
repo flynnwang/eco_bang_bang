@@ -277,7 +277,7 @@ class LuxS3Env(gym.Env):
     self.mms[1].update(obs[PLAYER1])
 
   def reset(self, seed=None):
-    raw_obs, info = self.game.reset()
+    raw_obs, info = self.game.reset(seed=seed)
 
     env_cfg = info['params']
     self.mms = [MapManager(PLAYER0, env_cfg), MapManager(PLAYER1, env_cfg)]
@@ -361,8 +361,8 @@ class LuxS3Env(gym.Env):
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
       if mask:
-        unit_pos[pos] = 1
-        unit_energy[pos] = energy / MAX_UNIT_ENERGY
+        unit_pos[*pos] = 1
+        unit_energy[*pos] = energy / MAX_UNIT_ENERGY
 
       o[f'{prefix}_{i}_loc_{t}'] = unit_pos
       o[f'{prefix}_{i}_energy_{t}'] = unit_energy
