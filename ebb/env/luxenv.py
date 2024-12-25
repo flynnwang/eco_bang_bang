@@ -5,6 +5,8 @@ import numpy as np
 from gym import spaces
 from luxai_s3.wrappers import LuxAIS3GymEnv, RecordEpisode
 
+from random import randint
+
 from .const import *
 
 # Let's use move action only first
@@ -221,13 +223,13 @@ class MapManager:
     if num == 0:
       return
 
-    change = 10
+    change = 30
     if delta == 0:
       # No new team points
       self.team_point_mass[team_point_candidate] -= change
       self.team_point_mass[anti_diag_sym(team_point_candidate)] -= change
     elif delta < 0:
-      # Means some wrong happens in the curr team point mass
+      # Means something wrong with the curr team point mass
       self.team_point_mass[must_be_team_point] -= change
       self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
     elif delta >= num:
@@ -277,6 +279,8 @@ class LuxS3Env(gym.Env):
     self.mms[1].update(obs[PLAYER1])
 
   def reset(self, seed=None):
+    if seed is None:
+      seed = randint(-(1 << 31), 1 << 31)
     raw_obs, info = self.game.reset(seed=seed)
 
     env_cfg = info['params']
@@ -353,7 +357,10 @@ class LuxS3Env(gym.Env):
     o['visited'] = mm.visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
     o['is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
-    o['team_point_prob'] = sigmoid(mm.team_point_mass / 20)
+
+    team_point_prob = mm.team_point_mass.copy()
+    team_point_prob[mm.is_relic_neighbour == 0] = NON_TEAM_POINT_MASS
+    o['team_point_prob'] = sigmoid(team_point_prob / 20)
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
     def add_unit_feature(prefix, player_id, i, t):
@@ -361,6 +368,13 @@ class LuxS3Env(gym.Env):
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
       if mask:
+        # pid=1, pos=15, 8; energy=-12, mask=True
+        # assert MAP_WIDTH > pos[
+        # 0] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
+        # assert MAP_HEIGHT > pos[
+        # 1] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
+        # assert energy >= 0, f"step={mm.game_step}, pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
+        # Why energy is negative
         unit_pos[pos[0]][pos[1]] = 1
         unit_energy[pos[0]][pos[1]] = energy / MAX_UNIT_ENERGY
 
@@ -474,6 +488,7 @@ class LuxS3Env(gym.Env):
 
       step_reward = reward[mm.player_id]
       info['_step_reward'] = step_reward
+      info['player'] = mm.player_id  # for testing
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]

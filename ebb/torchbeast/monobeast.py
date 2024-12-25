@@ -180,12 +180,6 @@ def compute_policy_gradient_loss(action_log_probs: torch.Tensor,
   return reduce(cross_entropy * advantages.detach(), reduction)
 
 
-def split_env_output(env_output):
-  lef_obs, rig_obs = split_env_output_by_player(env_output['obs'])
-  lef_info, rig_info = split_env_output_by_player(env_output['info'])
-  return {'info': lef_info, 'obs': lef_obs}, {'info': rig_info, 'obs': rig_obs}
-
-
 def get_merged_actions(env_agent_out):
   lef_actions = env_agent_out[0][1]['actions']
   rig_actions = env_agent_out[1][1]['actions']
