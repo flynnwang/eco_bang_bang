@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /Users/flynnwang/repo/flynn/runs/${now:%m-%d}/${now:%H-%M-%S}
 
-name: debug_run_20251221
+name: debug_run_20251226_point_reward
 
 
 ## WANDB params
@@ -20,12 +20,12 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs: {}
 reward_space_kwargs: {}
-reward_schema: match_win_loss
+reward_schema: relic_boosted_match_score
 
 ## TRAINING params
 total_steps: 3e8
-num_actors: 2
-n_actor_envs: 4
+num_actors: 1
+n_actor_envs: 2
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`

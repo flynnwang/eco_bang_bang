@@ -410,7 +410,8 @@ class LuxS3Env(gym.Env):
 
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
-    assert self.reward_schema == 'match_win_loss'
+    assert self.reward_schema in ('match_win_loss',
+                                  'relic_boosted_match_score')
 
     team_wins = raw_obs[PLAYER0]['team_wins']
     prev_team_wins = self.prev_raw_obs[PLAYER0]['team_wins']
@@ -424,6 +425,17 @@ class LuxS3Env(gym.Env):
       if diff[1] >= diff[0]:
         reward = [-1, 1]
 
+    mm = self.mms[0]
+    if self.reward_schema == 'relic_boosted_match_score' and mm.match_step > 0:
+      team_points = raw_obs[PLAYER0]['team_points']
+      prev_team_points = self.prev_raw_obs[PLAYER0]['team_points']
+      pdiff = team_points - prev_team_points
+      for i in range(2):
+        reward[i] += pdiff[i] / 1000
+
+    # print(
+    # f'step={mm.game_step}, match_step={mm.match_step}, r0={reward[0]}, r1={reward[1]}'
+    # )
     if SINGLE_PLAER:
       return [reward[0]]  # single player
     else:

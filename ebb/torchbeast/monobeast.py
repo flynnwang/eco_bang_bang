@@ -372,10 +372,6 @@ def learn(
           combined_behavior_action_log_probs)
       entropies = {}
 
-      # for act_space in batch["actions"].keys():
-      # actions = batch["actions"][act_space]
-      # actions_taken_mask = batch["info"]["actions_taken"][act_space]
-
       actions_ = batch["actions"]
       actions_taken_mask = batch["info"]["actions_taken_mask"]
       behavior_policy_logits = batch["policy_logits"]
