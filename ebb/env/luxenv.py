@@ -25,6 +25,8 @@ OB = OrderedDict([
     # Time & Match
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Map info
     ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
@@ -340,7 +342,7 @@ class LuxS3Env(gym.Env):
     o = {}
 
     def scalar(v, maxv):
-      return (np.zeros(MAP_SHAPE2) + v) / maxv
+      return np.zeros(MAP_SHAPE2) + (v / maxv)
 
     # Game params
     o['unit_move_cost'] = scalar(mm.unit_move_cost, MAX_MOVE_COST)
@@ -348,7 +350,13 @@ class LuxS3Env(gym.Env):
 
     # Time & Match
     o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
-    o['match_step'] = scalar(mm.game_step, MAX_MATCH_STEPS)
+    o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
+
+    team_points = ob['team_points']
+    units_points = team_points[mm.player_id]
+    enemy_points = team_points[mm.enemy_id]
+    o['units_team_points'] = scalar(units_points, TEAM_POINTS_NORM)
+    o['enemy_team_points'] = scalar(enemy_points, TEAM_POINTS_NORM)
 
     # Map info
     o['cell_type'] = mm.cell_type.copy()
