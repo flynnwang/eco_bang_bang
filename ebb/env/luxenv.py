@@ -251,9 +251,9 @@ def gen_dummy_action():
 
 class LuxS3Env(gym.Env):
 
-  def __init__(self, reward_schema=None):
+  def __init__(self, reward_schema=None, game_env=None):
     self.reward_schema = reward_schema
-    self.game = LuxAIS3GymEnv(numpy_output=True)
+    self.game = game_env or LuxAIS3GymEnv(numpy_output=True)
     self.mms = None
     self.prev_raw_obs = None
 
