@@ -498,8 +498,8 @@ def create_model(flags,
     )
   if flags.reward_schema == 'relic_boosted_match_score':
     reward_spec = RewardSpec(
-        reward_min=-10,
-        reward_max=+10,
+        reward_min=-30,
+        reward_max=+30,
         zero_sum=False,
     )
   assert reward_spec is not None
