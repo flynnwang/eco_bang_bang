@@ -477,6 +477,7 @@ def learn(
       _step_reward = batch["info"]['_step_reward']
       _match_team_points = batch["info"]['_match_team_points']
       _step_team_points = batch["info"]['_step_team_points']
+      _unit_total_energy = batch["info"]['_unit_total_energy']
 
       _action_move_center = batch["info"]['_action_center']
       _action_move_up = batch["info"]['_action_up']
@@ -505,6 +506,8 @@ def learn(
               'step_team_points':
               _step_team_points.sum().detach().item() / buffer_num,
               'step_reward': _step_reward.sum().detach().item() / buffer_num,
+              'unit_total_energy':
+              _unit_total_energy.sum().detach().item() / buffer_num,
 
               #
               'action_move_center':

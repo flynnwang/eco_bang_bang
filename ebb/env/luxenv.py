@@ -500,8 +500,17 @@ class LuxS3Env(gym.Env):
       # append '_' for each action name
       info.update([('_' + a.lower(), c) for a, c in action_count.items()])
 
-    def _info(agent_action, raw_obs1, prev_obs1, agent_reward, model_action,
-              mm):
+    def add_unit_total_energy(info, mm):
+      total_energy = 0
+      for i in range(MAX_UNIT_NUM):
+        mask, _, energy = mm.get_unit_info(mm.player_id, i, t=0)
+        if mask:
+          total_energy += energy
+
+      info['_unit_total_energy'] = total_energy
+
+    def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward,
+                  model_action, mm):
       info = {}
 
       # action mask matches with given action for last state (for compute logits)
@@ -532,6 +541,7 @@ class LuxS3Env(gym.Env):
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
       count_actions(info, agent_action)
+      add_unit_total_energy(info, mm)
       return info
 
     if model_action is None:
@@ -539,12 +549,12 @@ class LuxS3Env(gym.Env):
 
     if SINGLE_PLAER:
       return [
-          _info(action[PLAYER0], raw_obs[PLAYER0], self.prev_raw_obs[PLAYER0],
-                model_action[0], self.mms[0])
+          _get_info(action[PLAYER0], raw_obs[PLAYER0],
+                    self.prev_raw_obs[PLAYER0], model_action[0], self.mms[0])
       ]  # single player
     else:
       return [
-          _info(action[player], raw_obs[player], self.prev_raw_obs[player],
-                reward[i], model_action[i], self.mms[i])
+          _get_info(action[player], raw_obs[player], self.prev_raw_obs[player],
+                    reward[i], model_action[i], self.mms[i])
           for i, player in enumerate([PLAYER0, PLAYER1])
       ]
