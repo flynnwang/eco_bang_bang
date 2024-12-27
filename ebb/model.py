@@ -346,12 +346,21 @@ class DictActor(nn.Module):
       logits = actor(x).view(-1, n_actions, action_dim)
 
       # print(key, type(actions_mask), actions_mask)
-      am = actions_mask[key]
-      logits = torch.where(am > 0, logits,
+      aam = actions_mask[key]
+
+      # in case no action available for the unit, drop action mask
+      orig_dtype = aam.dtype
+      aam_new_type = aam.to(dtype=torch.int64)
+      aam_filled = torch.where(
+          (~(aam.to(torch.bool))).all(dim=-1, keepdim=True),
+          torch.ones_like(aam_new_type),
+          aam_new_type.to(dtype=torch.int64)).to(orig_dtype)
+
+      logits = torch.where(aam_filled > 0, logits,
                            torch.zeros_like(logits) + float("-inf"))
 
       actions = DictActor.logits_to_actions(logits.view(-1, action_dim),
-                                            sample, am)
+                                            sample, aam_filled)
       actions = actions.view(*logits.shape[:-1], -1)
 
       actions_out[key] = actions

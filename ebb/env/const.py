@@ -28,6 +28,7 @@ MAX_MATCH_STEPS = 100
 TEAM_POINTS_NORM = 300
 
 # 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap
+# ACTION_NONE = 5  # TODO: when using sap, use a larger idx
 ACTION_CENTER = 0
 ACTION_UP = 1
 ACTION_RIGHT = 2

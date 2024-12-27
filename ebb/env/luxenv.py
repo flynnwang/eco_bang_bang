@@ -453,9 +453,10 @@ class LuxS3Env(gym.Env):
     """Mask for unit action: compute available action based on unit position"""
     actions_mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
     for i in range(MAX_UNIT_NUM):
-      actions_mask[i][ACTION_CENTER] = 1  # can always stay
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
+      # actions_mask[i][ACTION_CENTER] = 1  # can always stay
+
       # TODO: when use unit position inference, update here
+      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
       if not unit_mask:
         continue
 
