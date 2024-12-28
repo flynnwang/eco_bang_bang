@@ -437,9 +437,9 @@ class LuxS3Env(gym.Env):
     reward = [0, 0]
     if max_v > 0:
       if diff[0] > diff[1]:
-        reward = [1, -1]
+        reward = [10, -10]
       if diff[1] >= diff[0]:
-        reward = [-1, 1]
+        reward = [-10, 10]
 
     mm = self.mms[0]
     if self.reward_schema == 'relic_boosted_match_score' and mm.match_step > 0:
@@ -447,7 +447,7 @@ class LuxS3Env(gym.Env):
       prev_team_points = self.prev_raw_obs[PLAYER0]['team_points']
       pdiff = team_points - prev_team_points
       for i in range(2):
-        reward[i] += pdiff[i] / 1000
+        reward[i] += pdiff[i] / 100
 
     # print(
     # f'step={mm.game_step}, match_step={mm.match_step}, r0={reward[0]}, r1={reward[1]}'
@@ -467,11 +467,11 @@ class LuxS3Env(gym.Env):
       if not unit_mask:
         continue
 
-      actions_mask[i][ACTION_CENTER] = 1  # can always stay
       # If units has run out of energy, if can only move_center
       if energy <= mm.unit_move_cost:
         continue
 
+      actions_mask[i][ACTION_CENTER] = 1  # can always stay
       for k in range(1, MOVE_ACTION_NUM):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
         if nx < 0 or nx >= MAP_WIDTH:

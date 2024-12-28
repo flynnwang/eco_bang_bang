@@ -501,15 +501,15 @@ def create_model(flags,
   reward_spec = None
   if flags.reward_schema == 'match_win_loss':
     reward_spec = RewardSpec(
-        reward_min=-10,
-        reward_max=+10,
+        reward_min=-100,
+        reward_max=+100,
         zero_sum=False,
     )
   if flags.reward_schema == 'relic_boosted_match_score':
     # 5 + (6 * (25 * 0.25) * 500 / 1000)
     reward_spec = RewardSpec(
-        reward_min=-10,
-        reward_max=+10,
+        reward_min=-200,
+        reward_max=+200,
         zero_sum=False,
     )
   assert reward_spec is not None
