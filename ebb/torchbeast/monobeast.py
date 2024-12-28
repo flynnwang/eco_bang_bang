@@ -208,6 +208,7 @@ def act(
     env_device = flags.learner_device
     if actor_index >= flags.max_one_gpu_actor_num:
       env_device = flags.actor_device
+    print('create actor env: ', env_device)
     env = create_env(flags, device=env_device)
     if flags.seed is not None:
       env.seed(flags.seed + actor_index * flags.n_actor_envs)
