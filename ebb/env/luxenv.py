@@ -468,7 +468,7 @@ class LuxS3Env(gym.Env):
         continue
 
       # If units has run out of energy, if can only move_center
-      if energy <= mm.unit_move_cost:
+      if energy < mm.unit_move_cost:
         continue
 
       actions_mask[i][ACTION_CENTER] = 1  # can always stay
