@@ -37,6 +37,7 @@ OB = OrderedDict([
     ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 ])
 
 
@@ -371,6 +372,13 @@ class LuxS3Env(gym.Env):
     o['team_point_prob'] = sigmoid(team_point_prob / 20)
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
+    team_born_cell = np.zeros(MAP_SHAPE2)
+    if mm.player_id == 0:
+      team_born_cell[0][0] = 1
+    else:
+      team_born_cell[MAP_WIDTH - 1][MAP_HEIGHT - 1] = 1
+    o['is_team_born_cell'] = team_born_cell
+
     def add_unit_feature(prefix, player_id, i, t):
       mask, pos, energy = mm.get_unit_info(player_id, i, t)
       unit_pos = np.zeros(MAP_SHAPE2)
@@ -453,13 +461,13 @@ class LuxS3Env(gym.Env):
     """Mask for unit action: compute available action based on unit position"""
     actions_mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
     for i in range(MAX_UNIT_NUM):
-      # actions_mask[i][ACTION_CENTER] = 1  # can always stay
 
       # TODO: when use unit position inference, update here
       unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
       if not unit_mask:
         continue
 
+      actions_mask[i][ACTION_CENTER] = 1  # can always stay
       # If units has run out of energy, if can only move_center
       if energy <= mm.unit_move_cost:
         continue
