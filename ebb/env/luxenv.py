@@ -9,6 +9,8 @@ from random import randint
 
 from .const import *
 
+EXT_ACTION_SHAPE = (MAX_UNIT_NUM, MOVE_ACTION_NUM)
+
 # Let's use move action only first
 ACTION_SPACE = spaces.Dict({
     UNITS_ACTION:
@@ -17,6 +19,7 @@ ACTION_SPACE = spaces.Dict({
 
 MAP_SHAPE = (1, MAP_WIDTH, MAP_HEIGHT)
 MAP_SHAPE2 = (MAP_WIDTH, MAP_HEIGHT)
+
 OB = OrderedDict([
     # Game params
     ('unit_move_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -294,6 +297,14 @@ class LuxS3Env(gym.Env):
     done = False
     reward = self._convert_reward(raw_obs, info)
     action = {PLAYER0: gen_dummy_action(), PLAYER1: gen_dummy_action()}
+    self._actions_taken_mask = [{
+        UNITS_ACTION:
+        np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+    }, {
+        UNITS_ACTION:
+        np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+    }]
+
     info = self.get_info(action, raw_obs, reward, model_action=None)
 
     return self.observation(raw_obs), reward, done, info
@@ -309,6 +320,12 @@ class LuxS3Env(gym.Env):
       unit_actions[i][0] = np.int32(a)
     return unit_actions
 
+  def compute_actions_taken(self, model_actions):
+    return [
+        self.get_actions_taken_mask(model_actions[i], self.mms[i])
+        for i, player in enumerate([PLAYER0, PLAYER1])
+    ]
+
   def step(self, model_action):
     if SINGLE_PLAER:
       model_action = [
@@ -319,6 +336,8 @@ class LuxS3Env(gym.Env):
               )  # use dummy action for the other player is not optimal
           }
       ]
+
+    self._actions_taken_mask = self.compute_actions_taken(model_action)
 
     action = {
         PLAYER0: self._encode_action(model_action[0]),
@@ -459,7 +478,7 @@ class LuxS3Env(gym.Env):
 
   def _get_available_action_mask(self, mm):
     """Mask for unit action: compute available action based on unit position"""
-    actions_mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
+    actions_mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     for i in range(MAX_UNIT_NUM):
 
       # TODO: when use unit position inference, update here
@@ -484,15 +503,20 @@ class LuxS3Env(gym.Env):
 
     return {UNITS_ACTION: actions_mask}
 
-  def get_actions_taken_mask(self, model_action):
-    mask = np.zeros((MAX_UNIT_NUM, MOVE_ACTION_NUM), np.int32)
-    if model_action is None:
-      mask[:, 0] = 1
-      return {UNITS_ACTION: mask}
-
-    # __import__('ipdb').set_trace()
+  def get_actions_taken_mask(self, model_action, mm):
+    """Should ignore all the actions that can not be performed. Compute this
+    before env.step() to make use of mm from prev step."""
+    mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
+      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
+      if not unit_mask:
+        continue
+
+      # If units has run out of energy, if can only move_center
+      if energy < mm.unit_move_cost:
+        continue
+
       mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
@@ -521,8 +545,7 @@ class LuxS3Env(gym.Env):
                   model_action, mm):
       info = {}
 
-      # action mask matches with given action for last state (for compute logits)
-      info['actions_taken_mask'] = self.get_actions_taken_mask(model_action)
+      info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
 
       # action mask for current state, (for sample action)
       info['available_action_mask'] = self._get_available_action_mask(mm)

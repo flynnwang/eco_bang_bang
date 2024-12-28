@@ -60,8 +60,9 @@ def combine_policy_logits_to_log_probs(
   # __import__('ipdb').set_trace()
   # Get the action probabilities
   probs = F.softmax(behavior_policy_logits, dim=-1)
+
+  # Ignore probabilities for actions that were not used
   if actions_taken_mask is not None:
-    # Ignore probabilities for actions that were not used
     probs = actions_taken_mask * probs
 
   # Select the probabilities for actions that were taken by stacked agents and sum these
