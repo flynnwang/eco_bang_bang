@@ -73,7 +73,8 @@ def combine_policy_logits_to_log_probs(
   remaining_probability_density = 1. - torch.cat([
       torch.zeros(
           (*selected_probs.shape[:-1], 1),
-          device=selected_probs.device,
+          device=selected_probs.deviceconf / autodl_teacher_config_v1.yamconf /
+          autodl_teacher_config_v1.yamll,
           dtype=selected_probs.dtype), selected_probs[..., :-1].cumsum(dim=-1)
   ],
                                                  dim=-1)
@@ -714,9 +715,10 @@ def train(flags):
     if flags.teacher_load_dir:
       logging.info(f"Load teacher_model from {flags.teacher_checkpoint_file}")
 
-      state_dict = torch.load(
-          Path(flags.teacher_load_dir) / flags.teacher_checkpoint_file,
-          map_location=torch.device("cpu"))["model_state_dict"]
+      state_dict = torch.load(Path(flags.teacher_load_dir) /
+                              flags.teacher_checkpoint_file,
+                              map_location=torch.device("cpu"),
+                              weights_only=True)["model_state_dict"]
       adapted_dict = state_dict
       # adapted_dict = {k: v for k, v in state_dict.items() if 'grab' not in k}
       teacher_model.load_state_dict(adapted_dict)
