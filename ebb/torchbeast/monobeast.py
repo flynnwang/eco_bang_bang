@@ -73,8 +73,7 @@ def combine_policy_logits_to_log_probs(
   remaining_probability_density = 1. - torch.cat([
       torch.zeros(
           (*selected_probs.shape[:-1], 1),
-          device=selected_probs.deviceconf / autodl_teacher_config_v1.yamconf /
-          autodl_teacher_config_v1.yamll,
+          device=selected_probs.device,
           dtype=selected_probs.dtype), selected_probs[..., :-1].cumsum(dim=-1)
   ],
                                                  dim=-1)
@@ -396,18 +395,20 @@ def learn(
         # combine teacher mode
         if flags.use_teacher:
           teacher_policy_logits = teacher_outputs["policy_logits"][a]
-          # __import__('ipdb').set_trace()
-          teacher_kl_loss = compute_teacher_kl_loss(learner_policy_logits,
-                                                    teacher_policy_logits,
-                                                    actions_taken_mask=None)
-          # __import__('ipdb').set_trace()
+          teacher_kl_loss = compute_teacher_kl_loss(
+              learner_policy_logits,
+              teacher_policy_logits,
+              # actions_taken_mask=actions_mask)
+              actions_taken_mask=None)
         else:
           teacher_kl_loss = torch.zeros_like(combined_teacher_kl_loss)
 
         combined_teacher_kl_loss = combined_teacher_kl_loss + teacher_kl_loss
 
         learner_policy_entropy = combine_policy_entropy(
-            learner_policy_logits, actions_taken_mask=None)
+            learner_policy_logits,
+            # actions_taken_mask=actions_mask)
+            actions_taken_mask=None)
         combined_learner_entropy = combined_learner_entropy + learner_policy_entropy
 
       discounts = (~batch["done"]).float() * flags.discounting
