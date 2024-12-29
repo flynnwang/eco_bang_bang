@@ -262,6 +262,7 @@ class LuxS3Env(gym.Env):
     self.game = game_env or LuxAIS3GymEnv(numpy_output=True)
     self.mms = None
     self.prev_raw_obs = None
+    self._seed = None
 
   @property
   def total_agent_controls(self):
@@ -278,7 +279,7 @@ class LuxS3Env(gym.Env):
     return OBSERVATION_SPACE
 
   def seed(self, seed):
-    pass
+    self._seed = seed
 
   def _update_mms(self, obs):
     self.mms[0].update(obs[PLAYER0])
@@ -287,6 +288,8 @@ class LuxS3Env(gym.Env):
   def reset(self, seed=None):
     if seed is None:
       seed = randint(-(1 << 31), 1 << 31)
+    if self._seed is not None:
+      seed = self._seed
     raw_obs, info = self.game.reset(seed=seed)
 
     env_cfg = info['params']
