@@ -482,10 +482,10 @@ class LuxS3Env(gym.Env):
       r = 0
 
       # reward for open unobserved cells
-      r_explore = mm.step_new_observed_num * 0.002
+      r_explore = mm.step_new_observed_num * 0.01
 
       # reward for newly found relic node
-      r_find_relic = mm.step_new_found_relic_node_num * 0.1
+      r_find_relic = mm.step_new_found_relic_node_num * 0.5
 
       # reward for each new visited relic nb
       r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
@@ -493,7 +493,7 @@ class LuxS3Env(gym.Env):
       r_match = 0
       if mm.match_step == MAX_MATCH_STEPS:
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        r_match = team_points * 0.01
+        r_match = team_points * 0.001
 
       r = r_explore + r_find_relic + r_visit_relic_nb + r_match
       # print(
