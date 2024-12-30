@@ -501,10 +501,10 @@ class LuxS3Env(gym.Env):
         r_team_point = team_points * 0.001
 
       r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point
-      print(
-          f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
-          f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} team_point={r_team_point:.3f}'
-      )
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
+      # f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} team_point={r_team_point:.3f}'
+      # )
       return r
 
     return [
