@@ -341,7 +341,12 @@ class LuxS3Env(gym.Env):
         np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     }]
 
-    info = self.get_info(action, raw_obs, reward, model_action=None)
+    model_action = [{
+        UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), dtype=int)
+    }, {
+        UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), dtype=int)
+    }]
+    info = self.get_info(model_action, raw_obs, reward, done)
 
     return self.observation(raw_obs), reward, done, info
 
@@ -390,7 +395,7 @@ class LuxS3Env(gym.Env):
 
     obs = self.observation(raw_obs)
     reward = self._convert_reward(raw_obs, info)
-    info = self.get_info(action, raw_obs, reward, model_action, done)
+    info = self.get_info(model_action, raw_obs, reward, done)
 
     self.prev_raw_obs = raw_obs
     return obs, reward, done, info
@@ -604,12 +609,13 @@ class LuxS3Env(gym.Env):
       assert ACTION_CENTER <= a <= ACTION_LEFT, f"action={a} is out of range"
     return {UNITS_ACTION: mask}
 
-  def get_info(self, action, raw_obs, reward, model_action, done=False):
+  def get_info(self, model_action, raw_obs, reward, done=False):
 
-    def count_actions(info, agent_action):
+    def count_actions(info, action):
       action_count = {a: 0 for a in ACTION_ID_TO_NAME.values()}
+      action = action[UNITS_ACTION]
       for i in range(MAX_UNIT_NUM):
-        a = agent_action[i][0]
+        a = action[i][0]
         name = ACTION_ID_TO_NAME[a]
         action_count[name] += 1
 
@@ -625,8 +631,7 @@ class LuxS3Env(gym.Env):
 
       info['_unit_total_energy'] = total_energy
 
-    def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward,
-                  model_action, mm):
+    def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward, mm):
       info = {}
 
       info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
@@ -664,12 +669,12 @@ class LuxS3Env(gym.Env):
 
     if SINGLE_PLAER:
       return [
-          _get_info(action[PLAYER0], raw_obs[PLAYER0],
-                    self.prev_raw_obs[PLAYER0], model_action[0], self.mms[0])
+          _get_info(model_action[0], raw_obs[PLAYER0],
+                    self.prev_raw_obs[PLAYER0], self.mms[0])
       ]  # single player
     else:
       return [
-          _get_info(action[player], raw_obs[player], self.prev_raw_obs[player],
-                    reward[i], model_action[i], self.mms[i])
+          _get_info(model_action[i], raw_obs[player],
+                    self.prev_raw_obs[player], reward[i], self.mms[i])
           for i, player in enumerate([PLAYER0, PLAYER1])
       ]
