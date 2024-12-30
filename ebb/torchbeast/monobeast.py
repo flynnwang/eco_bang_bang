@@ -483,12 +483,14 @@ def learn(
       _step_team_points = batch["info"]['_step_team_points']
       _unit_total_energy = batch["info"]['_unit_total_energy']
 
+      _action_move_none = batch["info"]['_action_none']
       _action_move_center = batch["info"]['_action_center']
       _action_move_up = batch["info"]['_action_up']
       _action_move_down = batch["info"]['_action_down']
       _action_move_left = batch["info"]['_action_left']
       _action_move_right = batch["info"]['_action_right']
-      _action_sap = batch["info"]['_action_sap']
+
+      # _action_sap = batch["info"]['_action_sap']
 
       def compute_mean_count_done(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
@@ -498,9 +500,10 @@ def learn(
         return v[~v.isnan()].sum().detach().item()
 
       total_move = (
-          _action_move_center.sum().item() + _action_move_up.sum().item() +
-          _action_move_down.sum().item() + _action_move_left.sum().item() +
-          _action_move_right.sum().item() + _action_sap.sum().item()) + 1
+          _action_move_none.sum().item() + _action_move_center.sum().item() +
+          _action_move_up.sum().item() + _action_move_down.sum().item() +
+          _action_move_left.sum().item() + _action_move_right.sum().item()) + 1
+      # _action_sap.sum().item()) + 1
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
@@ -509,11 +512,14 @@ def learn(
           "Env": {
               'step_team_points':
               _step_team_points.sum().detach().item() / buffer_num,
-              'step_reward': _step_reward.sum().detach().item() / buffer_num,
+              'step_reward':
+              _step_reward.sum().detach().item() / buffer_num,
               'unit_total_energy':
               _unit_total_energy.sum().detach().item() / buffer_num,
 
               #
+              '_action_move_none':
+              _action_move_none.sum().detach().item() / total_move,
               'action_move_center':
               _action_move_center.sum().detach().item() / total_move,
               'action_move_up':
@@ -524,7 +530,7 @@ def learn(
               _action_move_left.sum().detach().item() / total_move,
               'action_move_right':
               _action_move_right.sum().detach().item() / total_move,
-              'action_sap': _action_sap.sum().detach().item() / total_move,
+              # 'action_sap': _action_sap.sum().detach().item() / total_move,
           },
           "Loss": {
               "td_lambda_returns_mean": td,

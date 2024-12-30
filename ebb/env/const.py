@@ -28,14 +28,15 @@ MAX_MATCH_STEPS = 100
 TEAM_POINTS_NORM = 300
 
 # 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap
-# ACTION_NONE = 5  # TODO: when using sap, use a larger idx
+ACTION_NONE = 5  # TODO: when using sap, use a larger idx
 ACTION_CENTER = 0
 ACTION_UP = 1
 ACTION_RIGHT = 2
 ACTION_DOWN = 3
 ACTION_LEFT = 4
-ACTION_SAP = 5
-MOVE_ACTION_NUM = 5
+MAX_MOVE_ACTION_IDX = ACTION_LEFT
+ACTION_SAP = 5  # TODO: use other indices
+MOVE_ACTION_NUM = 5 + 1
 
 ACTION_ID_TO_NAME = {
     ACTION_CENTER: 'ACTION_CENTER',
@@ -43,7 +44,8 @@ ACTION_ID_TO_NAME = {
     ACTION_RIGHT: 'ACTION_RIGHT',
     ACTION_DOWN: 'ACTION_DOWN',
     ACTION_LEFT: 'ACTION_LEFT',
-    ACTION_SAP: 'ACTION_SAP',
+    ACTION_NONE: 'ACTION_NONE',
+    # ACTION_SAP: 'ACTION_SAP',
 }
 
 DIRECTIONS = [
