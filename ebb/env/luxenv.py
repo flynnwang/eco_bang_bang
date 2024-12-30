@@ -485,31 +485,30 @@ class LuxS3Env(gym.Env):
       r = 0
 
       # reward for open unobserved cells
-      r_explore = mm.step_new_observed_num * 0.01
+      r_explore = mm.step_new_observed_num * 0.005
 
       # reward for newly found relic node
-      r_find_relic = mm.step_new_found_relic_node_num * 0.5
+      r_find_relic = mm.step_new_found_relic_node_num * 0.2
 
       # reward for each new visited relic nb
       r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
 
-      r_match = 0
-      if mm.match_step == MAX_MATCH_STEPS:
+      r_team_point = 0
+      if mm.match_step > 0:
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        r_match = team_points * 0.001
+        r_team_point = team_points * 0.001
 
-      r = r_explore + r_find_relic + r_visit_relic_nb + r_match
-      # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
-      # f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} match={r_match:.3f}'
-      # )
+      r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point
+      print(
+          f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
+          f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} team_point={r_team_point:.3f}'
+      )
       return r
 
     return [
         _convert(self.mms[i], raw_obs[p])
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
-    pass
 
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
