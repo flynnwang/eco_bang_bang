@@ -512,6 +512,13 @@ def create_model(flags,
         reward_max=+30,
         zero_sum=False,
     )
+  if flags.reward_schema == 'exploration_reward':
+    # 24*24/2*0.002 + (3 * (25 * 0.25) * 0.1) * 600 * 0.01 ~= 6 + 2
+    reward_spec = RewardSpec(
+        reward_min=-30,
+        reward_max=+30,
+        zero_sum=False,
+    )
   assert reward_spec is not None
 
   md = _create_model(observation_space,

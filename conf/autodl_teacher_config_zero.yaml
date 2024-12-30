@@ -20,7 +20,7 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs: {}
 reward_space_kwargs: {}
-reward_schema: relic_boosted_match_score
+reward_schema: exploration_reward
 
 ## TRAINING params
 total_steps: 3e8
@@ -67,9 +67,9 @@ lmb: 0.9
 reduction: sum
 
 # Pretrained model for KL loss
-use_teacher: False
-teacher_load_dir:
-teacher_checkpoint_file:
+use_teacher: True
+teacher_load_dir: /Users/flynnwang/repo/flynn/runs/12-29/00-18-10/
+teacher_checkpoint_file: 000000000.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True

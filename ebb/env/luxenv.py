@@ -92,13 +92,17 @@ class MapManager:
 
   def __init__(self, player, env_cfg):
     self.player_id = int(player[-1])
+    self.player = player
     self.env_cfg = env_cfg
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.visible = None
     self.observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.last_observed_num = 0
     self.visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.is_relic_node = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.last_relic_node_num = 0
     self.is_relic_neighbour = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.last_relic_nb_visited = 0
 
     self.prev_team_point = 0
     self.team_point_mass = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.float32)
@@ -134,6 +138,10 @@ class MapManager:
     ct = cells_sym > CELL_UNKONWN
     self.cell_type[ct] = cells_sym[ct]
 
+  @property
+  def step_new_observed_num(self):
+    return self.observed.sum() - self.last_observed_num
+
   def update(self, ob):
     # Match restarted
     if ob['match_steps'] == 0:
@@ -143,13 +151,14 @@ class MapManager:
     self.match_step = ob['match_steps']
 
     self.visible = ob['sensor_mask'].astype(np.int32)
+    self.last_observed_num = self.observed.sum()
     self.observed |= self.visible
 
     self.update_cell_type(ob)
 
     unit_masks = ob['units_mask'][self.player_id]
     unit_positions = ob['units']['position'][self.player_id][unit_masks]
-    self.visited[unit_positions[:, 0], unit_positions[:, 1]] = 1
+    self.update_visited_node(unit_positions, ob)
 
     self.update_relic_node(ob)
 
@@ -169,7 +178,25 @@ class MapManager:
     energy = ob['units']['energy'][pid][i]
     return mask, position, energy
 
+  def get_visited_relic_nb_num(self):
+    sym_visited = self.visited | anti_diag_sym(self.visited)
+    return ((sym_visited > 0) & (self.is_relic_neighbour > 0)).sum()
+
+  @property
+  def step_new_visited_relic_nb_num(self):
+    return self.get_visited_relic_nb_num() - self.last_relic_nb_visited
+
+  def update_visited_node(self, unit_positions, ob):
+    self.last_relic_nb_visited = self.get_visited_relic_nb_num()
+    self.visited[unit_positions[:, 0], unit_positions[:, 1]] = 1
+
+  @property
+  def step_new_found_relic_node_num(self):
+    return self.is_relic_node.sum() - self.last_relic_node_num
+
   def update_relic_node(self, ob):
+    self.last_relic_node_num = self.is_relic_node.sum()
+
     relic_nodes_mask = ob['relic_nodes_mask']
     relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
     self.is_relic_node[relic_nodes_positions[:, 0],
@@ -206,14 +233,15 @@ class MapManager:
     delta = team_point - self.prev_team_point
     assert delta >= 0
 
-    # because team points is non-decreating, a delta of 0 means all unit position
-    # nearby relic is not a team point position.
+    # because team points is non-decreasing, a delta of 0 means all unit positions
+    # nearby relic are not team point positions.
     if delta == 0:
       self.team_point_mass[unit_nearby_relic] = NON_TEAM_POINT_MASS
       self.team_point_mass[anti_diag_sym(
           unit_nearby_relic)] = NON_TEAM_POINT_MASS
       return
 
+    change = 30
     # when delta > 0
     must_be_team_point = (self.team_point_mass
                           >= TEAM_POINT_MASS) & (unit_nearby_relic)
@@ -221,6 +249,13 @@ class MapManager:
     # exclude the cell that must be team points, whatever remains is new team points position
     delta -= must_be_team_point.sum()
 
+    # Means something wrong with the curr team point mass
+    if delta < 0:
+      self.team_point_mass[must_be_team_point] -= change
+      self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
+      return
+
+    assert delta >= 0
     non_team_point = (self.team_point_mass
                       <= NON_TEAM_POINT_MASS) & (unit_nearby_relic)
     team_point_candidate = unit_nearby_relic & (~must_be_team_point) & (
@@ -229,15 +264,10 @@ class MapManager:
     if num == 0:
       return
 
-    change = 30
     if delta == 0:
       # No new team points
       self.team_point_mass[team_point_candidate] -= change
       self.team_point_mass[anti_diag_sym(team_point_candidate)] -= change
-    elif delta < 0:
-      # Means something wrong with the curr team point mass
-      self.team_point_mass[must_be_team_point] -= change
-      self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
     elif delta >= num:
       # Every candidate position is a team point position
       self.team_point_mass[team_point_candidate] += change
@@ -446,10 +476,43 @@ class LuxS3Env(gym.Env):
           self._convert_observation(raw_obs[PLAYER1], self.mms[1])
       ]
 
+  def _convert_exploration_reward(self, raw_obs):
+
+    def _convert(mm, ob):
+      r = 0
+
+      # reward for open unobserved cells
+      r_explore = mm.step_new_observed_num * 0.002
+
+      # reward for newly found relic node
+      r_find_relic = mm.step_new_found_relic_node_num * 0.1
+
+      # reward for each new visited relic nb
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
+
+      r_match = 0
+      if mm.match_step == MAX_MATCH_STEPS:
+        team_points = raw_obs[mm.player]['team_points'][mm.player_id]
+        r_match = team_points * 0.01
+
+      r = r_explore + r_find_relic + r_visit_relic_nb + r_match
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
+      # f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} match={r_match:.3f}'
+      # )
+      return r
+
+    return [
+        _convert(self.mms[i], raw_obs[p])
+        for i, p in enumerate([PLAYER0, PLAYER1])
+    ]
+    pass
+
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
     assert self.reward_schema in ('match_win_loss',
-                                  'relic_boosted_match_score')
+                                  'relic_boosted_match_score',
+                                  'exploration_reward')
 
     team_wins = raw_obs[PLAYER0]['team_wins']
     prev_team_wins = self.prev_raw_obs[PLAYER0]['team_wins']
@@ -470,6 +533,9 @@ class LuxS3Env(gym.Env):
       pdiff = team_points - prev_team_points
       for i in range(2):
         reward[i] += pdiff[i] / 500
+
+    if self.reward_schema == 'exploration_reward':
+      reward = self._convert_exploration_reward(raw_obs)
 
     # print(
     # f'step={mm.game_step}, match_step={mm.match_step}, r0={reward[0]}, r1={reward[1]}'
