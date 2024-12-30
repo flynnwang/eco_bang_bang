@@ -138,6 +138,12 @@ class MapManager:
     ct = cells_sym > CELL_UNKONWN
     self.cell_type[ct] = cells_sym[ct]
 
+  def update_visible_and_observed(self, ob):
+    self.visible = ob['sensor_mask'].astype(np.int32)
+    self.last_observed_num = self.observed.sum()
+    self.observed |= self.visible
+    self.observed |= anti_diag_sym(self.visible)
+
   @property
   def step_new_observed_num(self):
     return self.observed.sum() - self.last_observed_num
@@ -150,10 +156,7 @@ class MapManager:
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
 
-    self.visible = ob['sensor_mask'].astype(np.int32)
-    self.last_observed_num = self.observed.sum()
-    self.observed |= self.visible
-
+    self.update_visible_and_observed(ob)
     self.update_cell_type(ob)
 
     unit_masks = ob['units_mask'][self.player_id]
