@@ -116,8 +116,13 @@ class MapManager:
     self.match_step = 0
 
     self.past_obs = deque([])
+
+    # Use idx for model feature encoding and id for action encoding
+    self.unit_id_to_idx = list(range(MAX_UNIT_NUM))
+    random.shuffle(self.unit_id_to_idx)
     self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
-    random.shuffle(self.unit_idx_to_id)
+    for i, idx in enumerate(self.unit_id_to_idx):
+      self.unit_idx_to_id[idx] = i
 
   @property
   def enemy_id(self):
@@ -181,12 +186,14 @@ class MapManager:
       self.past_obs.pop()
 
   def get_unit_info(self, pid, i, t):
-    i = self.unit_idx_to_id[i]
     ob = self.past_obs[t]
     mask = ob['units_mask'][pid][i]
     position = ob['units']['position'][pid][i]
     energy = ob['units']['energy'][pid][i]
-    return mask, position, energy
+
+    # Get the unit info for unit-id of i, then map it to idx
+    i = self.unit_id_to_idx[i]
+    return i, mask, position, energy
 
   def get_visited_relic_nb_num(self):
     sym_visited = self.visited | anti_diag_sym(self.visited)
@@ -291,10 +298,6 @@ class MapManager:
                                                                     num)
 
 
-def gen_dummy_action():
-  return np.zeros((MAX_UNIT_NUM, 3), np.int32)
-
-
 class LuxS3Env(gym.Env):
 
   def __init__(self, reward_schema=None, game_env=None):
@@ -339,7 +342,6 @@ class LuxS3Env(gym.Env):
     self.prev_raw_obs = raw_obs
     done = False
     reward = self._convert_reward(raw_obs, info)
-    action = {PLAYER0: gen_dummy_action(), PLAYER1: gen_dummy_action()}
     self._actions_taken_mask = [{
         UNITS_ACTION:
         np.zeros(EXT_ACTION_SHAPE, dtype=bool)
@@ -454,7 +456,7 @@ class LuxS3Env(gym.Env):
     o['is_team_born_cell'] = team_born_cell
 
     def add_unit_feature(prefix, player_id, i, t):
-      mask, pos, energy = mm.get_unit_info(player_id, i, t)
+      i, mask, pos, energy = mm.get_unit_info(player_id, i, t)
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
       if mask:
@@ -580,7 +582,7 @@ class LuxS3Env(gym.Env):
     for i in range(MAX_UNIT_NUM):
 
       # TODO: when use unit position inference, update here
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
+      i, unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
 
       # If units or is not exists, it can't do anything.
       if not unit_mask:
@@ -612,7 +614,7 @@ class LuxS3Env(gym.Env):
     mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
+      i, unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
       if not unit_mask:
         continue
 
@@ -639,7 +641,7 @@ class LuxS3Env(gym.Env):
     def add_unit_total_energy(info, mm):
       total_energy = 0
       for i in range(MAX_UNIT_NUM):
-        mask, _, energy = mm.get_unit_info(mm.player_id, i, t=0)
+        i, mask, _, energy = mm.get_unit_info(mm.player_id, i, t=0)
         if mask:
           total_energy += energy
 
