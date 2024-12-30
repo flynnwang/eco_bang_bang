@@ -483,7 +483,6 @@ def learn(
       _step_team_points = batch["info"]['_step_team_points']
       _unit_total_energy = batch["info"]['_unit_total_energy']
 
-      _action_move_none = batch["info"]['_action_none']
       _action_move_center = batch["info"]['_action_center']
       _action_move_up = batch["info"]['_action_up']
       _action_move_down = batch["info"]['_action_down']
@@ -500,9 +499,9 @@ def learn(
         return v[~v.isnan()].sum().detach().item()
 
       total_move = (
-          _action_move_none.sum().item() + _action_move_center.sum().item() +
-          _action_move_up.sum().item() + _action_move_down.sum().item() +
-          _action_move_left.sum().item() + _action_move_right.sum().item()) + 1
+          _action_move_center.sum().item() + _action_move_up.sum().item() +
+          _action_move_down.sum().item() + _action_move_left.sum().item() +
+          _action_move_right.sum().item()) + 1
       # _action_sap.sum().item()) + 1
 
       baseline_values = values.mean().detach().item()
@@ -518,8 +517,6 @@ def learn(
               _unit_total_energy.sum().detach().item() / buffer_num,
 
               #
-              '_action_move_none':
-              _action_move_none.sum().detach().item() / total_move,
               'action_move_center':
               _action_move_center.sum().detach().item() / total_move,
               'action_move_up':

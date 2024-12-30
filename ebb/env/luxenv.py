@@ -358,8 +358,6 @@ class LuxS3Env(gym.Env):
     action = action[UNITS_ACTION]
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i, a in enumerate(action):
-      if a == ACTION_NONE:
-        a = ACTION_CENTER
       unit_actions[i][0] = np.int32(a)
     return unit_actions
 
@@ -564,12 +562,10 @@ class LuxS3Env(gym.Env):
 
       # If units or is not exists, it can't do anything.
       if not unit_mask:
-        actions_mask[i][ACTION_NONE] = 1
         continue
 
       # Unit runs out of energy
       if energy < mm.unit_move_cost:
-        actions_mask[i][ACTION_NONE] = 1
         continue
 
       actions_mask[i][ACTION_CENTER] = 1  # can always stay
@@ -594,19 +590,15 @@ class LuxS3Env(gym.Env):
     mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
-      mask[i][a] = 1
-
       unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
       if not unit_mask:
-        assert a == ACTION_NONE
         continue
 
       # If units has run out of energy, it can only move_center
       if energy < mm.unit_move_cost:
-        assert a == ACTION_NONE
         continue
 
-      assert ACTION_CENTER <= a <= ACTION_LEFT, f"action={a} is out of range"
+      mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
   def get_info(self, model_action, raw_obs, reward, done=False):

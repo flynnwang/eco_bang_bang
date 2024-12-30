@@ -519,8 +519,8 @@ def create_model(flags,
     # find_team_point=1.875,
     # team_point=0.25(10) / 20(800)
     reward_spec = RewardSpec(
-        reward_min=-100,
-        reward_max=+100,
+        reward_min=-1000,
+        reward_max=+1000,
         zero_sum=False,
     )
   assert reward_spec is not None
