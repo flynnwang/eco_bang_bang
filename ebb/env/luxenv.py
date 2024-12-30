@@ -1,5 +1,7 @@
 from collections import OrderedDict, deque, defaultdict
 
+import random
+
 import gym
 import numpy as np
 from gym import spaces
@@ -29,7 +31,9 @@ OB = OrderedDict([
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Map info
     ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
@@ -112,6 +116,8 @@ class MapManager:
     self.match_step = 0
 
     self.past_obs = deque([])
+    self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
+    random.shuffle(self.unit_idx_to_id)
 
   @property
   def enemy_id(self):
@@ -175,6 +181,7 @@ class MapManager:
       self.past_obs.pop()
 
   def get_unit_info(self, pid, i, t):
+    i = self.unit_idx_to_id[i]
     ob = self.past_obs[t]
     mask = ob['units_mask'][pid][i]
     position = ob['units']['position'][pid][i]
@@ -350,7 +357,7 @@ class LuxS3Env(gym.Env):
 
     return self.observation(raw_obs), reward, done, info
 
-  def _encode_action(self, action):
+  def _encode_action(self, action, mm):
     """Translate the model action into game env action.
 
     TODO: to encode SAP action, prev observation is required.
@@ -358,6 +365,7 @@ class LuxS3Env(gym.Env):
     action = action[UNITS_ACTION]
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i, a in enumerate(action):
+      i = mm.unit_idx_to_id[i]
       unit_actions[i][0] = np.int32(a)
     return unit_actions
 
@@ -381,8 +389,8 @@ class LuxS3Env(gym.Env):
     self._actions_taken_mask = self.compute_actions_taken(model_action)
 
     action = {
-        PLAYER0: self._encode_action(model_action[0]),
-        PLAYER1: self._encode_action(model_action[1]),
+        PLAYER0: self._encode_action(model_action[0], self.mms[0]),
+        PLAYER1: self._encode_action(model_action[1], self.mms[1]),
     }
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     self._update_mms(raw_obs)
@@ -418,6 +426,12 @@ class LuxS3Env(gym.Env):
     enemy_points = team_points[mm.enemy_id]
     o['units_team_points'] = scalar(units_points, TEAM_POINTS_NORM)
     o['enemy_team_points'] = scalar(enemy_points, TEAM_POINTS_NORM)
+
+    team_points = ob['team_wins']
+    units_wins = team_points[mm.player_id]
+    enemy_wins = team_points[mm.enemy_id]
+    o['units_wins'] = scalar(units_wins, TEAM_WIN_NORM)
+    o['enemy_wins'] = scalar(enemy_wins, TEAM_WIN_NORM)
 
     # Map info
     o['cell_type'] = mm.cell_type.copy()
@@ -490,20 +504,28 @@ class LuxS3Env(gym.Env):
       r = 0
 
       # reward for open unobserved cells
-      r_explore = mm.step_new_observed_num * 0.005
+      r_explore = mm.step_new_observed_num * 0.001
 
       # reward for newly found relic node
-      r_find_relic = mm.step_new_found_relic_node_num * 0.2
+      r_find_relic = mm.step_new_found_relic_node_num * 0.03
 
       # reward for each new visited relic nb
-      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.01
 
       r_team_point = 0
       if mm.match_step > 0:
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        r_team_point = team_points * 0.001
+        r_team_point = team_points * 0.005
 
-      r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point
+      team_wins = raw_obs[mm.player]['team_wins']
+      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      diff = team_wins - prev_team_wins
+      r_match = 0
+      if diff[mm.player_id] > 0:
+        r_match = 0.1
+
+      r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point + r_match
+      r /= (MAX_GAME_STEPS)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
       # f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} team_point={r_team_point:.3f}'

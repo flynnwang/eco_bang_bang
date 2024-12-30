@@ -513,14 +513,10 @@ def create_model(flags,
         zero_sum=False,
     )
   if flags.reward_schema == 'exploration_reward':
-    # 24*24*0.005 + 800 * 5 * 0.005 + (3 * (25 * 0.25)) * 0.1 + 0.2 * 3 ~= 14.25
-    # explore=2.88,
-    # find relic=0.2*3 = 0.6
-    # find_team_point=1.875,
-    # team_point=0.25(10) / 20(800)
+    # (9*9*0.001 + 16 * 0.01 + 0.03 * 6 + 16 * 0.005)
     reward_spec = RewardSpec(
-        reward_min=-1000,
-        reward_max=+1000,
+        reward_min=-1,
+        reward_max=+1,
         zero_sum=False,
     )
   assert reward_spec is not None
