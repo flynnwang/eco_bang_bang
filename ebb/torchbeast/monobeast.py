@@ -398,17 +398,16 @@ def learn(
           teacher_kl_loss = compute_teacher_kl_loss(
               learner_policy_logits,
               teacher_policy_logits,
-              # actions_taken_mask=actions_mask)
-              actions_taken_mask=None)
+              actions_taken_mask=actions_mask)
+          # actions_taken_mask=None)
         else:
           teacher_kl_loss = torch.zeros_like(combined_teacher_kl_loss)
 
         combined_teacher_kl_loss = combined_teacher_kl_loss + teacher_kl_loss
 
         learner_policy_entropy = combine_policy_entropy(
-            learner_policy_logits,
-            # actions_taken_mask=actions_mask)
-            actions_taken_mask=None)
+            learner_policy_logits, actions_taken_mask=actions_mask)
+        # actions_taken_mask=None)
         combined_learner_entropy = combined_learner_entropy + learner_policy_entropy
 
       discounts = (~batch["done"]).float() * flags.discounting
