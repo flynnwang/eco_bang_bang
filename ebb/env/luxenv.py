@@ -512,7 +512,7 @@ class LuxS3Env(gym.Env):
       # reward for each new visited relic nb
       r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
 
-      # reward for every team point
+      # reward for every new team point
       r_team_point = 0
       if mm.match_step > 0:
         team_point = raw_obs[mm.player]['team_points'][mm.player_id]
@@ -531,7 +531,7 @@ class LuxS3Env(gym.Env):
         r_match = -1
 
       r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point + r_match
-      r /= (MAX_GAME_STEPS)
+      r /= (MAX_MATCH_STEPS)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.1f} '
       # f'find_relic={r_find_relic:.1f}, visit_relc_nb={r_visit_relic_nb:.1f} team_point={r_team_point:.2f}'
@@ -599,16 +599,15 @@ class LuxS3Env(gym.Env):
       actions_mask[i][ACTION_CENTER] = 1  # can always stay
 
       # has enough energy to move
-      if energy >= mm.unit_move_cost:
-        for k in range(1, MAX_MOVE_ACTION_IDX + 1):
-          nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
-          if nx < 0 or nx >= MAP_WIDTH:
-            continue
-          if ny < 0 or ny >= MAP_HEIGHT:
-            continue
-          if mm.cell_type[nx][ny] == CELL_ASTERIOD:
-            continue
-          actions_mask[i][k] = 1
+      for k in range(1, MAX_MOVE_ACTION_IDX + 1):
+        nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+        if nx < 0 or nx >= MAP_WIDTH:
+          continue
+        if ny < 0 or ny >= MAP_HEIGHT:
+          continue
+        if mm.cell_type[nx][ny] == CELL_ASTERIOD:
+          continue
+        actions_mask[i][k] = 1
 
     return {UNITS_ACTION: actions_mask}
 
