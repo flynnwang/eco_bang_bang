@@ -329,6 +329,7 @@ class LuxS3Env(gym.Env):
       seed = randint(-(1 << 31), 1 << 31)
     if self._seed is not None:
       seed = self._seed
+    self._sum_r = 0.0
     raw_obs, info = self.game.reset(seed=seed)
 
     env_cfg = info['params']
@@ -504,10 +505,10 @@ class LuxS3Env(gym.Env):
       r = 0
 
       # reward for open unobserved cells
-      r_explore = mm.step_new_observed_num * 0.1
+      r_explore = mm.step_new_observed_num * 0.01
 
       # reward for newly found relic node
-      r_find_relic = mm.step_new_found_relic_node_num * 0.3
+      r_find_relic = mm.step_new_found_relic_node_num * 0.5
 
       # reward for each new visited relic nb
       r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
@@ -532,10 +533,11 @@ class LuxS3Env(gym.Env):
 
       r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point + r_match
       r /= (MAX_MATCH_STEPS)
+      self._sum_r += r
       # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.1f} '
+      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.1f} '
       # f'find_relic={r_find_relic:.1f}, visit_relc_nb={r_visit_relic_nb:.1f} team_point={r_team_point:.2f}'
-      # f' match={r_match}')
+      # f' match={r_match}, sum_r={(self._sum_r / 2):.5f}')
       return r
 
     return [

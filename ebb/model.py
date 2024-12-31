@@ -379,12 +379,9 @@ class DictActor(nn.Module):
       probs = torch.where((probs > 0.).sum(dim=-1, keepdim=True)
                           >= actions_per_square, probs, probs + 1e-10)
 
-      try:
-        actions = torch.multinomial(probs,
-                                    num_samples=actions_per_square,
-                                    replacement=False)
-      except:
-        __import__('ipdb').set_trace()
+      actions = torch.multinomial(probs,
+                                  num_samples=actions_per_square,
+                                  replacement=False)
       return actions
     else:
       return logits.argsort(dim=-1, descending=True)[..., :actions_per_square]

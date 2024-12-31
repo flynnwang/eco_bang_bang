@@ -58,7 +58,7 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.001
+entropy_cost: 0.0001
 baseline_cost: 1.
 teacher_kl_cost: 0.005
 teacher_baseline_cost: 0.0
@@ -67,7 +67,7 @@ lmb: 0.9
 reduction: sum
 
 # Pretrained model for KL loss
-use_teacher: True
+use_teacher: False
 teacher_load_dir: /home/flynnwang/runs/ebb/12-30/23-14-07
 teacher_checkpoint_file: 000000000.pt
 

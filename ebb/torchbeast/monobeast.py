@@ -150,9 +150,9 @@ def compute_teacher_kl_loss(
                                                       kl_div.shape)
     kl_div_masked = torch.where(actions_taken_mask > 0, kl_div,
                                 torch.zeros_like(kl_div))
+  # kl_div_masked = kl_div * actions_taken_mask.float()
   else:
     kl_div_masked = kl_div
-  # kl_div_masked = kl_div * actions_taken_mask.float()
   return kl_div_masked.sum(dim=-1).sum(dim=-1)
 
 
