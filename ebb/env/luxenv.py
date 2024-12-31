@@ -504,19 +504,21 @@ class LuxS3Env(gym.Env):
       r = 0
 
       # reward for open unobserved cells
-      r_explore = mm.step_new_observed_num * 0.001
+      r_explore = mm.step_new_observed_num * 0.1
 
       # reward for newly found relic node
-      r_find_relic = mm.step_new_found_relic_node_num * 0.03
+      r_find_relic = mm.step_new_found_relic_node_num * 0.3
 
       # reward for each new visited relic nb
-      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.01
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
 
       # reward for every team point
       r_team_point = 0
       if mm.match_step > 0:
-        team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        r_team_point = team_points * 0.005
+        team_point = raw_obs[mm.player]['team_points'][mm.player_id]
+        prev_team_point = self.prev_raw_obs[mm.player]['team_points'][
+            mm.player_id]
+        r_team_point = (team_point - prev_team_point) * 0.01
 
       # match end reward
       team_wins = raw_obs[mm.player]['team_wins']
@@ -524,16 +526,16 @@ class LuxS3Env(gym.Env):
       diff = team_wins - prev_team_wins
       r_match = 0
       if diff[mm.player_id] > 0:
-        r_match = 0.2
+        r_match = 1
       elif diff[mm.enemy_id] > 0:
-        r_match = -0.2
+        r_match = -1
 
       r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point + r_match
-      r /= (MAX_GAME_STEPS / 5)
-      # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.3f} '
-      # f'find_relic={r_find_relic:.3f}, visit_relc_nb={r_visit_relic_nb:.3f} team_point={r_team_point:.3f}'
-      # )
+      r /= (MAX_GAME_STEPS)
+      print(
+          f'step={mm.game_step} match-step={mm.match_step}, explore={r_explore:.1f} '
+          f'find_relic={r_find_relic:.1f}, visit_relc_nb={r_visit_relic_nb:.1f} team_point={r_team_point:.2f}'
+          f' match={r_match}')
       return r
 
     return [
