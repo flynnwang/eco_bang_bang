@@ -510,10 +510,10 @@ def create_model(flags,
         zero_sum=False,
     )
   if flags.reward_schema == 'exploration_reward':
-    # (9*9*0.001 + 16 * 0.01 + 0.03 * 6 + 16 * 0.005)
+    # (9*9*0.01 + 16 * 0.01 + 0.03 * 6 + 16 * 0.005)
     reward_spec = RewardSpec(
-        reward_min=-1,
-        reward_max=+1,
+        reward_min=-5,
+        reward_max=+5,
         zero_sum=False,
     )
   assert reward_spec is not None
