@@ -119,7 +119,7 @@ class MapManager:
 
     # Use idx for model feature encoding and id for action encoding
     self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
-    # random.shuffle(self.unit_idx_to_id)
+    random.shuffle(self.unit_idx_to_id)
 
   @property
   def enemy_id(self):

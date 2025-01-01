@@ -122,7 +122,11 @@ def combine_policy_entropy(
   else:
     assert actions_taken_mask.shape == entropies.shape, (
         actions_taken_mask.shape, entropies.shape)
-    entropies_masked = entropies * actions_taken_mask.float()
+
+    mask = actions_taken_mask.any(dim=-1, keepdim=True)
+    am = actions_taken_mask.clone()
+    am[mask.expand(*am.shape)] = 1
+    entropies_masked = entropies * am.float()
 
   r = entropies_masked.sum(dim=-1).sum(dim=-1)
   # if torch.isnan(r).any():
@@ -148,9 +152,12 @@ def compute_teacher_kl_loss(
   if actions_taken_mask is not None:
     assert actions_taken_mask.shape == kl_div.shape, (actions_taken_mask.shape,
                                                       kl_div.shape)
-    kl_div_masked = torch.where(actions_taken_mask > 0, kl_div,
-                                torch.zeros_like(kl_div))
-  # kl_div_masked = kl_div * actions_taken_mask.float()
+    mask = actions_taken_mask.any(dim=-1, keepdim=True)
+    am = actions_taken_mask.clone()
+    am[mask.expand(*am.shape)] = 1
+    # kl_div_masked = torch.where(actions_taken_mask > 0, kl_div,
+    # torch.zeros_like(kl_div))
+    kl_div_masked = kl_div * am.float()
   else:
     kl_div_masked = kl_div
   return kl_div_masked.sum(dim=-1).sum(dim=-1)
@@ -398,17 +405,16 @@ def learn(
           teacher_kl_loss = compute_teacher_kl_loss(
               learner_policy_logits,
               teacher_policy_logits,
-              # actions_taken_mask=actions_mask)
-              actions_taken_mask=None)
+              actions_taken_mask=actions_mask)
+          # actions_taken_mask=None)
         else:
           teacher_kl_loss = torch.zeros_like(combined_teacher_kl_loss)
 
         combined_teacher_kl_loss = combined_teacher_kl_loss + teacher_kl_loss
 
         learner_policy_entropy = combine_policy_entropy(
-            learner_policy_logits,
-            # actions_taken_mask=actions_mask)
-            actions_taken_mask=None)
+            learner_policy_logits, actions_taken_mask=actions_mask)
+        # actions_taken_mask=None)
         combined_learner_entropy = combined_learner_entropy + learner_policy_entropy
 
       discounts = (~batch["done"]).float() * flags.discounting
