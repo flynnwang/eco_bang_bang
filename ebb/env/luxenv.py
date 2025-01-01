@@ -526,18 +526,16 @@ class LuxS3Env(gym.Env):
         r_team_point = (team_point - prev_team_point) * 0.01
 
       # game end reward
-      # prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
-      # diff = team_wins - prev_team_wins
       r_match = 0
-      team_wins = raw_obs[mm.player]['team_wins']
-      if mm.game_step >= MAX_GAME_STEPS:
-        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_match = 1
-        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_match = -1
+      # team_wins = raw_obs[mm.player]['team_wins']
+      # if mm.game_step >= MAX_GAME_STEPS:
+      # if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+      # r_match = 1
+      # elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+      # r_match = -1
 
       r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point + r_match
-      r /= 10
+      r /= 30
       self._sum_r += r
       print(
           f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.1f} '
