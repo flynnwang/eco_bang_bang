@@ -399,7 +399,9 @@ class LuxS3Env(gym.Env):
     self._update_mms(raw_obs)
 
     done = False
-    if raw_obs[PLAYER0]['steps'] >= MAX_GAME_STEPS:
+    team_wins = raw_obs[PLAYER0]['team_wins']
+    if (raw_obs[PLAYER0]['steps'] >= MAX_GAME_STEPS
+        or max(team_wins) >= MIN_TEAM_WINS):
       done = True
 
     obs = self.observation(raw_obs)
