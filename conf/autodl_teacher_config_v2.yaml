@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: debug_run_20250101_reward_large
+name: debug_run_20250102_use_game_win_loss
 
 
 ## WANDB params
@@ -20,7 +20,8 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs: {}
 reward_space_kwargs: {}
-reward_schema: exploration_reward
+#reward_schema: exploration_reward
+reward_schema: game_win_loss
 
 ## TRAINING params
 total_steps: 3e8

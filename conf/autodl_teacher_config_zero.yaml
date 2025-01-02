@@ -20,7 +20,8 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs: {}
 reward_space_kwargs: {}
-reward_schema: exploration_reward
+#reward_schema: exploration_reward
+reward_schema: game_win_loss
 
 ## TRAINING params
 total_steps: 3e8

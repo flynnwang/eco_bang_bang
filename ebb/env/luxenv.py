@@ -119,7 +119,7 @@ class MapManager:
 
     # Use idx for model feature encoding and id for action encoding
     self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
-    random.shuffle(self.unit_idx_to_id)
+    # random.shuffle(self.unit_idx_to_id)
 
   @property
   def enemy_id(self):
@@ -329,6 +329,8 @@ class LuxS3Env(gym.Env):
       seed = randint(-(1 << 31), 1 << 31)
     if self._seed is not None:
       seed = self._seed
+    else:
+      self._seed = seed
     self._sum_r = 0.0
     raw_obs, info = self.game.reset(seed=seed)
 
@@ -524,6 +526,7 @@ class LuxS3Env(gym.Env):
         prev_team_point = self.prev_raw_obs[mm.player]['team_points'][
             mm.player_id]
         r_team_point = (team_point - prev_team_point) * 0.01
+        assert r_team_point >= 0
 
       # game end reward
       r_match = 0
@@ -538,7 +541,7 @@ class LuxS3Env(gym.Env):
       r /= 30
       self._sum_r += r
       print(
-          f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.1f} '
+          f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
           f'find_relic={r_find_relic:.1f}, visit_relc_nb={r_visit_relic_nb:.1f} team_point={r_team_point:.2f}'
           f' match={r_match}, sum_r={(self._sum_r / 2):.5f}')
       return r
@@ -548,24 +551,41 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
+  def _convert_win_loss_reward(self, raw_obs):
+
+    def _convert(mm, ob):
+      r = 0
+
+      # reward for open unobserved cells
+      r_explore = 0
+      if mm.match_step > 0:
+        r_explore = mm.step_new_observed_num * 0.0001
+
+      # game end reward
+      r_game = 0
+      team_wins = raw_obs[mm.player]['team_wins']
+      if mm.game_step >= MAX_GAME_STEPS:
+        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+          r_game = 1
+        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+          r_game = -1
+
+      r = r_explore + r_game
+      self._sum_r += abs(r)
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
+      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}')
+      return r
+
+    return [
+        _convert(self.mms[i], raw_obs[p])
+        for i, p in enumerate([PLAYER0, PLAYER1])
+    ]
+
   def _convert_reward(self, raw_obs, info):
     """Use the match win-loss reward for now."""
-    assert self.reward_schema in ('match_win_loss',
-                                  'relic_boosted_match_score',
+    assert self.reward_schema in ('game_win_loss', 'relic_boosted_match_score',
                                   'exploration_reward')
-
-    team_wins = raw_obs[PLAYER0]['team_wins']
-    prev_team_wins = self.prev_raw_obs[PLAYER0]['team_wins']
-    diff = team_wins - prev_team_wins
-    max_v = max(diff[0], diff[1])
-
-    reward = [0, 0]
-    if max_v > 0:
-      if diff[0] > diff[1]:
-        reward = [1, -1]
-      if diff[1] >= diff[0]:
-        reward = [-1, 1]
-
     mm = self.mms[0]
     if self.reward_schema == 'relic_boosted_match_score' and mm.match_step > 0:
       team_points = raw_obs[PLAYER0]['team_points']
@@ -577,9 +597,9 @@ class LuxS3Env(gym.Env):
     if self.reward_schema == 'exploration_reward':
       reward = self._convert_exploration_reward(raw_obs)
 
-    # print(
-    # f'step={mm.game_step}, match_step={mm.match_step}, r0={reward[0]}, r1={reward[1]}'
-    # )
+    if self.reward_schema == 'game_win_loss':
+      reward = self._convert_win_loss_reward(raw_obs)
+
     if SINGLE_PLAER:
       return [reward[0]]  # single player
     else:
@@ -664,14 +684,18 @@ class LuxS3Env(gym.Env):
       info['available_action_mask'] = self._get_available_action_mask(mm)
 
       step_reward = reward[mm.player_id]
+      info['player'] = (int(self._seed) %
+                        1000) * 100 + mm.player_id  # for testing
       info['_step_reward'] = step_reward
-      info['player'] = mm.player_id  # for testing
+      info['_step_new_observed_num'] = mm.step_new_observed_num
+      info['_step_new_found_relic_node_num'] = mm.step_new_found_relic_node_num
+      info['_step_new_visited_relic_nb_num'] = mm.step_new_visited_relic_nb_num
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
       tp1 = prev_obs1['team_points'][mm.player_id]
       # print(
-      # f"step={raw_obs[PLAYER0]['steps']}, match_steps={match_step} done={done}, player_id={mm.player_id} team_point={tp0}"
+      # f"step={raw_obs[PLAYER0]['steps']}, match_steps={mm.match_step} done={done}, player_id={mm.player_id} team_point={tp0}"
       # )
       info['_step_team_points'] = max(tp0 - tp1, 0)
 

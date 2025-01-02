@@ -1,11 +1,11 @@
 import torch
 
 
-def split_env_output_by_player(env_out, obs_per_player=1):
+def split_env_output_by_player(env_out, obs_per_player=1, key_hint=None):
   if isinstance(env_out, dict):
     left_team, right_team = {}, {}
     for key, val in env_out.items():
-      left_val, right_val = split_env_output_by_player(val)
+      left_val, right_val = split_env_output_by_player(val, key_hint=key)
       left_team[key] = left_val
       right_team[key] = right_val
     return left_team, right_team
@@ -22,13 +22,18 @@ def split_env_output_by_player(env_out, obs_per_player=1):
     return left_team, right_team
 
 
-def pair_env_output_for_players(left_out, right_out, obs_per_player=1):
+def pair_env_output_for_players(left_out,
+                                right_out,
+                                obs_per_player=1,
+                                key_hint=None):
   if isinstance(left_out, dict):
     env_out = {}
     for key, left_val in left_out.items():
       right_val = right_out[key]
-      env_out[key] = pair_env_output_for_players(left_val, right_val,
-                                                 obs_per_player)
+      env_out[key] = pair_env_output_for_players(left_val,
+                                                 right_val,
+                                                 obs_per_player,
+                                                 key_hint=key)
     return env_out
   else:
     sz0 = left_out.shape[0]

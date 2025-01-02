@@ -408,7 +408,9 @@ class BaselineLayer(nn.Module):
     # Rescale to [0, 1], and then to the desired reward space
     x = self.activation(x)
     #print('x={x}')
-    return x * (self.reward_max - self.reward_min) + self.reward_min
+    v = x * (self.reward_max - self.reward_min) + self.reward_min
+    # print(f'v={v}, reward_max={self.reward_max} reward_min={self.reward_min}')
+    return v
 
 
 class BasicActorCriticNetwork(nn.Module):
@@ -460,6 +462,7 @@ class BasicActorCriticNetwork(nn.Module):
                                         actions_mask=actions_mask,
                                         **actor_kwargs)
     baseline = self.baseline(self.baseline_base(base_out))
+    # print(baseline)
     return dict(actions=actions,
                 policy_logits=policy_logits,
                 baseline=baseline)
@@ -496,10 +499,10 @@ def create_model(flags,
                  device: torch.device,
                  reset=False) -> nn.Module:
   reward_spec = None
-  if flags.reward_schema == 'match_win_loss':
+  if flags.reward_schema == 'game_win_loss':
     reward_spec = RewardSpec(
-        reward_min=-10,
-        reward_max=+10,
+        reward_min=-1.06,
+        reward_max=+1.06,
         zero_sum=False,
     )
   if flags.reward_schema == 'relic_boosted_match_score':

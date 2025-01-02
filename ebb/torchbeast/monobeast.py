@@ -189,6 +189,13 @@ def compute_policy_gradient_loss(action_log_probs: torch.Tensor,
 
 
 def get_merged_actions(env_agent_out):
+  # [(lef_env_out, lef_agent_out), (rig_env_out, rig_agent_out)]
+
+  # TODO: delete
+  # lef = env_agent_out[0][0]
+  # rig = env_agent_out[1 ][0]
+  # pair_env_output_for_players(lef, rig)
+
   lef_actions = env_agent_out[0][1]['actions']
   rig_actions = env_agent_out[1][1]['actions']
   return pair_env_output_for_players(lef_actions, rig_actions)
@@ -489,6 +496,12 @@ def learn(
       _step_team_points = batch["info"]['_step_team_points']
       _unit_total_energy = batch["info"]['_unit_total_energy']
 
+      _step_new_observed_num = batch["info"]['_step_new_observed_num']
+      _step_new_found_relic_node_num = batch["info"][
+          '_step_new_found_relic_node_num']
+      _step_new_visited_relic_nb_num = batch["info"][
+          '_step_new_visited_relic_nb_num']
+
       _action_move_center = batch["info"]['_action_center']
       _action_move_up = batch["info"]['_action_up']
       _action_move_down = batch["info"]['_action_down']
@@ -513,6 +526,8 @@ def learn(
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
       buffer_num = flags.batch_size * flags.unroll_length
+      batch_sz = flags.batch_size
+      unroll_length = flags.unroll_length
       stats = {
           "Env": {
               'step_team_points':
@@ -521,6 +536,12 @@ def learn(
               _step_reward.sum().detach().item() / buffer_num,
               'unit_total_energy':
               _unit_total_energy.sum().detach().item() / buffer_num,
+              'step_new_observed_num':
+              _step_new_observed_num.sum().detach().item() / buffer_num,
+              'unroll_step_new_found_relic_node_num':
+              _step_new_found_relic_node_num.sum().detach().item() / batch_sz,
+              'unroll_step_new_visited_relic_nb_num':
+              _step_new_visited_relic_nb_num.sum().detach().item() / batch_sz,
 
               #
               'action_move_center':
