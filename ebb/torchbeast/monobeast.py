@@ -502,6 +502,8 @@ def learn(
       _step_new_visited_relic_nb_num = batch["info"][
           '_step_new_visited_relic_nb_num']
 
+      _step_actionable_unit_num = batch["info"]['_step_actionable_unit_num']
+
       _action_move_center = batch["info"]['_action_center']
       _action_move_up = batch["info"]['_action_up']
       _action_move_down = batch["info"]['_action_down']
@@ -542,6 +544,8 @@ def learn(
               _step_new_found_relic_node_num.sum().detach().item() / batch_sz,
               'unroll_step_new_visited_relic_nb_num':
               _step_new_visited_relic_nb_num.sum().detach().item() / batch_sz,
+              'step_actionable_unit_num':
+              _step_actionable_unit_num.sum().detach().item() / buffer_num,
 
               #
               'action_move_center':
