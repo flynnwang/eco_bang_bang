@@ -492,9 +492,12 @@ def learn(
       match_played = batch["info"]['_match_played'].sum().item()
 
       _step_reward = batch["info"]['_step_reward']
-      _match_team_points = batch["info"]['_match_team_points']
       _step_team_points = batch["info"]['_step_team_points']
       _unit_total_energy = batch["info"]['_unit_total_energy']
+
+      _match_team_points = batch["info"]['_match_team_points']
+      _match_observed_node_num = batch["info"]['_match_observed_node_num']
+      _match_visited_node_num = batch["info"]['_match_visited_node_num']
 
       _step_new_observed_num = batch["info"]['_step_new_observed_num']
       _step_new_found_relic_node_num = batch["info"][
@@ -515,6 +518,9 @@ def learn(
       def compute_mean_count_done(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
+
+      def compute_match_mean_count(v):
+        return v[match_played > 0].to(torch.float).mean().detach().item()
 
       def sum_non_nan(v):
         return v[~v.isnan()].sum().detach().item()
@@ -584,8 +590,12 @@ def learn(
       }
 
       if match_played > 0:
-        stats['Env']['match_team_points'] = sum_non_nan(
-            _match_team_points) / match_played
+        stats['Env']['match_team_points2'] = compute_match_mean_count(
+            _match_team_points)
+        stats['Env']['match_observed_node_num'] = compute_match_mean_count(
+            _match_observed_node_num)
+        stats['Env']['match_visited_node_num'] = compute_match_mean_count(
+            _match_visited_node_num)
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

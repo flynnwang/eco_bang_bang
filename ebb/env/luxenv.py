@@ -693,6 +693,9 @@ class LuxS3Env(gym.Env):
       info['_step_actionable_unit_num'] = self._actions_taken_mask[
           mm.player_id][UNITS_ACTION].any(axis=-1, keepdims=True).sum()
 
+      info['_match_observed_node_num'] = mm.observed.sum()
+      info['_match_visited_node_num'] = mm.visited.sum()
+
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
       tp1 = prev_obs1['team_points'][mm.player_id]
