@@ -25,8 +25,8 @@ NON_TEAM_POINT_MASS = -100
 MAX_GAME_STEPS = 505
 MAX_MATCH_STEPS = 100
 
-TEAM_POINTS_NORM = 300
-TEAM_WIN_NORM = 300
+TEAM_POINTS_NORM = 100
+TEAM_WIN_NORM = 5
 
 # 0 is do nothing, 1 is move up, 2 is move right, 3 is move down, 4 is move left, 5 is sap
 # ACTION_NONE = 5  # TODO: when using sap, use a larger idx
@@ -60,5 +60,5 @@ DIRECTIONS = [
 MAX_MOVE_COST = 5
 MAX_SENSOR_RANGE = 4
 
-MAX_ENERTY_PER_TILE = 20
+MAX_ENERTY_PER_TILE = 10
 MAX_UNIT_ENERGY = 400

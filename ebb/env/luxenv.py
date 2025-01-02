@@ -428,13 +428,13 @@ class LuxS3Env(gym.Env):
     units_points = team_points[mm.player_id]
     enemy_points = team_points[mm.enemy_id]
     o['units_team_points'] = scalar(units_points, TEAM_POINTS_NORM)
-    o['enemy_team_points'] = scalar(enemy_points, TEAM_POINTS_NORM)
-
-    team_points = ob['team_wins']
-    units_wins = team_points[mm.player_id]
-    enemy_wins = team_points[mm.enemy_id]
+    o['enemy_team_points'] = scalar(units_points - enemy_points,
+                                    TEAM_POINTS_NORM)
+    team_wins = ob['team_wins']
+    units_wins = team_wins[mm.player_id]
+    enemy_wins = team_wins[mm.enemy_id]
     o['units_wins'] = scalar(units_wins, TEAM_WIN_NORM)
-    o['enemy_wins'] = scalar(enemy_wins, TEAM_WIN_NORM)
+    o['enemy_wins'] = scalar(units_wins - enemy_wins, TEAM_WIN_NORM)
 
     # Map info
     o['cell_type'] = mm.cell_type.copy()
@@ -446,15 +446,13 @@ class LuxS3Env(gym.Env):
 
     team_point_prob = mm.team_point_mass.copy()
     team_point_prob[mm.is_relic_neighbour == 0] = NON_TEAM_POINT_MASS
-    o['team_point_prob'] = sigmoid(team_point_prob / 20)
+    o['team_point_prob'] = sigmoid(team_point_prob / 20) * 2 - 1
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
-    team_born_cell = np.zeros(MAP_SHAPE2)
+    is_player0 = -1
     if mm.player_id == 0:
-      team_born_cell[0][0] = 1
-    else:
-      team_born_cell[MAP_WIDTH - 1][MAP_HEIGHT - 1] = 1
-    o['is_team_born_cell'] = team_born_cell
+      is_player0 = 1
+    o['is_team_born_cell'] = scalar(is_player0, 1)
 
     def add_unit_feature(prefix, player_id, i, t):
       mask, pos, energy = mm.get_unit_info(player_id, i, t)
