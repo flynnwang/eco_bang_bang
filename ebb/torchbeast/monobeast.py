@@ -519,8 +519,10 @@ def learn(
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
+      match_played_mask = batch["info"]['_match_played']
+
       def compute_match_mean_count(v):
-        return v[match_played > 0].to(torch.float).mean().detach().item()
+        return v[match_played_mask > 0].to(torch.float).mean().detach().item()
 
       def sum_non_nan(v):
         return v[~v.isnan()].sum().detach().item()
