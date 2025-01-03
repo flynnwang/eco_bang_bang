@@ -415,9 +415,10 @@ class BaselineLayer(nn.Module):
     x = self.activation(x)
     x = self.linear2(x)
     x = self.activation(x)
-    #print('x={x}')
     v = x * (self.reward_max - self.reward_min) + self.reward_min
-    # print(f'v={v}, reward_max={self.reward_max} reward_min={self.reward_min}')
+    # print(
+    # f'v={v}, x={x}, reward_max={self.reward_max} reward_min={self.reward_min}'
+    # )
     return v
 
 
@@ -511,8 +512,8 @@ def create_model(flags,
   reward_spec = None
   if flags.reward_schema == 'game_win_loss':
     reward_spec = RewardSpec(
-        reward_min=-1.06,
-        reward_max=+1.06,
+        reward_min=-1.6,
+        reward_max=+1.6,
         zero_sum=False,
     )
   if flags.reward_schema == 'relic_boosted_match_score':

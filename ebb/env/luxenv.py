@@ -383,6 +383,11 @@ class LuxS3Env(gym.Env):
         for i, player in enumerate([PLAYER0, PLAYER1])
     ]
 
+  def is_game_done(self, raw_obs, player):
+    team_wins = raw_obs[player]['team_wins']
+    game_step = raw_obs[player]['steps']
+    return (game_step >= MAX_GAME_STEPS) or (max(team_wins) >= MIN_TEAM_WINS)
+
   def step(self, model_action):
     if SINGLE_PLAER:
       model_action = [
@@ -404,11 +409,7 @@ class LuxS3Env(gym.Env):
     final_state = info['final_state']
     self._update_mms(raw_obs)
 
-    done = False
-    team_wins = raw_obs[PLAYER0]['team_wins']
-    if (raw_obs[PLAYER0]['steps'] >= MAX_GAME_STEPS
-        or max(team_wins) >= MIN_TEAM_WINS):
-      done = True
+    done = self.is_game_done(raw_obs, PLAYER0)
 
     obs = self.observation(raw_obs, final_state)
     reward = self._convert_reward(raw_obs, info)
@@ -591,7 +592,7 @@ class LuxS3Env(gym.Env):
       # game end reward
       r_match = 0
       # team_wins = raw_obs[mm.player]['team_wins']
-      # if mm.game_step >= MAX_GAME_STEPS:
+      # if self.is_game_done(raw_obs, mm.player):
       # if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
       # r_match = 1
       # elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
@@ -621,16 +622,26 @@ class LuxS3Env(gym.Env):
       if mm.match_step > 0:
         r_explore = mm.step_new_observed_num * 0.0001
 
+      team_wins = raw_obs[mm.player]['team_wins']
+
       # game end reward
       r_game = 0
-      team_wins = raw_obs[mm.player]['team_wins']
-      if mm.game_step >= MAX_GAME_STEPS:
+      if self.is_game_done(raw_obs, mm.player):
         if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
           r_game = 1
         elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
           r_game = -1
 
-      r = r_explore + r_game
+      # match end reward
+      r_match = 0
+      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      diff = team_wins - prev_team_wins
+      if diff[mm.player_id] > 0:
+        r_match = 0.1
+      elif diff[mm.enemy_id] > 0:
+        r_match = -0.1
+
+      r = r_explore + r_game + r_match
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
