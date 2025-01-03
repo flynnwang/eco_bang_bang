@@ -536,6 +536,7 @@ def create_model(flags,
                      hidden_dim=flags.hidden_dim,
                      base_out_channels=flags.base_out_channels,
                      n_blocks=flags.n_blocks,
+                     kernel_size=flags.kernel_size,
                      device=device,
                      reward_spec=reward_spec,
                      reset=reset)
@@ -547,6 +548,7 @@ def _create_model(observation_space,
                   hidden_dim=32,
                   base_out_channels=32,
                   n_blocks=4,
+                  kernel_size=5,
                   device: torch.device = torch.device('cpu'),
                   reward_spec: RewardSpec = None,
                   reset=None):
@@ -555,7 +557,8 @@ def _create_model(observation_space,
           ResidualBlock(in_channels=hidden_dim,
                         out_channels=hidden_dim,
                         height=MAP_HEIGHT,
-                        width=MAP_WIDTH) for _ in range(n_blocks)
+                        width=MAP_WIDTH,
+                        kernel_size=kernel_size) for _ in range(n_blocks)
       ])
   model = BasicActorCriticNetwork(base_model, hidden_dim, base_out_channels,
                                   reward_spec)
