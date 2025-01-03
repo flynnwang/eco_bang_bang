@@ -119,6 +119,7 @@ def create_buffers(
       raise NotImplementedError(
           f"{type(spec)} is not an accepted observation space.")
     shape = spec.shape[1:]  # drop first dimension of size 1
+    # shape = spec.shape
     obs_specs[key] = dict(size=(t + 1, n, *shape), dtype=dtype)
     print(key, '(t + 1, n, *shape)=', (t + 1, n, *shape))
 

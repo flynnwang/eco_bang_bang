@@ -103,6 +103,7 @@ class ConvEmbeddingInputLayer(nn.Module):
     n_embedding_channels = 0
     self.keys_to_op = {}
     for key, val in obs_space.spaces.items():
+      # Skips hidden obs from conv layer
       if key.startswith('_'):
         continue
 
@@ -393,19 +394,26 @@ class BaselineLayer(nn.Module):
     super(BaselineLayer, self).__init__()
     self.reward_min = reward_space.reward_min
     self.reward_max = reward_space.reward_max
-    self.linear = nn.Linear(in_channels, 1)
+    hidden_channles = in_channels + N_BASELINE_EXTRA_DIM
+    self.linear = nn.Linear(hidden_channles, hidden_channles)
+    self.linear2 = nn.Linear(hidden_channles, 1)
     if reward_space.zero_sum:
       self.activation = nn.Softmax(dim=-1)
     else:
       self.activation = nn.Sigmoid()
 
-  def forward(self, x: torch.Tensor):
+  def forward(self, x: torch.Tensor, baseline_extras):
     # Average feature planes
     x = torch.flatten(x, start_dim=-2, end_dim=-1).mean(dim=-1)
+
+    # Add extra inputs for baseline
+    x = torch.cat((x, baseline_extras), dim=1)
 
     # Project and reshape input
     x = self.linear(x)
     # Rescale to [0, 1], and then to the desired reward space
+    x = self.activation(x)
+    x = self.linear2(x)
     x = self.activation(x)
     #print('x={x}')
     v = x * (self.reward_max - self.reward_min) + self.reward_min
@@ -456,12 +464,14 @@ class BasicActorCriticNetwork(nn.Module):
               sample: bool = True,
               **actor_kwargs) -> Dict[str, Any]:
     x, actions_mask = self.dict_input_layer(x1)
+    baseline_extras = x['_baseline_extras']
+
     base_out = self.base_model(x)
     policy_logits, actions = self.actor(self.actor_base(base_out),
                                         sample=sample,
                                         actions_mask=actions_mask,
                                         **actor_kwargs)
-    baseline = self.baseline(self.baseline_base(base_out))
+    baseline = self.baseline(self.baseline_base(base_out), baseline_extras)
     # print(baseline)
     return dict(actions=actions,
                 policy_logits=policy_logits,

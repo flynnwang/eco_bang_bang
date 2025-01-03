@@ -45,6 +45,12 @@ OB = OrderedDict([
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+
+    # Extra baseline mode feature
+    ("_baseline_extras",
+     spaces.Box(
+         np.zeros((1, N_BASELINE_EXTRA_DIM)) - 1,
+         np.zeros((1, N_BASELINE_EXTRA_DIM)) + 1)),
 ])
 
 
@@ -326,13 +332,12 @@ class LuxS3Env(gym.Env):
 
   def reset(self, seed=None):
     if seed is None:
-      seed = randint(-(1 << 31), 1 << 31)
-    if self._seed is not None:
-      seed = self._seed
+      self._seed = randint(-(1 << 31), 1 << 31)
     else:
       self._seed = seed
     self._sum_r = 0.0
-    raw_obs, info = self.game.reset(seed=seed)
+    raw_obs, info = self.game.reset(seed=self._seed)
+    final_state = info['state']
 
     env_cfg = info['params']
     self.mms = [MapManager(PLAYER0, env_cfg), MapManager(PLAYER1, env_cfg)]
@@ -356,7 +361,7 @@ class LuxS3Env(gym.Env):
     }]
     info = self.get_info(model_action, raw_obs, reward, done)
 
-    return self.observation(raw_obs), reward, done, info
+    return self.observation(raw_obs, final_state), reward, done, info
 
   def _encode_action(self, action, mm):
     """Translate the model action into game env action.
@@ -396,6 +401,7 @@ class LuxS3Env(gym.Env):
         PLAYER1: self._encode_action(model_action[1], self.mms[1]),
     }
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
+    final_state = info['final_state']
     self._update_mms(raw_obs)
 
     done = False
@@ -404,19 +410,65 @@ class LuxS3Env(gym.Env):
         or max(team_wins) >= MIN_TEAM_WINS):
       done = True
 
-    obs = self.observation(raw_obs)
+    obs = self.observation(raw_obs, final_state)
     reward = self._convert_reward(raw_obs, info)
     info = self.get_info(model_action, raw_obs, reward, done)
 
     self.prev_raw_obs = raw_obs
     return obs, reward, done, info
 
-  def _convert_observation(self, ob, mm):
+  def _convert_observation(self, ob, mm, final_state):
     """Construct all features using MAP_SHAPE2."""
     o = {}
 
     def scalar(v, maxv):
       return np.zeros(MAP_SHAPE2) + (v / maxv)
+
+    def get_units_total_energy(env_state, pid):
+      return env_state.units.energy[pid].sum()
+
+    def extract_baseline_extras(mm, env_state):
+      extras = np.zeros(N_BASELINE_EXTRA_DIM)
+      extras[0] = mm.game_step / MAX_GAME_STEPS  # step
+      extras[1] = (mm.game_step //
+                   (MAX_MATCH_STEPS + 1)) / TEAM_WIN_NORM  # match
+      extras[2] = mm.match_step / MAX_MATCH_STEPS  # match step
+
+      team_win = env_state.team_wins[mm.player_id]
+      enemy_win = env_state.team_wins[mm.enemy_id]
+      extras[3] = team_win / TEAM_WIN_NORM
+      extras[4] = (team_win - enemy_win) / TEAM_WIN_NORM
+
+      hidden_relics_num = (env_state.relic_nodes_map_weights > 0).sum()
+      if hidden_relics_num == 0:
+        hidden_relics_num = 1
+      team_points = env_state.team_points[mm.player_id]
+      enemy_points = env_state.team_points[mm.enemy_id]
+      extras[5] = team_points / TEAM_POINTS_NORM / hidden_relics_num
+      extras[6] = (team_points - enemy_points) / TEAM_POINTS_NORM
+
+      team_energy = get_units_total_energy(env_state, mm.player_id)
+      enemy_energy = get_units_total_energy(env_state, mm.enemy_id)
+      extras[7] = team_energy / 1000
+      extras[8] = (team_energy - enemy_energy) / 1000
+
+      extras[9] = hidden_relics_num / MAX_HIDDEN_RELICS_NUM
+
+      relic_num = env_state.relic_nodes_mask.sum()
+      extras[10] = relic_num / MAX_RELIC_NODE_NUM
+
+      nodes = env_state.relic_nodes[env_state.relic_nodes_mask]
+      if len(nodes) > 0:
+        extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
+        # print(nodes)
+        # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
+      # print(
+      # f"step={mm.game_step}, match={mm.game_step // (MAX_MATCH_STEPS + 1)}, "
+      # f"match_step={mm.match_step}, team_win={team_win}, diff_win={(team_win - enemy_win)}, "
+      # f"tp={team_points}, diff_p={team_points - enemy_points}, hidden_relics_num={hidden_relics_num}, relic_num={relic_num}, "
+      # f"energy={team_energy}, diff_e={(team_energy - enemy_energy)}")
+      # print(extras)
+      return extras
 
     # Game params
     o['unit_move_cost'] = scalar(mm.unit_move_cost, MAX_MOVE_COST)
@@ -481,24 +533,32 @@ class LuxS3Env(gym.Env):
     for i in range(MAX_UNIT_NUM):
       add_unit_feature('enemy', mm.enemy_id, i, t=0)
 
+    o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
+
     assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
     # expand all feature map with dummy dim 1
-    o = {k: np.expand_dims(v, 0) for k, v in o.items()}
+    o = {
+        k: np.expand_dims(v, 0)
+        # k: (np.expand_dims(v, 0) if not k.startswith('_') else v)
+        for k, v in o.items()
+    }
     # for k, v in o.items():
     # print(k, v.shape)
     return o
 
-  def observation(self, raw_obs):
+  def observation(self, raw_obs, final_state):
     assert len(
         raw_obs
     ) == 2, f"len(raw_obs)={len(raw_obs)}, self.total_agent_controls={self.total_agent_controls}"
     if SINGLE_PLAER:
-      return [self._convert_observation(raw_obs[PLAYER0],
-                                        self.mms[0])]  # single player
+      return [
+          self._convert_observation(raw_obs[PLAYER0], self.mms[0], final_state)
+      ]  # single player
     else:
       return [
-          self._convert_observation(raw_obs[PLAYER0], self.mms[0]),
-          self._convert_observation(raw_obs[PLAYER1], self.mms[1])
+          self._convert_observation(raw_obs[PLAYER0], self.mms[0],
+                                    final_state),
+          self._convert_observation(raw_obs[PLAYER1], self.mms[1], final_state)
       ]
 
   def _convert_exploration_reward(self, raw_obs):
