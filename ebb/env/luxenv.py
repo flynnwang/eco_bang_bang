@@ -195,6 +195,11 @@ class MapManager:
     mask = ob['units_mask'][pid][i]
     position = ob['units']['position'][pid][i]
     energy = ob['units']['energy'][pid][i]
+
+    # TODO: use last unit position, maybe not important?
+    if not mask:
+      position = (0, 0) if self.player_id == 0 else (MAP_WIDTH - 1,
+                                                     MAP_HEIGHT - 1)
     return mask, position, energy
 
   def get_visited_relic_nb_num(self):
@@ -521,8 +526,10 @@ class LuxS3Env(gym.Env):
         # 1] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
         # assert energy >= 0, f"step={mm.game_step}, pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
         # Why energy is negative
-        unit_pos[pos[0]][pos[1]] = 1
         unit_energy[pos[0]][pos[1]] = energy / MAX_UNIT_ENERGY
+
+      # Assume position is always present
+      unit_pos[pos[0]][pos[1]] = 1
 
       o[f'{prefix}_{i}_loc_{t}'] = unit_pos
       o[f'{prefix}_{i}_energy_{t}'] = unit_energy

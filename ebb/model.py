@@ -277,6 +277,47 @@ class ResidualBlock(nn.Module):
     return self.final_act(x)
 
 
+class TeamActor(nn.Module):
+  """Take"""
+
+  def __init__(self, in_channels: int, conv_dim: int, out_channels: int):
+    super(TeamActor, self).__init__()
+    self.in_channels = in_channels
+    self.conv_dim = conv_dim
+    self.out_channels = out_channels
+    # self.flatten = nn.Flatten(start_dim=1, end_dim=-1)
+    self.conv2d = nn.Conv2d(in_channels, conv_dim, (1, 1))
+
+    linear_in_channels = conv_dim + 1  # expand for unit energy
+    self.linear = nn.Linear(linear_in_channels, out_channels)
+
+  def forward(self, actor_base_out: torch.Tensor,
+              origin_input_x: Dict[str, torch.Tensor]) -> torch.Tensor:
+    actor_base_out = self.conv2d(actor_base_out)
+
+    units_bast_out = []
+    for i in range(MAX_UNIT_NUM):
+      # select unit location features
+      unit_loc_key = f'unit_{i}_loc_0'
+      unit_loc = origin_input_x[unit_loc_key]
+      indices = torch.where(unit_loc > 0)
+
+      batch_indices, w_indices, h_indices = indices
+      assert len(batch_indices) == actor_base_out.shape[0]
+      selected_channels = actor_base_out[batch_indices, :, w_indices,
+                                         h_indices]
+
+      # and merge it with unit energy features
+      unit_energy_key = f'unit_{i}_energy_0'
+      unit_energy = origin_input_x[unit_energy_key][batch_indices, w_indices,
+                                                    h_indices].unsqueeze(1)
+      expanded_channels = torch.cat((selected_channels, unit_energy), dim=1)
+      units_bast_out.append(expanded_channels)
+
+    units_bast_out = torch.stack(units_bast_out, dim=1)
+    return self.linear(units_bast_out)
+
+
 class DictActor(nn.Module):
   "A dict of actors, each is MultiDiscrete of 1 dimention, with same number of actions."
 
@@ -302,6 +343,7 @@ class DictActor(nn.Module):
           key: space.shape
           for key, space in action_space.spaces.items()
       }
+
       raise ValueError(
           f"All action spaces must have 1 dimensions. Found: {act_space_ndims}"
       )
@@ -320,23 +362,15 @@ class DictActor(nn.Module):
 
     actors = dict()
     for key, space in self.action_space.spaces.items():
-      n_actions = space.shape[0]
+      # n_actions = space.shape[0]  # == MAX_UNIT_NUM
       action_dim = space.nvec.max()
+      actors[key] = TeamActor(in_channels, out_channels, action_dim)
 
-      conv2d = nn.Conv2d(in_channels, out_channels, (1, 1))
-      flatten = nn.Flatten(start_dim=1, end_dim=-1)
-      linear = nn.Linear(out_channels * MAP_SIZE * MAP_SIZE,
-                         n_actions * action_dim)
-      actor = nn.Sequential(conv2d, flatten, linear)
-
-      actors[key] = actor
     self.actors = nn.ModuleDict(actors)
 
-  def forward(self,
-              x: torch.Tensor,
-              actions_mask: Dict[str, torch.Tensor],
-              sample: bool,
-              max_grab_num=None) -> Tuple[torch.Tensor, torch.Tensor]:
+  def forward(self, x: torch.Tensor, actions_mask: Dict[str, torch.Tensor],
+              origin_input_x: Dict[str, torch.Tensor],
+              sample: bool) -> Tuple[torch.Tensor, torch.Tensor]:
     policy_logits_out = {}
     actions_out = {}
     for key, space in self.action_space.spaces.items():
@@ -344,7 +378,9 @@ class DictActor(nn.Module):
       action_dim = space.nvec.max()
 
       actor = self.actors[key]
-      logits = actor(x).view(-1, n_actions, action_dim)
+      logits = actor(x, origin_input_x)
+      assert logits.shape[1] == n_actions
+      assert logits.shape[2] == action_dim
 
       # print(key, type(actions_mask), actions_mask)
       aam = actions_mask[key]
@@ -469,8 +505,9 @@ class BasicActorCriticNetwork(nn.Module):
 
     base_out = self.base_model(x)
     policy_logits, actions = self.actor(self.actor_base(base_out),
-                                        sample=sample,
                                         actions_mask=actions_mask,
+                                        origin_input_x=x,
+                                        sample=sample,
                                         **actor_kwargs)
     baseline = self.baseline(self.baseline_base(base_out), baseline_extras)
     # print(baseline)
