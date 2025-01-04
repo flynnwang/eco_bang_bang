@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250103_baseline_extras_v0
+name: run_20250104_team_actor_v0
 
 
 ## WANDB params
@@ -15,7 +15,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: lux_s3_baseline_extras
+group: lux_s3_team_actor
 
 ## ENV params
 obs_space_kwargs: {}
@@ -37,7 +37,7 @@ discounting: 0.999
 model_arch: conv_model
 n_blocks: 4
 hidden_dim: 128
-base_out_channels: 32
+base_out_channels: 128
 embedding_dim: 32
 n_merge_layers: 1
 normalize: False
@@ -59,9 +59,9 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.0002
+entropy_cost: 0.001
 baseline_cost: 1.
-teacher_kl_cost: 0.001
+teacher_kl_cost: 0.002
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.9
@@ -69,8 +69,8 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-03/11-36-46/
-teacher_checkpoint_file: 000000000.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-04/07-55-01/
+teacher_checkpoint_file: 000000768.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -88,9 +88,6 @@ checkpoint_freq: 30
 sharing_strategy: file_system
 disable_wandb: False
 debug: False
-
-#disable_wandb: True
-#debug: True
 
 #load_dir: /home/flynnwang/runs/ebb/01-03/00-34-14/
 #checkpoint_file: 018985856.pt
