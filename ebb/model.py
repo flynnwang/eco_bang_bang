@@ -295,27 +295,28 @@ class TeamActor(nn.Module):
               origin_input_x: Dict[str, torch.Tensor]) -> torch.Tensor:
     actor_base_out = self.conv2d(actor_base_out)
 
-    units_bast_out = []
-    for i in range(MAX_UNIT_NUM):
-      # select unit location features
-      unit_loc_key = f'unit_{i}_loc_0'
-      unit_loc = origin_input_x[unit_loc_key]
-      indices = torch.where(unit_loc > 0)
+    # Gather all unit locations and energies
+    unit_locs = torch.stack(
+        [origin_input_x[f'unit_{i}_loc_0'] for i in range(MAX_UNIT_NUM)],
+        dim=1)  # (batch, MAX_UNIT_NUM, w, h)
+    unit_energies = torch.stack(
+        [origin_input_x[f'unit_{i}_energy_0'] for i in range(MAX_UNIT_NUM)],
+        dim=1)  # (batch, MAX_UNIT_NUM, w, h)
 
-      batch_indices, w_indices, h_indices = indices
-      assert len(batch_indices) == actor_base_out.shape[0]
-      selected_channels = actor_base_out[batch_indices, :, w_indices,
-                                         h_indices]
+    batch_indices, unit_indices, w_indices, h_indices = torch.where(
+        unit_locs > 0)
 
-      # and merge it with unit energy features
-      unit_energy_key = f'unit_{i}_energy_0'
-      unit_energy = origin_input_x[unit_energy_key][batch_indices, w_indices,
-                                                    h_indices].unsqueeze(1)
-      expanded_channels = torch.cat((selected_channels, unit_energy), dim=1)
-      units_bast_out.append(expanded_channels)
+    selected_channels = actor_base_out[batch_indices, :, w_indices,
+                                       h_indices]  # (selected_count, conv_dim)
+    selected_energies = unit_energies[batch_indices, unit_indices, w_indices,
+                                      h_indices].unsqueeze(
+                                          -1)  # (selected_count, 1)
+    expanded_channels = torch.cat((selected_channels, selected_energies),
+                                  dim=-1)  # (selected_count, conv_dim + 1)
 
-    units_bast_out = torch.stack(units_bast_out, dim=1)
-    return self.linear(units_bast_out)
+    x = self.linear(expanded_channels)
+    b = actor_base_out.shape[0]
+    return x.view(b, MAX_UNIT_NUM, self.out_channels)
 
 
 class DictActor(nn.Module):
