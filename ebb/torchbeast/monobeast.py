@@ -598,6 +598,8 @@ def learn(
             _match_observed_node_num)
         stats['Env']['match_visited_node_num'] = compute_match_mean_count(
             _match_visited_node_num)
+        stats['Env']['match_actionable_unit_num'] = compute_match_mean_count(
+            _step_actionable_unit_num)
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

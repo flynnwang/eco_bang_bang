@@ -154,13 +154,17 @@ class MapManager:
 
   def update_visible_and_observed(self, ob):
     self.visible = ob['sensor_mask'].astype(np.int32)
-    self.last_observed_num = self.observed.sum()
     self.observed |= self.visible
     self.observed |= anti_diag_sym(self.visible)
 
   @property
   def step_new_observed_num(self):
     return self.observed.sum() - self.last_observed_num
+
+  def update_counters(self):
+    self.last_observed_num = self.observed.sum()
+    self.last_relic_nb_visited = self.get_visited_relic_nb_num()
+    self.last_relic_node_num = self.is_relic_node.sum()
 
   def update(self, ob):
     # Match restarted
@@ -169,6 +173,7 @@ class MapManager:
 
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
+    self.update_counters()
 
     self.update_visible_and_observed(ob)
     self.update_cell_type(ob)
@@ -211,7 +216,6 @@ class MapManager:
     return self.get_visited_relic_nb_num() - self.last_relic_nb_visited
 
   def update_visited_node(self, unit_positions, ob):
-    self.last_relic_nb_visited = self.get_visited_relic_nb_num()
     self.visited[unit_positions[:, 0], unit_positions[:, 1]] = 1
 
   @property
@@ -219,8 +223,6 @@ class MapManager:
     return self.is_relic_node.sum() - self.last_relic_node_num
 
   def update_relic_node(self, ob):
-    self.last_relic_node_num = self.is_relic_node.sum()
-
     relic_nodes_mask = ob['relic_nodes_mask']
     relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
     self.is_relic_node[relic_nodes_positions[:, 0],
@@ -622,12 +624,19 @@ class LuxS3Env(gym.Env):
   def _convert_win_loss_reward(self, raw_obs):
 
     def _convert(mm, ob):
+      MIN_WARMUP_MATCH_STEP = 3
+
       r = 0
 
       # reward for open unobserved cells
       r_explore = 0
-      if mm.match_step > 0:
-        r_explore = mm.step_new_observed_num * 0.0001
+      if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        r_explore = mm.step_new_observed_num * 0.0001  # 24*24 * 0.0001 = 0.0576
+
+      # reward for visit relic neighbour nodes
+      r_visit_relic_nb = 0
+      if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.015
 
       team_wins = raw_obs[mm.player]['team_wins']
 
@@ -648,7 +657,7 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.1
 
-      r = r_explore + r_game + r_match
+      r = r_explore + +r_visit_relic_nb + r_game + r_match
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
