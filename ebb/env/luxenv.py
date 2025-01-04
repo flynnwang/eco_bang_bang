@@ -644,18 +644,18 @@ class LuxS3Env(gym.Env):
       r_game = 0
       if self.is_game_done(raw_obs, mm.player):
         if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 0.1
+          r_game = 0.2
         elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -0.1
+          r_game = -0.2
 
       # match end reward
       r_match = 0
-      # prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
-      # diff = team_wins - prev_team_wins
-      # if diff[mm.player_id] > 0:
-      # r_match = 0.01
-      # elif diff[mm.enemy_id] > 0:
-      # r_match = -0.01
+      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      diff = team_wins - prev_team_wins
+      if diff[mm.player_id] > 0:
+        r_match = 0.01
+      elif diff[mm.enemy_id] > 0:
+        r_match = -0.01
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match
       self._sum_r += abs(r)
@@ -708,8 +708,7 @@ class LuxS3Env(gym.Env):
       if energy < mm.unit_move_cost:
         continue
 
-      actions_mask[i][ACTION_CENTER] = 1  # can always stay
-
+      can_move = False
       # has enough energy to move
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
@@ -720,6 +719,11 @@ class LuxS3Env(gym.Env):
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
         actions_mask[i][k] = 1
+        can_move = True
+
+      # Can stay if units can move, otherwise
+      if can_move:
+        actions_mask[i][ACTION_CENTER] = 1  # can always stay
 
     return {UNITS_ACTION: actions_mask}
 
