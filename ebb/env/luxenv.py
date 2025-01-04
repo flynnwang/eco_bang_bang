@@ -631,7 +631,7 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.0001  # 24*24 * 0.0001 = 0.0576
+        r_explore = mm.step_new_observed_num * 0.0003  # 24*24 * 0.0001 = 0.0576
 
       # reward for visit relic neighbour nodes
       r_visit_relic_nb = 0
