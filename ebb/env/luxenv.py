@@ -631,12 +631,12 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.0003  # 24*24 * 0.0001 = 0.0576
+        r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
 
       # reward for visit relic neighbour nodes
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.015
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
 
       team_wins = raw_obs[mm.player]['team_wins']
 
@@ -644,18 +644,18 @@ class LuxS3Env(gym.Env):
       r_game = 0
       if self.is_game_done(raw_obs, mm.player):
         if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 1
+          r_game = 0.1
         elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -1
+          r_game = -0.1
 
       # match end reward
       r_match = 0
-      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
-      diff = team_wins - prev_team_wins
-      if diff[mm.player_id] > 0:
-        r_match = 0.1
-      elif diff[mm.enemy_id] > 0:
-        r_match = -0.1
+      # prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      # diff = team_wins - prev_team_wins
+      # if diff[mm.player_id] > 0:
+      # r_match = 0.01
+      # elif diff[mm.enemy_id] > 0:
+      # r_match = -0.01
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match
       self._sum_r += abs(r)
