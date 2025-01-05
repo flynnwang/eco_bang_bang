@@ -318,7 +318,8 @@ class MapManager:
 
   def get_relic_nb_nodes_to_visit(self):
     to_visit = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    to_visit[(self.visited == 0) & (self.is_relic_neighbour > 0)] = 1
+    sym_visited = self.visited | anti_diag_sym(self.visited)
+    to_visit[(sym_visited == 0) & (self.is_relic_neighbour > 0)] = 1
     return to_visit
 
   def get_must_be_relic_nodes(self):
@@ -667,7 +668,7 @@ class LuxS3Env(gym.Env):
         r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
 
       # reward for units sit on hidden relic node.
-      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.0001
+      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
 
       # game end reward
       r_game = 0
