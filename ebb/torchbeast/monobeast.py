@@ -614,6 +614,16 @@ def learn(
             'match_total_found_relic_nodes_num'] = compute_match_done_sum(
                 found_relics_num)
 
+        relics_nb_num = batch["info"]['_match_total_relic_nb_nodes_num']
+        visited_relics_nb_num = batch["info"][
+            '_match_visited_relic_nb_nodes_num']
+        stats['Env'][
+            'match_total_relic_nb_nodes_num'] = compute_match_done_sum(
+                relics_nb_num)
+        stats['Env'][
+            'match_total_visited_relic_nb_nodes_num'] = compute_match_done_sum(
+                visited_relics_nb_num)
+
       optimizer.zero_grad()
       if flags.use_mixed_precision:
         # https://wandb.ai/wandb_fc/tips/reports/How-to-Use-GradScaler-in-PyTorch--VmlldzoyMTY5MDA5

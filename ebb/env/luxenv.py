@@ -803,6 +803,9 @@ class LuxS3Env(gym.Env):
           env_state.relic_nodes_map_weights > 0).sum()
       info['_match_total_found_relic_nodes_num'] = (mm.team_point_mass
                                                     >= TEAM_POINT_MASS).sum()
+      info['_match_total_relic_nb_nodes_num'] = (mm.is_relic_neighbour
+                                                 > 0).sum()
+      info['_match_visited_relic_nb_nodes_num'] = mm.get_visited_relic_nb_num()
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
