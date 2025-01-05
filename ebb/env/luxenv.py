@@ -216,7 +216,13 @@ class MapManager:
     return self.get_visited_relic_nb_num() - self.last_relic_nb_visited
 
   def update_visited_node(self, unit_positions, ob):
-    self.visited[unit_positions[:, 0], unit_positions[:, 1]] = 1
+    self.unit_positions = np.zeros((MAP_SHAPE2), dtype=np.bool)
+    self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
+    self.visited[self.unit_positions] = 1
+
+  def count_on_relic_nodes_units(self, env_state):
+    return ((env_state.relic_nodes_map_weights > 0) &
+            (self.unit_positions)).sum()
 
   @property
   def step_new_found_relic_node_num(self):
@@ -637,22 +643,24 @@ class LuxS3Env(gym.Env):
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
 
-      # reward for visit relic neighbour nodes
+      # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         # n_hidden_relic = env_state.relic_nodes_mask.sum()
         # wt = 0.2 / (n_hidden_relic * 25)
         r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
 
-      team_wins = raw_obs[mm.player]['team_wins']
+      # reward for units sit on hidden relic node.
+      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.0001
 
       # game end reward
       r_game = 0
+      team_wins = raw_obs[mm.player]['team_wins']
       if self.is_game_done(raw_obs, mm.player):
         if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 0.2
+          r_game = 0.1
         elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -0.2
+          r_game = -0.1
 
       # match end reward
       r_match = 0
@@ -663,7 +671,7 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.01
 
-      r = r_explore + +r_visit_relic_nb + r_game + r_match
+      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
