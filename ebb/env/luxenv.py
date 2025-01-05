@@ -41,7 +41,11 @@ OB = OrderedDict([
     ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+
+    # use this to indicate nodes of unvisited relic cells (and its neighbour)
     ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # use this to indicate the hidden place of relc nodes.
+    #
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -312,6 +316,16 @@ class MapManager:
       self.team_point_mass[anti_diag_sym(team_point_candidate)] += (delta /
                                                                     num)
 
+  def get_relic_nb_nodes_to_visit(self):
+    to_visit = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    to_visit[(self.visited == 0) & (self.is_relic_neighbour > 0)] = 1
+    return to_visit
+
+  def get_must_be_relic_nodes(self):
+    relic_nodes = -np.ones((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
+    return relic_nodes
+
 
 class LuxS3Env(gym.Env):
 
@@ -514,11 +528,13 @@ class LuxS3Env(gym.Env):
     o['observed'] = mm.observed.astype(np.float32)
     o['visited'] = mm.visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
-    o['is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
 
-    team_point_prob = mm.team_point_mass.copy()
-    team_point_prob[mm.is_relic_neighbour == 0] = NON_TEAM_POINT_MASS
-    o['team_point_prob'] = sigmoid(team_point_prob / 20) * 2 - 1
+    # cells need a visit
+    o['is_relic_neighbour'] = mm.get_relic_nb_nodes_to_visit()
+
+    # places need unit stay
+    o['team_point_prob'] = mm.get_must_be_relic_nodes()
+
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
     is_player0 = -1
