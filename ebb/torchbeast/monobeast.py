@@ -524,6 +524,9 @@ def learn(
       def compute_match_mean_count(v):
         return v[match_played_mask > 0].to(torch.float).mean().detach().item()
 
+      def compute_match_done_sum(v):
+        return v[match_played_mask > 0].to(torch.float).sum().detach().item()
+
       def sum_non_nan(v):
         return v[~v.isnan()].sum().detach().item()
 
@@ -600,6 +603,16 @@ def learn(
             _match_visited_node_num)
         stats['Env']['match_actionable_unit_num'] = compute_match_mean_count(
             _step_actionable_unit_num)
+
+        hidden_relics_num = batch["info"][
+            '_match_total_hidden_relic_nodes_num']
+        found_relics_num = batch["info"]['_match_total_found_relic_nodes_num']
+        stats['Env'][
+            'match_total_hidden_relic_nodes_num'] = compute_match_done_sum(
+                hidden_relics_num)
+        stats['Env'][
+            'match_total_found_relic_nodes_num'] = compute_match_done_sum(
+                found_relics_num)
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

@@ -352,7 +352,7 @@ class LuxS3Env(gym.Env):
 
     self.prev_raw_obs = raw_obs
     done = False
-    reward = self._convert_reward(raw_obs, info)
+    reward = self._convert_reward(raw_obs, final_state)
     self._actions_taken_mask = [{
         UNITS_ACTION:
         np.zeros(EXT_ACTION_SHAPE, dtype=bool)
@@ -366,7 +366,11 @@ class LuxS3Env(gym.Env):
     }, {
         UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), dtype=int)
     }]
-    info = self.get_info(model_action, raw_obs, reward, done)
+    info = self.get_info(model_action,
+                         raw_obs,
+                         reward,
+                         done,
+                         env_state=final_state)
 
     return self.observation(raw_obs, final_state), reward, done, info
 
@@ -419,8 +423,8 @@ class LuxS3Env(gym.Env):
     done = self.is_game_done(raw_obs, PLAYER0)
 
     obs = self.observation(raw_obs, final_state)
-    reward = self._convert_reward(raw_obs, info)
-    info = self.get_info(model_action, raw_obs, reward, done)
+    reward = self._convert_reward(raw_obs, final_state)
+    info = self.get_info(model_action, raw_obs, reward, done, final_state)
 
     self.prev_raw_obs = raw_obs
     return obs, reward, done, info
@@ -621,7 +625,7 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
-  def _convert_win_loss_reward(self, raw_obs):
+  def _convert_win_loss_reward(self, raw_obs, env_state):
 
     def _convert(mm, ob):
       MIN_WARMUP_MATCH_STEP = 3
@@ -636,6 +640,8 @@ class LuxS3Env(gym.Env):
       # reward for visit relic neighbour nodes
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        # n_hidden_relic = env_state.relic_nodes_mask.sum()
+        # wt = 0.2 / (n_hidden_relic * 25)
         r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
 
       team_wins = raw_obs[mm.player]['team_wins']
@@ -669,7 +675,7 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
-  def _convert_reward(self, raw_obs, info):
+  def _convert_reward(self, raw_obs, env_state):
     """Use the match win-loss reward for now."""
     assert self.reward_schema in ('game_win_loss', 'relic_boosted_match_score',
                                   'exploration_reward')
@@ -685,7 +691,7 @@ class LuxS3Env(gym.Env):
       reward = self._convert_exploration_reward(raw_obs)
 
     if self.reward_schema == 'game_win_loss':
-      reward = self._convert_win_loss_reward(raw_obs)
+      reward = self._convert_win_loss_reward(raw_obs, env_state)
 
     if SINGLE_PLAER:
       return [reward[0]]  # single player
@@ -744,7 +750,12 @@ class LuxS3Env(gym.Env):
       mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
-  def get_info(self, model_action, raw_obs, reward, done=False):
+  def get_info(self,
+               model_action,
+               raw_obs,
+               reward,
+               done=False,
+               env_state=None):
 
     def count_actions(info, action):
       action_count = {a: 0 for a in ACTION_ID_TO_NAME.values()}
@@ -766,7 +777,8 @@ class LuxS3Env(gym.Env):
 
       info['_unit_total_energy'] = total_energy
 
-    def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward, mm):
+    def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward, mm,
+                  env_state):
       info = {}
 
       info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
@@ -786,6 +798,11 @@ class LuxS3Env(gym.Env):
 
       info['_match_observed_node_num'] = mm.observed.sum()
       info['_match_visited_node_num'] = mm.visited.sum()
+
+      info['_match_total_hidden_relic_nodes_num'] = (
+          env_state.relic_nodes_map_weights > 0).sum()
+      info['_match_total_found_relic_nodes_num'] = mm.get_visited_relic_nb_num(
+      )
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
@@ -819,6 +836,6 @@ class LuxS3Env(gym.Env):
     else:
       return [
           _get_info(model_action[i], raw_obs[player],
-                    self.prev_raw_obs[player], reward[i], self.mms[i])
-          for i, player in enumerate([PLAYER0, PLAYER1])
+                    self.prev_raw_obs[player], reward[i], self.mms[i],
+                    env_state) for i, player in enumerate([PLAYER0, PLAYER1])
       ]
