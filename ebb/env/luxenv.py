@@ -35,7 +35,7 @@ OB = OrderedDict([
     ('enemy_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
-    # Map info
+    # Map reset
     ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -97,7 +97,7 @@ def anti_diag_sym(A):
 
 class MapManager:
 
-  MAX_PAST_OB_NUM = 1
+  MAX_PAST_OB_NUM = 2
 
   def __init__(self, player, env_cfg):
     self.player_id = int(player[-1])
@@ -169,6 +169,8 @@ class MapManager:
     # Match restarted
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
+      # self.visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+      # self.observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
 
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
@@ -528,7 +530,9 @@ class LuxS3Env(gym.Env):
     o['cell_type'] = mm.cell_type.copy()
     o['visible'] = mm.visible.astype(np.float32)
     o['observed'] = mm.observed.astype(np.float32)
-    o['visited'] = mm.visited.astype(np.float32)
+    # o['visited'] = mm.visited.astype(np.float32)
+    # o['observed'] = np.zeros(MAP_SHAPE2)
+    o['visited'] = np.zeros(MAP_SHAPE2)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit
@@ -656,6 +660,47 @@ class LuxS3Env(gym.Env):
 
   def _convert_win_loss_reward(self, raw_obs, env_state):
 
+    def get_manhatten_dist_to_relic_relic(mm):
+      # get non-occupied relic node positions
+      relic_nodes = mm.get_must_be_relic_nodes()
+      non_occ_relic_positions = np.argwhere((relic_nodes == 1)
+                                            & (mm.unit_positions == False))
+
+      v, n = 0, 0
+      if len(non_occ_relic_positions) > 0:
+        for i in range(MAX_UNIT_NUM):
+          mask, pos, _ = mm.get_unit_info(mm.player_id, i, t=0)
+          if not mask:
+            continue
+          # ignore unit on relic node
+          if relic_nodes[pos[0]][pos[1]] > 0:
+            continue
+
+          mask, pos2, _ = mm.get_unit_info(mm.player_id, i, t=1)
+          if not mask:
+            continue
+
+          n += 1
+          if not np.array_equal(pos, pos2):
+            d1, d2 = 9999, 9999
+            for i, relic_pos in enumerate(non_occ_relic_positions):
+              md = manhatten_distance(pos, relic_pos)
+              d1 = min(d1, md)
+
+              md = manhatten_distance(pos2, relic_pos)
+              d2 = min(d2, md)
+
+            if d1 < d2:
+              v += 1
+            elif d1 > d2:
+              v -= 1
+
+      if n == 0:
+        n = 1
+      # if v != 0:
+      # print(f"v={v}, n={n}")
+      return v / n
+
     def _convert(mm, ob):
       MIN_WARMUP_MATCH_STEP = 3
 
@@ -664,14 +709,14 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.00001  # 24*24 * 0.001 = 0.576
+        r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         # n_hidden_relic = env_state.relic_nodes_mask.sum()
         # wt = 0.2 / (n_hidden_relic * 25)
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0003  # 6 * 25 * 0.001 = 0.15
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
 
       # reward for units sit on hidden relic node.
       r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
@@ -681,24 +726,30 @@ class LuxS3Env(gym.Env):
       team_wins = raw_obs[mm.player]['team_wins']
       if self.is_game_done(raw_obs, mm.player):
         if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 0.05
+          r_game = 0.01
         elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -0.05
+          r_game = -0.01
 
       # match end reward
       r_match = 0
       prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
-        r_match = 0.05
+        r_match = 0.01
       elif diff[mm.enemy_id] > 0:
-        r_match = -0.05
+        r_match = -0.01
 
-      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
+      r_dist = 0
+      if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        r_dist = get_manhatten_dist_to_relic_relic(mm) * 0.001
+        # if r_dist != 0:
+        # print(
+        # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
+        # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}, r_dist={r_dist:.5f}'
+        # )
+
+      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dist
       self._sum_r += abs(r)
-      # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}')
       return r
 
     return [
