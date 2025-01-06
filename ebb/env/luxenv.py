@@ -359,7 +359,12 @@ class LuxS3Env(gym.Env):
     else:
       self._seed = seed
     self._sum_r = 0.0
+
+    # from luxai_s3.params import EnvParams
+    # env_params = EnvParams(max_steps_in_match=500)
+
     raw_obs, info = self.game.reset(seed=self._seed)
+    # options={'params': env_params})
     final_state = info['state']
 
     env_cfg = info['params']
@@ -659,17 +664,17 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
+        r_explore = mm.step_new_observed_num * 0.00001  # 24*24 * 0.001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         # n_hidden_relic = env_state.relic_nodes_mask.sum()
         # wt = 0.2 / (n_hidden_relic * 25)
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0003  # 6 * 25 * 0.001 = 0.15
 
       # reward for units sit on hidden relic node.
-      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.0003
+      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
 
       # game end reward
       r_game = 0
