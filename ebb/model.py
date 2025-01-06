@@ -288,34 +288,28 @@ class TeamActor(nn.Module):
     # self.flatten = nn.Flatten(start_dim=1, end_dim=-1)
     self.conv2d = nn.Conv2d(in_channels, conv_dim, (1, 1))
 
-    linear_in_channels = conv_dim + 1  # expand for unit energy
+    linear_in_channels = conv_dim + N_TEAM_ACTIOR_EXTRA_DIM  # expand for unit features
     self.linear = nn.Linear(linear_in_channels, out_channels)
 
   def forward(self, actor_base_out: torch.Tensor,
               origin_input_x: Dict[str, torch.Tensor]) -> torch.Tensor:
     actor_base_out = self.conv2d(actor_base_out)
 
-    # Gather all unit locations and energies
-    unit_locs = torch.stack(
-        [origin_input_x[f'unit_{i}_loc_0'] for i in range(MAX_UNIT_NUM)],
-        dim=1)  # (batch, MAX_UNIT_NUM, w, h)
-    unit_energies = torch.stack(
-        [origin_input_x[f'unit_{i}_energy_0'] for i in range(MAX_UNIT_NUM)],
-        dim=1)  # (batch, MAX_UNIT_NUM, w, h)
+    b = actor_base_out.shape[0]
+    units_info = origin_input_x['_units_info']
+    w_indices = units_info[:, :, 0]  # (b, 16)
+    h_indices = units_info[:, :, 1]  # (b, 16)
 
-    batch_indices, unit_indices, w_indices, h_indices = torch.where(
-        unit_locs > 0)
+    # normalize the unit energy feature
+    unit_energies = units_info[:, :, (2, )] / MAX_UNIT_ENERGY  # (b, 16, 1)
 
+    batch_indices = torch.arange(b).unsqueeze(1)
     selected_channels = actor_base_out[batch_indices, :, w_indices,
-                                       h_indices]  # (selected_count, conv_dim)
-    selected_energies = unit_energies[batch_indices, unit_indices, w_indices,
-                                      h_indices].unsqueeze(
-                                          -1)  # (selected_count, 1)
-    expanded_channels = torch.cat((selected_channels, selected_energies),
-                                  dim=-1)  # (selected_count, conv_dim + 1)
+                                       h_indices]  # (b, 16, in_channels)
+    expanded_channels = torch.cat((selected_channels, unit_energies),
+                                  dim=-1)  # (b, 16, conv_dim + 1)
 
     x = self.linear(expanded_channels)
-    b = actor_base_out.shape[0]
     return x.view(b, MAX_UNIT_NUM, self.out_channels)
 
 

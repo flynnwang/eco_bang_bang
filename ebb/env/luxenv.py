@@ -50,29 +50,24 @@ OB = OrderedDict([
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
+    # units team map
+    ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+
     # Extra baseline mode feature
     ("_baseline_extras",
      spaces.Box(
          np.zeros((1, N_BASELINE_EXTRA_DIM)) - 1,
          np.zeros((1, N_BASELINE_EXTRA_DIM)) + 1)),
+
+    # Per Units info
+    ('_units_info',
+     spaces.MultiDiscrete([[(MAP_WIDTH, MAP_HEIGHT, MAX_UNIT_ENERGY)] *
+                           MAX_UNIT_NUM])),  # shape: (1, 16, 3)
 ])
 
-
-# Unit info
-def _add_unit_info(prefix, i, max_time):
-  for t in range(max_time):
-    OB[f'{prefix}_{i}_loc_{t}'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
-    OB[f'{prefix}_{i}_energy_{t}'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
-
-
-def _add_all_unit_info(max_time=1):
-  for i in range(MAX_UNIT_NUM):
-    _add_unit_info('unit', i, max_time)
-  for i in range(MAX_UNIT_NUM):
-    _add_unit_info('enemy', i, max_time)
-
-
-_add_all_unit_info()
 OBSERVATION_SPACE = spaces.Dict(OB)
 
 
@@ -544,33 +539,38 @@ class LuxS3Env(gym.Env):
       is_player0 = 1
     o['is_team_born_cell'] = scalar(is_player0, 1)
 
-    def add_unit_feature(prefix, player_id, i, t):
-      mask, pos, energy = mm.get_unit_info(player_id, i, t)
+    def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
-      if mask:
-        # pid=1, pos=15, 8; energy=-12, mask=True
-        # assert MAP_WIDTH > pos[
-        # 0] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
-        # assert MAP_HEIGHT > pos[
-        # 1] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
-        # assert energy >= 0, f"step={mm.game_step}, pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
-        # Why energy is negative
-        unit_energy[pos[0]][pos[1]] = energy / MAX_UNIT_ENERGY
+      units_info = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
+      for i in range(MAX_UNIT_NUM):
+        mask, pos, energy = mm.get_unit_info(player_id, i, t)
+        if mask:
+          # assert MAP_WIDTH > pos[
+          # 0] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
+          # assert MAP_HEIGHT > pos[
+          # 1] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
+          # assert energy >= 0, f"step={mm.game_step}, pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
+          # Why energy is negative
+          unit_energy[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
+                                          MAX_UNIT_NUM)
 
-      # Assume position is always present
-      unit_pos[pos[0]][pos[1]] = 1
+        # Assume position is always present
+        unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
 
-      o[f'{prefix}_{i}_loc_{t}'] = unit_pos
-      o[f'{prefix}_{i}_energy_{t}'] = unit_energy
+        # add units info
+        units_info[i][0] = pos[0]
+        units_info[i][1] = pos[1]
+        units_info[i][2] = np.int32(energy) if mask else 0
+
+      o[f'{prefix}_loc_t{t}'] = unit_pos
+      o[f'{prefix}_energy_t{t}'] = unit_energy
+      if prefix in ('units', ):
+        o[f'_{prefix}_info'] = units_info
 
     # Unit info
-    for i in range(MAX_UNIT_NUM):
-      add_unit_feature('unit', mm.player_id, i, t=0)
-
-    for i in range(MAX_UNIT_NUM):
-      add_unit_feature('enemy', mm.enemy_id, i, t=0)
-
+    add_unit_feature('units', mm.player_id, t=0)
+    add_unit_feature('enemy', mm.enemy_id, t=0)
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
     assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
