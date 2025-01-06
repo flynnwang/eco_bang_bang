@@ -846,17 +846,11 @@ class LuxS3Env(gym.Env):
     """Should ignore all the actions that can not be performed. Compute this
     before env.step() to make use of mm from prev step."""
     mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+    available_action_mask = self._get_available_action_mask(mm)[UNITS_ACTION]
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
-      if not unit_mask:
-        continue
-
-      # If units has run out of energy, it can only move_center
-      if energy < mm.unit_move_cost:
-        continue
-
-      mask[i][a] = 1
+      if np.any(available_action_mask[i]):
+        mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
   def get_info(self,
