@@ -544,8 +544,8 @@ def create_model(flags,
   reward_spec = None
   if flags.reward_schema == 'game_win_loss':
     reward_spec = RewardSpec(
-        reward_min=-1,
-        reward_max=+1,
+        reward_min=-10,
+        reward_max=+10,
         zero_sum=False,
     )
   if flags.reward_schema == 'relic_boosted_match_score':

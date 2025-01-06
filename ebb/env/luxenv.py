@@ -37,18 +37,17 @@ OB = OrderedDict([
 
     # Map reset
     ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
-    ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # use this to indicate nodes of unvisited relic cells (and its neighbour)
     ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
-    #
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # units team map
     ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -93,6 +92,11 @@ def anti_diag_sym(A):
   A = np.fliplr(A)
   A = A.T
   return A
+
+
+def anti_diag_sym_i(v):
+  i, j = v
+  return MAP_WIDTH - 1 - j, MAP_HEIGHT - 1 - j
 
 
 class MapManager:
@@ -165,7 +169,27 @@ class MapManager:
     self.last_relic_nb_visited = self.get_visited_relic_nb_num()
     self.last_relic_node_num = self.is_relic_node.sum()
 
+  def mirror(self, ob):
+
+    def mirror_positions(positions):
+      for i, v in enumerate(positions):
+        positions[i][:] = anti_diag_sym_i(v)
+
+    mirror_positions(ob['units']['position'][0])
+    mirror_positions(ob['units']['position'][1])
+
+    ob['sensor_mask'] = anti_diag_sym(ob['sensor_mask'])
+
+    mf = ob['map_features']
+    mf['energy'] = anti_diag_sym(mf['energy'])
+    mf['tile_type'] = anti_diag_sym(mf['tile_type'])
+
+    mirror_positions(ob['relic_nodes'])
+
   def update(self, ob):
+    if self.player_id == 1:
+      self.mirror(ob)
+
     # Match restarted
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
@@ -320,7 +344,7 @@ class MapManager:
     return to_visit
 
   def get_must_be_relic_nodes(self):
-    relic_nodes = -np.ones((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    relic_nodes = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
     return relic_nodes
 
@@ -407,8 +431,12 @@ class LuxS3Env(gym.Env):
     for i in range(MAX_UNIT_NUM):
       uid = mm.unit_idx_to_id[i]
 
+      a = np.int32(action[i][0])  # unbox [a] => a
+      if mm.player_id == 1:
+        a = MIRRORED_ACTION[a]
+
       # Set the unit action based on its real unit info.
-      unit_actions[uid][0] = np.int32(action[i])
+      unit_actions[uid][0] = a
     return unit_actions
 
   def compute_actions_taken(self, model_actions):
@@ -528,12 +556,9 @@ class LuxS3Env(gym.Env):
 
     # Map info
     o['cell_type'] = mm.cell_type.copy()
-    o['visible'] = mm.visible.astype(np.float32)
-    o['observed'] = mm.observed.astype(np.float32)
-    # o['visited'] = mm.visited.astype(np.float32)
-    # o['observed'] = np.zeros(MAP_SHAPE2)
-    o['visited'] = np.zeros(MAP_SHAPE2)
-    o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
+    # o['visible'] = mm.visible.astype(np.float32)
+    # o['observed'] = mm.observed.astype(np.float32)
+    # o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit
     o['is_relic_neighbour'] = mm.get_relic_nb_nodes_to_visit()
@@ -543,10 +568,10 @@ class LuxS3Env(gym.Env):
 
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
-    is_player0 = -1
-    if mm.player_id == 0:
-      is_player0 = 1
-    o['is_team_born_cell'] = scalar(is_player0, 1)
+    # is_player0 = -1
+    # if mm.player_id == 0:
+    # is_player0 = 1
+    # o['is_team_born_cell'] = scalar(is_player0, 1)
 
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
@@ -583,6 +608,7 @@ class LuxS3Env(gym.Env):
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
     assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
+
     # expand all feature map with dummy dim 1
     o = {
         k: np.expand_dims(v, 0)
@@ -708,18 +734,18 @@ class LuxS3Env(gym.Env):
 
       # reward for open unobserved cells
       r_explore = 0
-      if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
+      if mm.match_step > MIN_WARMUP_MATCH_STEP and mm.game_step <= 200:
+        r_explore = mm.step_new_observed_num * 0.01  # 24*24 * 0.001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         # n_hidden_relic = env_state.relic_nodes_mask.sum()
         # wt = 0.2 / (n_hidden_relic * 25)
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.01  # 6 * 25 * 0.001 = 0.15
 
       # reward for units sit on hidden relic node.
-      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
+      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.01
 
       # game end reward
       r_game = 0
@@ -739,16 +765,17 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.01
 
-      r_dist = 0
-      if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_dist = get_manhatten_dist_to_relic_relic(mm) * 0.001
-        # if r_dist != 0:
-        # print(
-        # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-        # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}, r_dist={r_dist:.5f}'
-        # )
+      # r_dist = 0
+      # if mm.match_step > MIN_WARMUP_MATCH_STEP:
+      # r_dist = get_manhatten_dist_to_relic_relic(mm) * 0.001
+      # if r_dist != 0:
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
+      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}, r_dist={r_dist:.5f}'
+      # )
 
-      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dist
+      # r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dist
+      r = r_explore + +r_visit_relic_nb + r_team_point
       self._sum_r += abs(r)
       return r
 
