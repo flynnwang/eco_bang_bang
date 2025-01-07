@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250107_move_center_on_relic_node_only_zero_0.0003
+name: run_20250108_mirror_r0
 
 r_new_observed: 0.0003
 r_visit_relic_nb: 0.001
@@ -21,7 +21,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reverted
+group: luxs3_action_mirror
 
 ## ENV params
 obs_space_kwargs: {}
