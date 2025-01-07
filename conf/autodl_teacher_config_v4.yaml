@@ -6,9 +6,9 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250107_reverted_move_center_on_relic_node_only
+name: run_20250107_move_center_on_relic_node_only_zero_0.0003
 
-r_new_observed: 0.001
+r_new_observed: 0.0003
 r_visit_relic_nb: 0.001
 r_team_point: 0.0003
 r_dead_units: 0
@@ -75,10 +75,10 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-06/14-50-31/
-teacher_checkpoint_file: 047202176_weights.pt
-#teacher_load_dir: /home/flynnwang/runs/ebb/01-07/09-05-35/
-#teacher_checkpoint_file: 018604544_weights.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-06/14-50-31/
+#teacher_checkpoint_file: 047202176_weights.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-07/23-58-22/
+teacher_checkpoint_file: 000000000_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
