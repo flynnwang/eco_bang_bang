@@ -753,9 +753,9 @@ class LuxS3Env(gym.Env):
         actions_mask[i][k] = 1
         can_move = True
 
-      # Can stay if units can move, otherwise
-      if can_move:
-        actions_mask[i][ACTION_CENTER] = 1  # can always stay
+      # Can only stay on hidden relic node
+      if mm.team_point_mass[pos[0]][pos[1]] > 0:
+        actions_mask[i][ACTION_CENTER] = 1
 
     return {UNITS_ACTION: actions_mask}
 
