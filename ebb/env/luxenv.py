@@ -658,7 +658,7 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
+        r_explore = mm.step_new_observed_num * 0.0001  # 24*24 * 0.001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
@@ -753,7 +753,7 @@ class LuxS3Env(gym.Env):
         can_move = True
 
       # Can only stay on hidden relic node
-      if mm.team_point_mass[pos[0]][pos[1]] > 0:
+      if mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL:
         actions_mask[i][ACTION_CENTER] = 1
 
     return {UNITS_ACTION: actions_mask}
