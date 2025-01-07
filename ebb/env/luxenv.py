@@ -669,7 +669,14 @@ class LuxS3Env(gym.Env):
         r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
 
       # reward for units sit on hidden relic node.
-      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.0003
+      r_team_point = 0
+      if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        team_point = ob['team_points'][mm.player_id]
+        prev_team_point = self.prev_raw_obs[mm.player]['team_points'][
+            mm.player_id]
+        r_team_point = (team_point - prev_team_point) * 0.0005
+        assert r_team_point >= 0
+      # r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.0007
 
       # game end reward
       r_game = 0
@@ -689,7 +696,8 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.05
 
-      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
+      # r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
+      r = r_explore + +r_visit_relic_nb + r_team_point
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
@@ -763,17 +771,11 @@ class LuxS3Env(gym.Env):
     """Should ignore all the actions that can not be performed. Compute this
     before env.step() to make use of mm from prev step."""
     mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+    available_action_mask = self._get_available_action_mask(mm)[UNITS_ACTION]
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
-      if not unit_mask:
-        continue
-
-      # If units has run out of energy, it can only move_center
-      if energy < mm.unit_move_cost:
-        continue
-
-      mask[i][a] = 1
+      if np.any(available_action_mask[i]):
+        mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
   def get_info(self,
