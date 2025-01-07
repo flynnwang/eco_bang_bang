@@ -97,7 +97,7 @@ def anti_diag_sym(A):
 
 class MapManager:
 
-  MAX_PAST_OB_NUM = 1
+  MAX_PAST_OB_NUM = 2
 
   def __init__(self, player, env_cfg):
     self.player_id = int(player[-1])
@@ -318,9 +318,25 @@ class MapManager:
     return to_visit
 
   def get_must_be_relic_nodes(self):
-    relic_nodes = -np.ones((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    relic_nodes = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
     return relic_nodes
+
+  def count_dead_units(self):
+    c = 0
+    for i in range(MAX_UNIT_NUM):
+      mask, pos2, energy2 = self.get_unit_info(self.player_id, i, t=1)
+      if not mask:
+        continue
+
+      mask, pos, energy = self.get_unit_info(self.player_id, i, t=0)
+      if not mask:
+        continue
+
+      if (energy == 0 and energy2 > 0
+          and self.team_point_mass[pos[0]][pos[1]] <= 0):
+        c += 1
+    return c
 
 
 class LuxS3Env(gym.Env):
@@ -659,7 +675,7 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.001  # 24*24 * 0.001 = 0.576
+        r_explore = mm.step_new_observed_num * 0.0001  # 24*24 * 0.0001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
@@ -696,8 +712,10 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.05
 
+      r_dead_units = mm.count_dead_units() * -0.0002
+
       # r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
-      r = r_explore + +r_visit_relic_nb + r_team_point
+      r = r_explore + r_visit_relic_nb + r_team_point + r_dead_units
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
