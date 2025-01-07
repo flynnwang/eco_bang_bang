@@ -97,7 +97,9 @@ def anti_diag_sym(A):
 
 def anti_diag_sym_i(v):
   i, j = v
-  return MAP_WIDTH - 1 - j, MAP_HEIGHT - 1 - j
+  if i == -1 or j == -1:
+    return -1, -1
+  return MAP_WIDTH - 1 - j, MAP_HEIGHT - 1 - i
 
 
 class MapManager:
@@ -174,7 +176,7 @@ class MapManager:
 
     def mirror_positions(positions):
       for i, v in enumerate(positions):
-        positions[i][:] = anti_diag_sym_i(v)
+        positions[i] = anti_diag_sym_i(v)
 
     mirror_positions(ob['units']['position'][0])
     mirror_positions(ob['units']['position'][1])
