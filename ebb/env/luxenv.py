@@ -334,9 +334,18 @@ class MapManager:
       if not mask:
         continue
 
-      if (energy == 0 and energy2 > 0
+      if (energy <= 0 and energy2 > 0
           and self.team_point_mass[pos[0]][pos[1]] <= 0):
         c += 1
+
+        # if energy < 0:
+        # print(
+        # f"step={self.game_step}, id={i}, cur_pos={pos}, prev_pos={pos2}, e0={energy}, prev_e={energy2}"
+        # )
+      # try:
+      # assert energy >= 0
+      # except Exception as e:
+      # __import__('ipdb').set_trace()
     return c
 
 
@@ -677,7 +686,7 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.1  # 24*24 * 0.0001 = 0.576
+        r_explore = mm.step_new_observed_num * 0.5  # 24*24 * 0.0001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
@@ -710,19 +719,20 @@ class LuxS3Env(gym.Env):
       r_game = 0
       if self.is_game_done(raw_obs, mm.player):
         if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 100
+          r_game = 30
         elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -100
+          r_game = -30
 
       d = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         d = mm.count_dead_units()
 
-      r_dead_units = d * -5
+      r_dead_units = d * -3
 
       # r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
       # r = r_explore + r_visit_relic_nb + r_team_point + r_dead_units
-      r = (r_explore + r_visit_relic_nb + r_team_point + r_dead_units) / 10000
+      r = (r_explore + r_visit_relic_nb + r_team_point + r_dead_units +
+           r_game + r_match) / 10000
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
