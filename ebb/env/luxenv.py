@@ -95,6 +95,11 @@ def anti_diag_sym(A):
   return A
 
 
+def anti_diag_sym_i(v):
+  i, j = v
+  return MAP_WIDTH - 1 - j, MAP_HEIGHT - 1 - j
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 1
@@ -165,10 +170,30 @@ class MapManager:
     self.last_relic_nb_visited = self.get_visited_relic_nb_num()
     self.last_relic_node_num = self.is_relic_node.sum()
 
+  def mirror(self, ob):
+
+    def mirror_positions(positions):
+      for i, v in enumerate(positions):
+        positions[i][:] = anti_diag_sym_i(v)
+
+    mirror_positions(ob['units']['position'][0])
+    mirror_positions(ob['units']['position'][1])
+
+    ob['sensor_mask'] = anti_diag_sym(ob['sensor_mask'])
+
+    mf = ob['map_features']
+    mf['energy'] = anti_diag_sym(mf['energy'])
+    mf['tile_type'] = anti_diag_sym(mf['tile_type'])
+
+    mirror_positions(ob['relic_nodes'])
+
   def update(self, ob):
     # Match restarted
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
+
+    if self.player_id == 1:
+      self.mirror(ob)
 
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
@@ -400,8 +425,12 @@ class LuxS3Env(gym.Env):
     for i in range(MAX_UNIT_NUM):
       uid = mm.unit_idx_to_id[i]
 
+      a = np.int32(action[i][0])  # unbox [a] => a
+      if mm.player_id == 1:
+        a = MIRRORED_ACTION[a]
+
       # Set the unit action based on its real unit info.
-      unit_actions[uid][0] = np.int32(action[i])
+      unit_actions[uid][0] = a
     return unit_actions
 
   def compute_actions_taken(self, model_actions):
@@ -533,10 +562,10 @@ class LuxS3Env(gym.Env):
 
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
-    is_player0 = -1
-    if mm.player_id == 0:
-      is_player0 = 1
-    o['is_team_born_cell'] = scalar(is_player0, 1)
+    # is_player0 = -1
+    # if mm.player_id == 0:
+    # is_player0 = 1
+    o['is_team_born_cell'] = scalar(0, 1)
 
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
