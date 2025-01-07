@@ -668,7 +668,7 @@ class LuxS3Env(gym.Env):
   def _convert_win_loss_reward(self, raw_obs, env_state):
 
     def _convert(mm, ob):
-      MIN_WARMUP_MATCH_STEP = 3
+      MIN_WARMUP_MATCH_STEP = 2
 
       r = 0
 
@@ -712,14 +712,18 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.05
 
-      r_dead_units = mm.count_dead_units() * -0.0002
+      d = 0
+      if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        d = mm.count_dead_units()
+
+      r_dead_units = d * -0.0002
 
       # r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
       r = r_explore + r_visit_relic_nb + r_team_point + r_dead_units
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}')
+      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}, dead={d}')
       return r
 
     return [
