@@ -532,12 +532,6 @@ def learn(
       def sum_non_nan(v):
         return v[~v.isnan()].sum().detach().item()
 
-      total_move = (
-          _action_move_center.sum().item() + _action_move_up.sum().item() +
-          _action_move_down.sum().item() + _action_move_left.sum().item() +
-          _action_move_right.sum().item()) + 1
-      # _action_sap.sum().item()) + 1
-
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
       buffer_num = flags.batch_size * flags.unroll_length
@@ -562,15 +556,15 @@ def learn(
 
               #
               'action_move_center':
-              _action_move_center.sum().detach().item() / total_move,
+              _action_move_center.sum().detach().item(),
               'action_move_up':
-              _action_move_up.sum().detach().item() / total_move,
+              _action_move_up.sum().detach().item(),
               'action_move_down':
-              _action_move_down.sum().detach().item() / total_move,
+              _action_move_down.sum().detach().item(),
               'action_move_left':
-              _action_move_left.sum().detach().item() / total_move,
+              _action_move_left.sum().detach().item(),
               'action_move_right':
-              _action_move_right.sum().detach().item() / total_move,
+              _action_move_right.sum().detach().item(),
               # 'action_sap': _action_sap.sum().detach().item() / total_move,
           },
           "Loss": {
