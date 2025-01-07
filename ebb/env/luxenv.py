@@ -836,6 +836,9 @@ class LuxS3Env(gym.Env):
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
       tp1 = prev_obs1['team_points'][mm.player_id]
+
+      team_win = raw_obs1['team_wins'][mm.player_id]
+      enemy_win = raw_obs1['team_wins'][mm.enemy_id]
       # print(
       # f"step={raw_obs[PLAYER0]['steps']}, match_steps={mm.match_step} done={done}, player_id={mm.player_id} team_point={tp0}"
       # )
@@ -843,10 +846,15 @@ class LuxS3Env(gym.Env):
 
       info['_match_team_points'] = 0
       info['_match_played'] = 0
+      info['_winner'] = 0
       match_step = raw_obs[PLAYER0]['match_steps']
       if match_step == MAX_MATCH_STEPS:
         info['_match_team_points'] = tp0
         info['_match_played'] = 1
+        if team_win > enemy_win:
+          info['_winner'] = mm.player_id
+        else:
+          info['_winner'] = mm.enemy_id
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")

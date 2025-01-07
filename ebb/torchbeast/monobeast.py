@@ -513,6 +513,8 @@ def learn(
       _action_move_left = batch["info"]['_action_left']
       _action_move_right = batch["info"]['_action_right']
 
+      _winner = batch["info"]['_winner']
+
       # _action_sap = batch["info"]['_action_sap']
 
       def compute_mean_count_done(v):
@@ -623,6 +625,7 @@ def learn(
         stats['Env'][
             'match_total_visited_relic_nb_nodes_num'] = compute_match_done_sum(
                 visited_relics_nb_num)
+        stats['Env']['match_win_by_player1'] = compute_match_done_sum(_winner)
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:
