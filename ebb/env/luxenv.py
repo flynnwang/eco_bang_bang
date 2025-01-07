@@ -426,7 +426,6 @@ class LuxS3Env(gym.Env):
               )  # use dummy action for the other player is not optimal
           }
       ]
-
     self._actions_taken_mask = self.compute_actions_taken(model_action)
 
     action = {
@@ -763,17 +762,12 @@ class LuxS3Env(gym.Env):
     """Should ignore all the actions that can not be performed. Compute this
     before env.step() to make use of mm from prev step."""
     mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+
+    available_action_mask = self._get_available_action_mask(mm)[UNITS_ACTION]
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
-      if not unit_mask:
-        continue
-
-      # If units has run out of energy, it can only move_center
-      if energy < mm.unit_move_cost:
-        continue
-
-      mask[i][a] = 1
+      if np.any(available_action_mask[i]):
+        mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
   def get_info(self,
@@ -783,13 +777,14 @@ class LuxS3Env(gym.Env):
                done=False,
                env_state=None):
 
-    def count_actions(info, action):
+    def count_actions(info, action, taken_masks):
       action_count = {a: 0 for a in ACTION_ID_TO_NAME.values()}
       action = action[UNITS_ACTION]
       for i in range(MAX_UNIT_NUM):
         a = action[i][0]
-        name = ACTION_ID_TO_NAME[a]
-        action_count[name] += 1
+        if taken_masks[i][a] > 0:
+          name = ACTION_ID_TO_NAME[a]
+          action_count[name] += 1
 
       # append '_' for each action name
       info.update([('_' + a.lower(), c) for a, c in action_count.items()])
@@ -828,7 +823,7 @@ class LuxS3Env(gym.Env):
       info['_match_total_hidden_relic_nodes_num'] = (
           env_state.relic_nodes_map_weights > 0).sum()
       info['_match_total_found_relic_nodes_num'] = (mm.team_point_mass
-                                                    >= TEAM_POINT_MASS).sum()
+                                                    >= 30).sum()
       info['_match_total_relic_nb_nodes_num'] = (mm.is_relic_neighbour
                                                  > 0).sum()
       info['_match_visited_relic_nb_nodes_num'] = mm.get_visited_relic_nb_num()
@@ -858,7 +853,8 @@ class LuxS3Env(gym.Env):
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
-      count_actions(info, agent_action)
+      count_actions(info, agent_action,
+                    self._actions_taken_mask[mm.player_id][UNITS_ACTION])
       add_unit_total_energy(info, mm)
       return info
 
