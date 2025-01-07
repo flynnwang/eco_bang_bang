@@ -44,8 +44,8 @@ OB = OrderedDict([
 
     # use this to indicate nodes of unvisited relic cells (and its neighbour)
     ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+
     # use this to indicate the hidden place of relc nodes.
-    #
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -53,6 +53,7 @@ OB = OrderedDict([
     # units team map
     ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_total_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
@@ -521,7 +522,7 @@ class LuxS3Env(gym.Env):
 
     # Time & Match
     o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
-    o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
+    o['match_step'] = scalar(mm.match_step // (MAX_MATCH_STEPS + 1), 5)
 
     team_points = ob['team_points']
     units_points = team_points[mm.player_id]
@@ -538,8 +539,8 @@ class LuxS3Env(gym.Env):
     # Map info
     o['cell_type'] = mm.cell_type.copy()
     o['visible'] = mm.visible.astype(np.float32)
-    o['observed'] = mm.observed.astype(np.float32)
-    o['visited'] = mm.visited.astype(np.float32)
+    o['observed'] = (1 - mm.observed.astype(np.float32))
+    o['visited'] = (1 - mm.visited.astype(np.float32))
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit
@@ -550,7 +551,7 @@ class LuxS3Env(gym.Env):
 
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
-    is_player0 = -1
+    is_player0 = 0
     if mm.player_id == 0:
       is_player0 = 1
     o['is_team_born_cell'] = scalar(is_player0, 1)
@@ -587,6 +588,8 @@ class LuxS3Env(gym.Env):
     # Unit info
     add_unit_feature('units', mm.player_id, t=0)
     add_unit_feature('enemy', mm.enemy_id, t=0)
+
+    o['units_total_energy'] = scalar(o['units_energy_t0'].sum(), 1)
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
     assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
@@ -668,21 +671,20 @@ class LuxS3Env(gym.Env):
   def _convert_win_loss_reward(self, raw_obs, env_state):
 
     def _convert(mm, ob):
-      MIN_WARMUP_MATCH_STEP = 2
+      MIN_WARMUP_MATCH_STEP = 1
 
       r = 0
-
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.0001  # 24*24 * 0.0001 = 0.576
+        r_explore = mm.step_new_observed_num * 0.1  # 24*24 * 0.0001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         # n_hidden_relic = env_state.relic_nodes_mask.sum()
         # wt = 0.2 / (n_hidden_relic * 25)
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001  # 6 * 25 * 0.001 = 0.15
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 10  # 6 * 25 * 0.001 = 0.15
 
       # reward for units sit on hidden relic node.
       r_team_point = 0
@@ -690,36 +692,37 @@ class LuxS3Env(gym.Env):
         team_point = ob['team_points'][mm.player_id]
         prev_team_point = self.prev_raw_obs[mm.player]['team_points'][
             mm.player_id]
-        r_team_point = (team_point - prev_team_point) * 0.0005
+        r_team_point = (team_point - prev_team_point) * 3
         assert r_team_point >= 0
       # r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.0007
 
-      # game end reward
-      r_game = 0
       team_wins = raw_obs[mm.player]['team_wins']
-      if self.is_game_done(raw_obs, mm.player):
-        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 0.05
-        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -0.05
-
       # match end reward
       r_match = 0
       prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
-        r_match = 0.05
+        r_match = 30
       elif diff[mm.enemy_id] > 0:
-        r_match = -0.05
+        r_match = -30
+
+      # game end reward
+      r_game = 0
+      if self.is_game_done(raw_obs, mm.player):
+        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+          r_game = 100
+        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+          r_game = -100
 
       d = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         d = mm.count_dead_units()
 
-      r_dead_units = d * -0.0002
+      r_dead_units = d * -5
 
       # r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
-      r = r_explore + r_visit_relic_nb + r_team_point + r_dead_units
+      # r = r_explore + r_visit_relic_nb + r_team_point + r_dead_units
+      r = (r_explore + r_visit_relic_nb + r_team_point + r_dead_units) / 10000
       self._sum_r += abs(r)
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
