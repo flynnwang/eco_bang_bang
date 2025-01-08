@@ -262,6 +262,9 @@ class MapManager:
                                                                 CELL_UNKONWN):
         ob['units']['position'][pid][i] = p1
         ob['units']['energy'][pid][i] = e1
+        ob['units_mask'][pid][i] = True
+        # we can also konw that this cell is nebula here, but better done with vision map
+
         # print(
         # f'gstep={ob["steps"]}, mstep={ob["match_steps"]} pid={pid}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} by a={ACTION_ID_TO_NAME[a]}'
         # )
@@ -312,10 +315,16 @@ class MapManager:
     position = ob['units']['position'][pid][i]
     energy = ob['units']['energy'][pid][i]
 
+    if mask and energy < 0:
+      print(
+          f"gs={self.game_step}, ms={self.match_step}, player={pid}, unit[{i}], mask={mask}, position={position}, energy={energy}"
+      )
+
     # TODO: use last unit position, maybe not important?
     if not mask:
       position = (0, 0) if self.player_id == 0 else (MAP_WIDTH - 1,
                                                      MAP_HEIGHT - 1)
+
     return mask, position, energy
 
   def get_visited_relic_nb_num(self):
@@ -851,8 +860,6 @@ class LuxS3Env(gym.Env):
     """Mask for unit action: compute available action based on unit position"""
     actions_mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     for i in range(MAX_UNIT_NUM):
-
-      # TODO: when use unit position inference, update here
       unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
 
       # If units or is not exists, it can't do anything.
