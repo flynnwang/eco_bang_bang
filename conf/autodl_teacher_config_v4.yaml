@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250108_mirror_r1
+name: run_20250108_lower_teacher_r0
 
 r_new_observed: 0.0005
 r_visit_relic_nb: 0.001
@@ -21,7 +21,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_action_mirror
+group: luxs3_lower_teacher_kl
 
 ## ENV params
 obs_space_kwargs: {}
@@ -67,7 +67,7 @@ min_lr_mod: 0.01
 ## LOSS params
 entropy_cost: 0.0005
 baseline_cost: 1.
-teacher_kl_cost: 0.001
+teacher_kl_cost: 0.0001
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.9
@@ -101,8 +101,8 @@ debug: False
 #debug: True
 
 
-#load_dir: /home/flynnwang/runs/ebb/01-06/17-46-59
-#checkpoint_file: 004086784.pt
+#load_dir: /home/flynnwang/runs/ebb/01-08/08-10-22
+#checkpoint_file: 009104896.pt
 load_dir:
 checkpoint_file:
 #
