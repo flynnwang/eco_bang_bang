@@ -295,10 +295,11 @@ class MapManager:
       self.prev_team_point = 0
       self.past_obs.clear()
 
-    self.infer_units_info(ob, model_action)
+    # Mirror should go first before everything else.
     if self.player_id == 1:
       self.mirror(ob)
 
+    self.infer_units_info(ob, model_action)
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
     self.update_counters()
