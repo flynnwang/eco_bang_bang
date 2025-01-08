@@ -113,7 +113,7 @@ def is_pos_on_map(tmp):
 
 class MapManager:
 
-  MAX_PAST_OB_NUM = 1
+  MAX_PAST_OB_NUM = 2
 
   def __init__(self, player, env_cfg):
     self.player_id = int(player[-1])
@@ -142,6 +142,8 @@ class MapManager:
     # Use idx for model feature encoding and id for action encoding
     # self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
     # random.shuffle(self.unit_idx_to_id)
+    self.units_frozen_count = 0
+    self.units_dead_count = 0
 
   @property
   def enemy_id(self):
@@ -269,6 +271,28 @@ class MapManager:
         # f'gstep={ob["steps"]}, mstep={ob["match_steps"]} pid={pid}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} by a={ACTION_ID_TO_NAME[a]}'
         # )
 
+  def update_frozen_or_dead_units(self):
+    if self.match_step <= 1 or len(self.past_obs) < 2:
+      return
+
+    for i in range(MAX_UNIT_NUM):
+      is_dead, is_frozen = False, False
+      mask, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
+      mask1, p1, e1 = self.get_unit_info(self.player_id, i, t=1)
+      if mask and mask1:
+        if e0 < 0 and e1 >= 0:
+          is_dead = True
+        elif e0 == 0 and e1 > 0:
+          is_frozen = True
+
+      # if is_dead:
+      # print(
+      # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} is_dead={is_dead}, is_frozen={is_frozen}'
+      # )
+
+      self.units_frozen_count += int(is_frozen)
+      self.units_dead_count += int(is_dead)
+
   def update(self, ob, model_action=None):
     # Match restarted
     if ob['match_steps'] == 0:
@@ -302,6 +326,7 @@ class MapManager:
       self.past_obs.pop()
 
     self.update_vision_map()
+    self.update_frozen_or_dead_units()
 
   def update_vision_map(self):
     # TODO
@@ -315,10 +340,10 @@ class MapManager:
     position = ob['units']['position'][pid][i]
     energy = ob['units']['energy'][pid][i]
 
-    if mask and energy < 0:
-      print(
-          f"gs={self.game_step}, ms={self.match_step}, player={pid}, unit[{i}], mask={mask}, position={position}, energy={energy}"
-      )
+    # if mask and energy < 0:
+    # print(
+    # f"gs={self.game_step}, ms={self.match_step}, player={pid}, unit[{i}], mask={mask}, position={position}, energy={energy}"
+    # )
 
     # TODO: use last unit position, maybe not important?
     if not mask:
@@ -821,8 +846,13 @@ class LuxS3Env(gym.Env):
       elif diff[mm.enemy_id] > 0:
         r_match = -0.05
 
-      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point
+      r_dead = 0
+      # r_dead += mm.units_dead_count * (-0.005)
+      # r_dead += mm.units_frozen_count * (-0.001)
+
+      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
       self._sum_r += abs(r)
+
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
       # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}')
@@ -973,6 +1003,8 @@ class LuxS3Env(gym.Env):
       info['_match_team_points'] = 0
       info['_match_played'] = 0
       info['_winner'] = 0
+      info['_match_dead_units'] = 0
+      info['_match_frozen_units'] = 0
       match_step = raw_obs[PLAYER0]['match_steps']
       if match_step == MAX_MATCH_STEPS:
         info['_match_team_points'] = tp0
@@ -981,6 +1013,8 @@ class LuxS3Env(gym.Env):
           info['_winner'] = mm.player_id
         else:
           info['_winner'] = mm.enemy_id
+        info['_match_dead_units'] = mm.units_dead_count
+        info['_match_frozen_units'] = mm.units_frozen_count
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
