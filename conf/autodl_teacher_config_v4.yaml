@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250108_inc_baseline_range
+name: run_20250108_one_action_center_r0
 
 r_new_observed: 0.0005
 r_visit_relic_nb: 0.001
@@ -21,7 +21,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_lower_teacher_kl
+group: luxs3_action_center_opt
 
 ## ENV params
 obs_space_kwargs: {}
@@ -75,10 +75,14 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-#teacher_load_dir: /home/flynnwang/runs/ebb/01-06/14-50-31/
-#teacher_checkpoint_file: 047202176_weights.pt
-teacher_load_dir: /home/flynnwang/runs/ebb/01-08/10-16-20/
-teacher_checkpoint_file: 018614656.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-08/21-30-26
+teacher_checkpoint_file: 007743616.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-08/20-17-32
+#teacher_checkpoint_file: 005157248_weights.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-08/17-25-50
+#teacher_checkpoint_file: 013121280_weights.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-08/10-16-20/
+#teacher_checkpoint_file: 018614656.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
