@@ -102,6 +102,15 @@ def anti_diag_sym_i(v):
   return MAP_WIDTH - 1 - j, MAP_HEIGHT - 1 - i
 
 
+def unit_move(p, a):
+  d = DIRECTIONS[a]
+  return (p[0] + d[0], p[1] + d[1])
+
+
+def is_pos_on_map(tmp):
+  return 0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 1
@@ -126,11 +135,12 @@ class MapManager:
     self.cell_energy = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.game_step = 0
     self.match_step = 0
+    # self.vision_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.float32)
 
     self.past_obs = deque([])
 
     # Use idx for model feature encoding and id for action encoding
-    self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
+    # self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
     # random.shuffle(self.unit_idx_to_id)
 
   @property
@@ -144,6 +154,14 @@ class MapManager:
   @property
   def unit_sensor_range(self):
     return self.env_cfg['unit_sensor_range']
+
+  @property
+  def unit_sensor_range(self):
+    return self.env_cfg['unit_sensor_range']
+
+  @property
+  def unit_sap_cost(self):
+    return self.env_cfg['unit_sap_cost']
 
   def update_cell_type(self, ob):
     # adding 1 to start cell type from 0
@@ -189,11 +207,72 @@ class MapManager:
 
     mirror_positions(ob['relic_nodes'])
 
-  def update(self, ob):
+  def infer_units_info(self, ob, model_action):
+    if (model_action is None
+        or len(self.past_obs) == 0) or ob['match_steps'] <= 1:
+      return
+
+    # other sensor range will not be blocked by nebula
+    if self.unit_sensor_range > 2:
+      return
+
+    assert self.unit_sensor_range == 2
+
+    units_action = model_action[UNITS_ACTION]
+
+    def make_action(p, e, action):
+      if a == ACTION_CENTER:
+        return p, e
+
+      # TODO: check move target
+      if a in MOVE_ACTIONS_NO_CENTER:
+        if e > self.unit_move_cost:
+          tmp = unit_move(p, a)
+          if (0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
+              and self.cell_type[tmp[0], tmp[1]] != CELL_ASTERIOD):
+            p = tmp
+
+        e -= self.unit_move_cost
+        e = max(e, 0)
+        return p, e
+
+      assert a >= ACTION_SAP
+      e -= self.unit_sap_cost
+      return p, e
+
+    pid = self.player_id
+    for i in range(MAX_UNIT_NUM):
+      mask = ob['units_mask'][pid][i]
+      position = ob['units']['position'][pid][i]
+      energy = ob['units']['energy'][pid][i]
+      # If current observation has this unit, done
+      if mask:
+        continue
+
+      # Get info from last step and apply action
+      m0, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
+      if not m0:
+        # Skip since we do not have info for the unit in last step.
+        continue
+
+      a = units_action[i][0]
+      p1, e1 = make_action(p0, e0, a)
+
+      if is_pos_on_map(p1) and self.cell_type[p1[0]][p1[1]] in (CELL_NEBULA,
+                                                                CELL_UNKONWN):
+        ob['units']['position'][pid][i] = p1
+        ob['units']['energy'][pid][i] = e1
+        # print(
+        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]} pid={pid}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} by a={ACTION_ID_TO_NAME[a]}'
+        # )
+
+  def update(self, ob, model_action=None):
     # Match restarted
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
+      self.past_obs.clear()
 
+    self.infer_units_info(ob, model_action)
     if self.player_id == 1:
       self.mirror(ob)
 
@@ -219,9 +298,15 @@ class MapManager:
     if len(self.past_obs) > self.MAX_PAST_OB_NUM:
       self.past_obs.pop()
 
+    self.update_vision_map()
+
+  def update_vision_map(self):
+    # TODO
+    pass
+
   def get_unit_info(self, pid, i, t):
     # Remap uint-i to another unit.
-    i = self.unit_idx_to_id[i]
+    # i = self.unit_idx_to_id[i]
     ob = self.past_obs[t]
     mask = ob['units_mask'][pid][i]
     position = ob['units']['position'][pid][i]
@@ -376,9 +461,12 @@ class LuxS3Env(gym.Env):
   def seed(self, seed):
     self._seed = seed
 
-  def _update_mms(self, obs):
-    self.mms[0].update(obs[PLAYER0])
-    self.mms[1].update(obs[PLAYER1])
+  def _update_mms(self, obs, model_actions):
+    a0, a1 = None, None
+    if model_actions is not None:
+      a0, a1 = model_actions
+    self.mms[0].update(obs[PLAYER0], a0)
+    self.mms[1].update(obs[PLAYER1], a1)
 
   def reset(self, seed=None):
     if seed is None:
@@ -388,15 +476,14 @@ class LuxS3Env(gym.Env):
     self._sum_r = 0.0
 
     # from luxai_s3.params import EnvParams
-    # env_params = EnvParams(max_steps_in_match=500)
-
+    # env_params = EnvParams(nebula_tile_vision_reduction=3, unit_sensor_range=2)
     raw_obs, info = self.game.reset(seed=self._seed)
-    # options={'params': env_params})
+    # , options={'params': env_params})
     final_state = info['state']
 
     env_cfg = info['params']
     self.mms = [MapManager(PLAYER0, env_cfg), MapManager(PLAYER1, env_cfg)]
-    self._update_mms(raw_obs)
+    self._update_mms(raw_obs, model_actions=None)
 
     self.prev_raw_obs = raw_obs
     done = False
@@ -430,7 +517,8 @@ class LuxS3Env(gym.Env):
     action = action[UNITS_ACTION]
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i in range(MAX_UNIT_NUM):
-      uid = mm.unit_idx_to_id[i]
+      # uid = mm.unit_idx_to_id[i]
+      uid = i
 
       a = np.int32(action[i][0])  # unbox [a] => a
       if mm.player_id == 1:
@@ -470,7 +558,7 @@ class LuxS3Env(gym.Env):
     }
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
-    self._update_mms(raw_obs)
+    self._update_mms(raw_obs, model_actions=model_action)
 
     done = self.is_game_done(raw_obs, PLAYER0)
 
