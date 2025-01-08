@@ -158,10 +158,6 @@ class MapManager:
     return self.env_cfg['unit_sensor_range']
 
   @property
-  def unit_sensor_range(self):
-    return self.env_cfg['unit_sensor_range']
-
-  @property
   def unit_sap_cost(self):
     return self.env_cfg['unit_sap_cost']
 
@@ -889,6 +885,7 @@ class LuxS3Env(gym.Env):
   def _get_available_action_mask(self, mm):
     """Mask for unit action: compute available action based on unit position"""
     actions_mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+    units = []
     for i in range(MAX_UNIT_NUM):
       unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
 
@@ -900,7 +897,13 @@ class LuxS3Env(gym.Env):
       if energy < mm.unit_move_cost:
         continue
 
-      can_move = False
+      pos = (int(pos[0]), int(pos[1]))
+      units.append((energy, i, pos))
+
+    # sort units by energy
+    units.sort()
+    action_centered_positions = set()
+    for energy, i, pos in units:
       # has enough energy to move
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
@@ -910,12 +913,25 @@ class LuxS3Env(gym.Env):
           continue
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
+
+        # do not move onto the next cell if will frozen there.
+        # map_energy = mm.cell_energy[nx][ny]
+
+        # TODO: add nebula energy reduction here.
+        # if mm.cell_type[nx][ny] == CELL_NEBULA:
+        # map_energy -=
+        # if (mm.team_point_mass[nx][ny] >= 0
+        # or energy + map_energy >= mm.unit_move_cost):
         actions_mask[i][k] = 1
-        can_move = True
 
       # Can only stay on hidden relic node
       if mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL:
-        actions_mask[i][ACTION_CENTER] = 1
+
+        # Only one units can stay
+        if pos not in action_centered_positions:
+          actions_mask[i][ACTION_CENTER] = 1
+
+        action_centered_positions.add(pos)
 
     return {UNITS_ACTION: actions_mask}
 
