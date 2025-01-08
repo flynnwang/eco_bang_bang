@@ -6,9 +6,9 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250108_mirror_r0
+name: run_20250108_mirror_r1
 
-r_new_observed: 0.0003
+r_new_observed: 0.0005
 r_visit_relic_nb: 0.001
 r_team_point: 0.0003
 r_dead_units: 0
