@@ -513,6 +513,8 @@ def learn(
       _action_move_left = batch["info"]['_action_left']
       _action_move_right = batch["info"]['_action_right']
 
+      _winner = batch["info"]['_winner']
+
       # _action_sap = batch["info"]['_action_sap']
 
       def compute_mean_count_done(v):
@@ -529,12 +531,6 @@ def learn(
 
       def sum_non_nan(v):
         return v[~v.isnan()].sum().detach().item()
-
-      total_move = (
-          _action_move_center.sum().item() + _action_move_up.sum().item() +
-          _action_move_down.sum().item() + _action_move_left.sum().item() +
-          _action_move_right.sum().item()) + 1
-      # _action_sap.sum().item()) + 1
 
       baseline_values = values.mean().detach().item()
       td = td_lambda_returns.vs.mean().detach().item()
@@ -560,15 +556,15 @@ def learn(
 
               #
               'action_move_center':
-              _action_move_center.sum().detach().item() / total_move,
+              _action_move_center.sum().detach().item(),
               'action_move_up':
-              _action_move_up.sum().detach().item() / total_move,
+              _action_move_up.sum().detach().item(),
               'action_move_down':
-              _action_move_down.sum().detach().item() / total_move,
+              _action_move_down.sum().detach().item(),
               'action_move_left':
-              _action_move_left.sum().detach().item() / total_move,
+              _action_move_left.sum().detach().item(),
               'action_move_right':
-              _action_move_right.sum().detach().item() / total_move,
+              _action_move_right.sum().detach().item(),
               # 'action_sap': _action_sap.sum().detach().item() / total_move,
           },
           "Loss": {
@@ -623,6 +619,7 @@ def learn(
         stats['Env'][
             'match_total_visited_relic_nb_nodes_num'] = compute_match_done_sum(
                 visited_relics_nb_num)
+        stats['Env']['match_win_by_player1'] = compute_match_done_sum(_winner)
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:

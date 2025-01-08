@@ -95,6 +95,13 @@ def anti_diag_sym(A):
   return A
 
 
+def anti_diag_sym_i(v):
+  i, j = v
+  if i == -1 or j == -1:
+    return -1, -1
+  return MAP_WIDTH - 1 - j, MAP_HEIGHT - 1 - i
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 1
@@ -165,10 +172,30 @@ class MapManager:
     self.last_relic_nb_visited = self.get_visited_relic_nb_num()
     self.last_relic_node_num = self.is_relic_node.sum()
 
+  def mirror(self, ob):
+
+    def mirror_positions(positions):
+      for i, v in enumerate(positions):
+        positions[i] = anti_diag_sym_i(v)
+
+    mirror_positions(ob['units']['position'][0])
+    mirror_positions(ob['units']['position'][1])
+
+    ob['sensor_mask'] = anti_diag_sym(ob['sensor_mask'])
+
+    mf = ob['map_features']
+    mf['energy'] = anti_diag_sym(mf['energy'])
+    mf['tile_type'] = anti_diag_sym(mf['tile_type'])
+
+    mirror_positions(ob['relic_nodes'])
+
   def update(self, ob):
     # Match restarted
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
+
+    if self.player_id == 1:
+      self.mirror(ob)
 
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
@@ -405,8 +432,12 @@ class LuxS3Env(gym.Env):
     for i in range(MAX_UNIT_NUM):
       uid = mm.unit_idx_to_id[i]
 
+      a = np.int32(action[i][0])  # unbox [a] => a
+      if mm.player_id == 1:
+        a = MIRRORED_ACTION[a]
+
       # Set the unit action based on its real unit info.
-      unit_actions[uid][0] = np.int32(action[i])
+      unit_actions[uid][0] = a
     return unit_actions
 
   def compute_actions_taken(self, model_actions):
@@ -431,7 +462,6 @@ class LuxS3Env(gym.Env):
               )  # use dummy action for the other player is not optimal
           }
       ]
-
     self._actions_taken_mask = self.compute_actions_taken(model_action)
 
     action = {
@@ -539,10 +569,10 @@ class LuxS3Env(gym.Env):
 
     o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
 
-    is_player0 = -1
-    if mm.player_id == 0:
-      is_player0 = 1
-    o['is_team_born_cell'] = scalar(is_player0, 1)
+    # is_player0 = -1
+    # if mm.player_id == 0:
+    # is_player0 = 1
+    o['is_team_born_cell'] = scalar(0, 1)
 
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
@@ -663,8 +693,8 @@ class LuxS3Env(gym.Env):
 
       # reward for open unobserved cells
       r_explore = 0
-      if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_new_observed_num * 0.00001  # 24*24 * 0.001 = 0.576
+      if mm.match_step > 11:
+        r_explore = mm.step_new_observed_num * 0.0005  # 24*24 * 0.001 = 0.576
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
@@ -758,9 +788,9 @@ class LuxS3Env(gym.Env):
         actions_mask[i][k] = 1
         can_move = True
 
-      # Can stay if units can move, otherwise
-      if can_move:
-        actions_mask[i][ACTION_CENTER] = 1  # can always stay
+      # Can only stay on hidden relic node
+      if mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL:
+        actions_mask[i][ACTION_CENTER] = 1
 
     return {UNITS_ACTION: actions_mask}
 
@@ -768,17 +798,12 @@ class LuxS3Env(gym.Env):
     """Should ignore all the actions that can not be performed. Compute this
     before env.step() to make use of mm from prev step."""
     mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+
+    available_action_mask = self._get_available_action_mask(mm)[UNITS_ACTION]
     units_action = model_action[UNITS_ACTION]
     for i, a in enumerate(units_action):
-      unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
-      if not unit_mask:
-        continue
-
-      # If units has run out of energy, it can only move_center
-      if energy < mm.unit_move_cost:
-        continue
-
-      mask[i][a] = 1
+      if np.any(available_action_mask[i]):
+        mask[i][a] = 1
     return {UNITS_ACTION: mask}
 
   def get_info(self,
@@ -788,13 +813,14 @@ class LuxS3Env(gym.Env):
                done=False,
                env_state=None):
 
-    def count_actions(info, action):
+    def count_actions(info, action, taken_masks):
       action_count = {a: 0 for a in ACTION_ID_TO_NAME.values()}
       action = action[UNITS_ACTION]
       for i in range(MAX_UNIT_NUM):
         a = action[i][0]
-        name = ACTION_ID_TO_NAME[a]
-        action_count[name] += 1
+        if taken_masks[i][a] > 0:
+          name = ACTION_ID_TO_NAME[a]
+          action_count[name] += 1
 
       # append '_' for each action name
       info.update([('_' + a.lower(), c) for a, c in action_count.items()])
@@ -833,7 +859,7 @@ class LuxS3Env(gym.Env):
       info['_match_total_hidden_relic_nodes_num'] = (
           env_state.relic_nodes_map_weights > 0).sum()
       info['_match_total_found_relic_nodes_num'] = (mm.team_point_mass
-                                                    >= TEAM_POINT_MASS).sum()
+                                                    >= 30).sum()
       info['_match_total_relic_nb_nodes_num'] = (mm.is_relic_neighbour
                                                  > 0).sum()
       info['_match_visited_relic_nb_nodes_num'] = mm.get_visited_relic_nb_num()
@@ -841,6 +867,9 @@ class LuxS3Env(gym.Env):
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
       tp1 = prev_obs1['team_points'][mm.player_id]
+
+      team_win = raw_obs1['team_wins'][mm.player_id]
+      enemy_win = raw_obs1['team_wins'][mm.enemy_id]
       # print(
       # f"step={raw_obs[PLAYER0]['steps']}, match_steps={mm.match_step} done={done}, player_id={mm.player_id} team_point={tp0}"
       # )
@@ -848,14 +877,20 @@ class LuxS3Env(gym.Env):
 
       info['_match_team_points'] = 0
       info['_match_played'] = 0
+      info['_winner'] = 0
       match_step = raw_obs[PLAYER0]['match_steps']
       if match_step == MAX_MATCH_STEPS:
         info['_match_team_points'] = tp0
         info['_match_played'] = 1
+        if team_win > enemy_win:
+          info['_winner'] = mm.player_id
+        else:
+          info['_winner'] = mm.enemy_id
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
-      count_actions(info, agent_action)
+      count_actions(info, agent_action,
+                    self._actions_taken_mask[mm.player_id][UNITS_ACTION])
       add_unit_total_energy(info, mm)
       return info
 
