@@ -250,7 +250,8 @@ class MapManager:
   @property
   def step_observe_corner_cells_num(self):
     new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
-    return new_ob_mask[0:6, 18:24].sum() + new_ob_mask[18:24, 0:6].sum()
+    return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum() +
+            new_ob_mask[7:24, 16:16].sum())
 
   def update_counters(self):
     self.last_observed_num = self.observed.sum()
@@ -414,6 +415,10 @@ class MapManager:
 
     self.update_frozen_or_dead_units()
     self.update_vision_map()
+
+    # print(
+    # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
+    # )
 
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
