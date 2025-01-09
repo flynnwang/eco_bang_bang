@@ -284,7 +284,7 @@ class MapManager:
           is_dead = True
 
         if (e0 == 0 and e1 > 0
-            and (not mm.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
+            and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
           is_frozen = True
 
       # if is_dead:
@@ -654,8 +654,11 @@ class LuxS3Env(gym.Env):
       nodes = env_state.relic_nodes[env_state.relic_nodes_mask]
       if len(nodes) > 0:
         extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
-        # print(nodes)
-        # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
+
+      extras[12] = mm.units_frozen_count / MAX_UNIT_NUM
+      extras[13] = mm.units_dead_count / MAX_UNIT_NUM
+      # print(nodes)
+      # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
       # print(
       # f"step={mm.game_step}, match={mm.game_step // (MAX_MATCH_STEPS + 1)}, "
       # f"match_step={mm.match_step}, team_win={team_win}, diff_win={(team_win - enemy_win)}, "
