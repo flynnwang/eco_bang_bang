@@ -917,7 +917,7 @@ class LuxS3Env(gym.Env):
           r_game = -0.05
 
       # match end reward
-      # r_match = 0
+      r_match = 0
       # prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
       # diff = team_wins - prev_team_wins
       # if diff[mm.player_id] > 0:
@@ -926,8 +926,8 @@ class LuxS3Env(gym.Env):
       # r_match = -0.05
 
       r_dead = 0
-      r_dead += mm.units_dead_count * (-0.1)
-      r_dead += mm.units_frozen_count * (-0.01)
+      r_dead += mm.units_dead_count * (-0.01)
+      r_dead += mm.units_frozen_count * (-0.005)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
       self._sum_r += abs(r)

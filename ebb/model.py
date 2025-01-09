@@ -542,20 +542,13 @@ def create_model(flags,
                  device: torch.device,
                  reset=False) -> nn.Module:
   reward_spec = None
-  if flags.reward_schema == 'game_win_loss':
+  if flags.reward_schema == 'shaping':
     reward_spec = RewardSpec(
         reward_min=-10,
         reward_max=+10,
         zero_sum=False,
     )
   if flags.reward_schema == 'game_win_loss2':
-    reward_spec = RewardSpec(
-        reward_min=-1,
-        reward_max=+1,
-        zero_sum=False,
-    )
-  if flags.reward_schema == 'exploration_reward':
-    # (9*9*0.01 + 16 * 0.01 + 0.03 * 6 + 16 * 0.005)
     reward_spec = RewardSpec(
         reward_min=-1,
         reward_max=+1,
