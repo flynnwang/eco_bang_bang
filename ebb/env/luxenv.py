@@ -853,8 +853,8 @@ class LuxS3Env(gym.Env):
         r_match = -0.05
 
       r_dead = 0
-      r_dead += mm.units_dead_count * (-0.005)
-      r_dead += mm.units_frozen_count * (-0.001)
+      r_dead += mm.units_dead_count * (-0.01)
+      r_dead += mm.units_frozen_count * (-0.005)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
       self._sum_r += abs(r)
