@@ -239,12 +239,18 @@ class MapManager:
 
   def update_visible_and_observed(self, ob):
     self.visible = ob['sensor_mask'].astype(np.int32)
+    self.prev_observed = self.observed.copy()
     self.observed |= self.visible
     self.observed |= anti_diag_sym(self.visible)
 
   @property
   def step_new_observed_num(self):
     return self.observed.sum() - self.last_observed_num
+
+  @property
+  def step_observe_corner_cells_num(self):
+    new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
+    return new_ob_mask[0:6, 18:24].sum() + new_ob_mask[18:24, 0:6].sum()
 
   def update_counters(self):
     self.last_observed_num = self.observed.sum()
@@ -513,7 +519,7 @@ class MapManager:
           unit_nearby_relic)] = NON_TEAM_POINT_MASS
       return
 
-    change = 30
+    change = 50
     # when delta > 0
     must_be_team_point = (self.team_point_mass
                           >= TEAM_POINT_MASS) & (unit_nearby_relic)
@@ -875,7 +881,7 @@ class LuxS3Env(gym.Env):
           self._convert_observation(raw_obs[PLAYER1], self.mms[1], final_state)
       ]
 
-  def _convert_win_loss_reward(self, raw_obs, env_state):
+  def _convert_shaping_reward(self, raw_obs, env_state):
 
     def _convert(mm, ob):
       MIN_WARMUP_MATCH_STEP = 3
@@ -885,14 +891,13 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > 11:
-        r_explore = mm.step_new_observed_num * 0.0005  # 24*24 * 0.001 = 0.576
+        # r_explore = mm.step_new_observed_num * 0.0005  # 24*24 * 0.001 = 0.576
+        r_explore = mm.step_observe_corner_cells_num * 0.0005
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        # n_hidden_relic = env_state.relic_nodes_mask.sum()
-        # wt = 0.2 / (n_hidden_relic * 25)
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0003  # 6 * 25 * 0.001 = 0.15
+        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0003
 
       # reward for units sit on hidden relic node.
       r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
@@ -907,17 +912,17 @@ class LuxS3Env(gym.Env):
           r_game = -0.05
 
       # match end reward
-      r_match = 0
-      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
-      diff = team_wins - prev_team_wins
-      if diff[mm.player_id] > 0:
-        r_match = 0.05
-      elif diff[mm.enemy_id] > 0:
-        r_match = -0.05
+      # r_match = 0
+      # prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      # diff = team_wins - prev_team_wins
+      # if diff[mm.player_id] > 0:
+      # r_match = 0.05
+      # elif diff[mm.enemy_id] > 0:
+      # r_match = -0.05
 
       r_dead = 0
-      r_dead += mm.units_dead_count * (-0.01)
-      r_dead += mm.units_frozen_count * (-0.005)
+      r_dead += mm.units_dead_count * (-0.1)
+      r_dead += mm.units_frozen_count * (-0.01)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
       self._sum_r += abs(r)
@@ -954,13 +959,12 @@ class LuxS3Env(gym.Env):
 
   def _convert_reward(self, raw_obs, env_state):
     """Use the match win-loss reward for now."""
-    assert self.reward_schema in ('game_win_loss', 'game_win_loss2',
-                                  'exploration_reward')
+    assert self.reward_schema in ('shaping', 'game_win_loss2')
     if self.reward_schema == 'game_win_loss2':
       reward = self._convert_win_loss_reward2(raw_obs, env_state)
 
-    if self.reward_schema == 'game_win_loss':
-      reward = self._convert_win_loss_reward(raw_obs, env_state)
+    if self.reward_schema == 'shaping':
+      reward = self._convert_shaping_reward(raw_obs, env_state)
 
     if SINGLE_PLAER:
       return [reward[0]]  # single player
