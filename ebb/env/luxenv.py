@@ -144,6 +144,8 @@ class MapManager:
     # random.shuffle(self.unit_idx_to_id)
     self.units_frozen_count = 0
     self.units_dead_count = 0
+    self.total_units_frozen_count = 0
+    self.total_units_dead_count = 0
 
   @property
   def enemy_id(self):
@@ -291,11 +293,16 @@ class MapManager:
       self.units_frozen_count += int(is_frozen)
       self.units_dead_count += int(is_dead)
 
+    self.total_units_dead_count += self.units_dead_count
+    self.total_units_frozen_count += self.units_frozen_count
+
   def update(self, ob, model_action=None):
     # Match restarted
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
       self.past_obs.clear()
+      self.total_units_dead_count = 0
+      self.total_units_frozen_count = 0
 
     # Mirror should go first before everything else.
     if self.player_id == 1:
@@ -1032,8 +1039,8 @@ class LuxS3Env(gym.Env):
           info['_winner'] = mm.player_id
         else:
           info['_winner'] = mm.enemy_id
-        info['_match_dead_units'] = mm.units_dead_count
-        info['_match_frozen_units'] = mm.units_frozen_count
+        info['_match_dead_units'] = mm.total_units_dead_count
+        info['_match_frozen_units'] = mm.total_units_frozen_count
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
