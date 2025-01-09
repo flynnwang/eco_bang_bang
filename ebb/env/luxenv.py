@@ -271,6 +271,8 @@ class MapManager:
     if self.match_step <= 1 or len(self.past_obs) < 2:
       return
 
+    self.units_frozen_count = 0
+    self.units_dead_count = 0
     for i in range(MAX_UNIT_NUM):
       is_dead, is_frozen = False, False
       mask, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
@@ -852,7 +854,7 @@ class LuxS3Env(gym.Env):
 
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f}')
+      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f} r_dead={r_dead}')
       return r
 
     return [
