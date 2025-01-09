@@ -1,4 +1,4 @@
-from collections import OrderedDict, deque, defaultdict
+from collections import OrderedDict, deque, defaultdict, Counter
 
 import random
 
@@ -111,6 +111,35 @@ def is_pos_on_map(tmp):
   return 0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
 
 
+class NebulaEnergyReduction:
+
+  VALID_VALUES = (0, 10, 25)
+
+  def __init__(self):
+    self.counter = Counter()
+
+  def is_valid(self, val):
+    return val in self.VALID_VALUES
+
+  def add(self, v):
+    if self.is_valid(v):
+      self.counter[v] += 1
+
+  def best_guess(self):
+    if len(self.counter) <= 0:
+      return None
+    return self.counter.most_common(1)[0][0]
+
+
+class VisionMap:
+
+  def __init__(self):
+    self.vision = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
+
+  def update(self, mm):
+    pass
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 2
@@ -135,7 +164,6 @@ class MapManager:
     self.cell_energy = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.game_step = 0
     self.match_step = 0
-    # self.vision_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.float32)
 
     self.past_obs = deque([])
 
@@ -146,6 +174,8 @@ class MapManager:
     self.units_dead_count = 0
     self.total_units_frozen_count = 0
     self.total_units_dead_count = 0
+
+    self.nebula_energy_reduction_ = NebulaEnergyReduction()
 
   @property
   def enemy_id(self):
@@ -215,7 +245,6 @@ class MapManager:
     # other sensor range will not be blocked by nebula
     if self.unit_sensor_range > 2:
       return
-
     assert self.unit_sensor_range == 2
 
     units_action = model_action[UNITS_ACTION]
@@ -242,24 +271,23 @@ class MapManager:
 
     pid = self.player_id
     for i in range(MAX_UNIT_NUM):
+      # Get info from last step and apply action
+      m0, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
+
+      # Skip since we do not have info for the unit in last step.
+      if not m0:
+        continue
+
+      # Unit info from current step
       mask = ob['units_mask'][pid][i]
       position = ob['units']['position'][pid][i]
       energy = ob['units']['energy'][pid][i]
-      # If current observation has this unit, done
-      if mask:
-        continue
-
-      # Get info from last step and apply action
-      m0, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
-      if not m0:
-        # Skip since we do not have info for the unit in last step.
-        continue
 
       a = units_action[i][0]
       p1, e1 = make_action(p0, e0, a)
 
-      if is_pos_on_map(p1) and self.cell_type[p1[0]][p1[1]] in (CELL_NEBULA,
-                                                                CELL_UNKONWN):
+      if (not mask and is_pos_on_map(p1)
+          and self.cell_type[p1[0]][p1[1]] in (CELL_NEBULA, CELL_UNKONWN)):
         ob['units']['position'][pid][i] = p1
         ob['units']['energy'][pid][i] = e1
         ob['units_mask'][pid][i] = True
@@ -268,6 +296,14 @@ class MapManager:
         # print(
         # f'gstep={ob["steps"]}, mstep={ob["match_steps"]} pid={pid}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} by a={ACTION_ID_TO_NAME[a]}'
         # )
+
+      if (m0 and mask and e0 > 0 and energy > 0 and e1 > 0
+          and self.cell_type[position[0], position[1]] == CELL_NEBULA):
+        reduction = e1 - energy
+        self.nebula_energy_reduction_.add(reduction)
+        print(
+            f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self.nebula_energy_reduction_.best_guess()}'
+        )
 
   def update_frozen_or_dead_units(self):
     if self.match_step <= 1 or len(self.past_obs) < 2:
