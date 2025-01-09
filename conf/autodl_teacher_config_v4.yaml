@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250108_low_teacher_kl_r1
+name: run_20250109_penality_on_dead_and_frozen_r0
 
 r_new_observed: 0.0005
 r_visit_relic_nb: 0.0003
@@ -14,6 +14,8 @@ r_team_point: 0.001
 r_dead_units: 0
 r_match: 0.05
 r_game: 0.05
+r_frozen_uints: -0.0005
+r_dead_uints: -0.001
 
 ## WANDB params
 # The wandb project name
@@ -21,7 +23,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_action_center_opt
+group: luxs3_penality_on_dead_and_frozen
 
 ## ENV params
 obs_space_kwargs: {}
@@ -75,14 +77,16 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-08/21-30-26
-teacher_checkpoint_file: 007743616.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-08/21-30-26
+#teacher_checkpoint_file: 007743616.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/01-08/20-17-32
 #teacher_checkpoint_file: 005157248_weights.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/01-08/17-25-50
 #teacher_checkpoint_file: 013121280_weights.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/01-08/10-16-20/
 #teacher_checkpoint_file: 018614656.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-07/23-58-22
+teacher_checkpoint_file: 000000000_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
