@@ -767,56 +767,6 @@ class LuxS3Env(gym.Env):
           self._convert_observation(raw_obs[PLAYER1], self.mms[1], final_state)
       ]
 
-  def _convert_exploration_reward(self, raw_obs):
-
-    def _convert(mm, ob):
-      r = 0
-
-      r_explore = 0
-      r_find_relic = 0
-      r_visit_relic_nb = 0
-
-      # reward for every new team point
-      r_team_point = 0
-      if mm.match_step > 0:
-        # reward for open unobserved cells
-        r_explore = mm.step_new_observed_num * 0.01
-
-        # reward for newly found relic node
-        r_find_relic = mm.step_new_found_relic_node_num * 0.5
-
-        # reward for each new visited relic nb
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.1
-
-        team_point = raw_obs[mm.player]['team_points'][mm.player_id]
-        prev_team_point = self.prev_raw_obs[mm.player]['team_points'][
-            mm.player_id]
-        r_team_point = (team_point - prev_team_point) * 0.01
-        assert r_team_point >= 0
-
-      # game end reward
-      r_match = 0
-      # team_wins = raw_obs[mm.player]['team_wins']
-      # if self.is_game_done(raw_obs, mm.player):
-      # if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-      # r_match = 1
-      # elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-      # r_match = -1
-
-      r = r_explore + r_find_relic + r_visit_relic_nb + r_team_point + r_match
-      r /= 30
-      self._sum_r += r
-      print(
-          f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-          f'find_relic={r_find_relic:.1f}, visit_relc_nb={r_visit_relic_nb:.1f} team_point={r_team_point:.2f}'
-          f' match={r_match}, sum_r={(self._sum_r / 2):.5f}')
-      return r
-
-    return [
-        _convert(self.mms[i], raw_obs[p])
-        for i, p in enumerate([PLAYER0, PLAYER1])
-    ]
-
   def _convert_win_loss_reward(self, raw_obs, env_state):
 
     def _convert(mm, ob):
@@ -874,20 +824,32 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
+  def _convert_win_loss_reward2(self, raw_obs, env_state):
+
+    def _convert(mm, ob):
+      # game end reward
+      r_game = 0
+      team_wins = raw_obs[mm.player]['team_wins']
+      if self.is_game_done(raw_obs, mm.player):
+        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+          r_game = 1
+        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+          r_game = -1
+
+      # print(f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}')
+      return r_game
+
+    return [
+        _convert(self.mms[i], raw_obs[p])
+        for i, p in enumerate([PLAYER0, PLAYER1])
+    ]
+
   def _convert_reward(self, raw_obs, env_state):
     """Use the match win-loss reward for now."""
-    assert self.reward_schema in ('game_win_loss', 'relic_boosted_match_score',
+    assert self.reward_schema in ('game_win_loss', 'game_win_loss2',
                                   'exploration_reward')
-    mm = self.mms[0]
-    if self.reward_schema == 'relic_boosted_match_score' and mm.match_step > 0:
-      team_points = raw_obs[PLAYER0]['team_points']
-      prev_team_points = self.prev_raw_obs[PLAYER0]['team_points']
-      pdiff = team_points - prev_team_points
-      for i in range(2):
-        reward[i] += pdiff[i] / 500
-
-    if self.reward_schema == 'exploration_reward':
-      reward = self._convert_exploration_reward(raw_obs)
+    if self.reward_schema == 'game_win_loss2':
+      reward = self._convert_win_loss_reward2(raw_obs, env_state)
 
     if self.reward_schema == 'game_win_loss':
       reward = self._convert_win_loss_reward(raw_obs, env_state)
