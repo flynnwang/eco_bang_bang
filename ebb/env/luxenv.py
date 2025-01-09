@@ -37,6 +37,9 @@ OB = OrderedDict([
 
     # Map info
     ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
+    ('nebula_tile_vision_reduction', spaces.Box(low=0, high=1,
+                                                shape=MAP_SHAPE)),
+    ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -127,17 +130,39 @@ class NebulaEnergyReduction:
 
   def best_guess(self):
     if len(self.counter) <= 0:
-      return None
+      return 0
     return self.counter.most_common(1)[0][0]
 
 
 class VisionMap:
 
-  def __init__(self):
+  def __init__(self, unit_sensor_range):
+    self.vision = None
+    self.unit_sensor_range = unit_sensor_range
+
+  def _add_vision(self, p, unit_sensor_range, wt=1):
+    i, j = p
+    v = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
+    for r in range(self.unit_sensor_range + 1):
+      d = (self.unit_sensor_range - r)
+      x0 = max(0, (i - d))
+      x1 = min(MAP_WIDTH, (i + d + 1))
+      y0 = max(0, (j - d))
+      y1 = min(MAP_HEIGHT, (j + d + 1))
+      v[x0:x1, y0:y1] = (r + 1) * wt
+    return v
+
+  def update(self, mask, position, energy):
     self.vision = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
 
-  def update(self, mm):
-    pass
+    unit_positions = defaultdict(int)
+    for i in range(MAX_UNIT_NUM):
+      m, p, e = mask[i], position[i], energy[i]
+      if m and e >= 0:
+        unit_positions[(p[0], p[1])] += 1
+
+    for p, v in unit_positions.items():
+      self.vision += self._add_vision(p, self.unit_sensor_range, v)
 
 
 class MapManager:
@@ -175,7 +200,13 @@ class MapManager:
     self.total_units_frozen_count = 0
     self.total_units_dead_count = 0
 
-    self.nebula_energy_reduction_ = NebulaEnergyReduction()
+    self._nebula_energy_reduction = NebulaEnergyReduction()
+    self.nebula_vision_reduction = 0
+    self.vision_map = VisionMap(self.unit_sensor_range)
+
+  @property
+  def nebula_energy_reduction(self):
+    return self._nebula_energy_reduction.best_guess()
 
   @property
   def enemy_id(self):
@@ -243,9 +274,9 @@ class MapManager:
       return
 
     # other sensor range will not be blocked by nebula
-    if self.unit_sensor_range > 2:
-      return
-    assert self.unit_sensor_range == 2
+    # if self.unit_sensor_range > 2:
+    # return
+    # assert self.unit_sensor_range == 2
 
     units_action = model_action[UNITS_ACTION]
 
@@ -286,7 +317,8 @@ class MapManager:
       a = units_action[i][0]
       p1, e1 = make_action(p0, e0, a)
 
-      if (not mask and is_pos_on_map(p1)
+      if (self.unit_sensor_range == MIN_UNIT_SENSOR_RANGE and not mask
+          and is_pos_on_map(p1)
           and self.cell_type[p1[0]][p1[1]] in (CELL_NEBULA, CELL_UNKONWN)):
         ob['units']['position'][pid][i] = p1
         ob['units']['energy'][pid][i] = e1
@@ -300,10 +332,10 @@ class MapManager:
       if (m0 and mask and e0 > 0 and energy > 0 and e1 > 0
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
         reduction = e1 - energy
-        self.nebula_energy_reduction_.add(reduction)
-        print(
-            f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self.nebula_energy_reduction_.best_guess()}'
-        )
+        self._nebula_energy_reduction.add(reduction)
+        # print(
+        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}'
+        # )
 
   def update_frozen_or_dead_units(self):
     if self.match_step <= 1 or len(self.past_obs) < 2:
@@ -346,6 +378,11 @@ class MapManager:
     if self.player_id == 1:
       self.mirror(ob)
 
+    # use non-infered units position
+    self.vision_map.update(ob['units_mask'][self.player_id],
+                           ob['units']['position'][self.player_id],
+                           ob['units']['energy'][self.player_id])
+
     self.infer_units_info(ob, model_action)
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
@@ -369,12 +406,26 @@ class MapManager:
     if len(self.past_obs) > self.MAX_PAST_OB_NUM:
       self.past_obs.pop()
 
-    self.update_vision_map()
     self.update_frozen_or_dead_units()
+    self.update_vision_map()
 
   def update_vision_map(self):
-    # TODO
-    pass
+    nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
+
+    # Update cell map with guessed nebula
+    self.cell_type[nebula_cell_mask] = CELL_NEBULA
+    self.cell_type[anti_diag_sym(nebula_cell_mask)] = CELL_NEBULA
+
+    vision_reduction = self.vision_map.vision[nebula_cell_mask]
+    if vision_reduction.size > 0:
+      v = vision_reduction.max()
+      if 0 < v <= MAX_VISION_REDUCTION:
+        self.nebula_vision_reduction = max(self.nebula_vision_reduction, v)
+      # print(
+      # f'gstep={self.game_step}, mstep={self.match_step}, nebula_vision_reduction={self.nebula_vision_reduction}, energy_reduction={self._nebula_energy_reduction.best_guess()}'
+      # )
+
+    # self.vision_reduction_cells = nebula_cell_mask
 
   def get_unit_info(self, pid, i, t):
     # Remap uint-i to another unit.
@@ -553,10 +604,16 @@ class LuxS3Env(gym.Env):
       self._seed = seed
     self._sum_r = 0.0
 
-    # from luxai_s3.params import EnvParams
-    # env_params = EnvParams(nebula_tile_vision_reduction=3, unit_sensor_range=2)
     raw_obs, info = self.game.reset(seed=self._seed)
-    # , options={'params': env_params})
+
+    # TODO: delete
+    # from luxai_s3.params import EnvParams
+    # env_params = EnvParams(nebula_tile_vision_reduction=3,
+    # nebula_tile_energy_reduction=25,
+    # unit_sensor_range=2)
+    # raw_obs, info = self.game.reset(seed=self._seed,
+    # options={'params': env_params})
+
     final_state = info['state']
 
     env_cfg = info['params']
@@ -725,6 +782,15 @@ class LuxS3Env(gym.Env):
 
     # Map info
     o['cell_type'] = mm.cell_type.copy()
+
+    v = np.zeros(MAP_SHAPE2)
+    v[mm.cell_type == CELL_NEBULA] = -(mm.nebula_vision_reduction /
+                                       MAX_VISION_REDUCTION)
+    o['nebula_tile_vision_reduction'] = v
+
+    norm = (mm.unit_sensor_range + 1) * MAX_UNIT_NUM
+    o['vision_map'] = (mm.vision_map.vision).astype(np.float32) / norm
+
     o['visible'] = mm.visible.astype(np.float32)
     o['observed'] = mm.observed.astype(np.float32)
     o['visited'] = mm.visited.astype(np.float32)
@@ -736,7 +802,13 @@ class LuxS3Env(gym.Env):
     # places need unit stay
     o['team_point_prob'] = mm.get_must_be_relic_nodes()
 
-    o['cell_energy'] = mm.cell_energy / MAX_ENERTY_PER_TILE
+    # energy_map = np.zeros(MAP_SHAPE2)
+    energy_map = mm.cell_energy.copy()
+    energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
+    o['cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
+    # print(
+    # f"nebula_energy_reduction={mm.nebula_energy_reduction}, vision_reduction={mm.nebula_vision_reduction}"
+    # )
 
     # is_player0 = -1
     # if mm.player_id == 0:
