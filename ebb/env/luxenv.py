@@ -282,7 +282,9 @@ class MapManager:
       if mask and mask1:
         if e0 < 0 and e1 >= 0:
           is_dead = True
-        elif e0 == 0 and e1 > 0:
+
+        if (e0 == 0 and e1 > 0
+            and (not mm.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
           is_frozen = True
 
       # if is_dead:
