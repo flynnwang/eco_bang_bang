@@ -368,7 +368,7 @@ class MapManager:
         if e0 < 0 and e1 >= 0:
           is_dead = True
 
-        if (e0 == 0 and e1 > 0
+        if (e0 == 0 and e1 >= 0
             and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
           is_frozen = True
 
@@ -646,7 +646,7 @@ class LuxS3Env(gym.Env):
     t1 = (self._seed % 2 == 0)
     t2 = bool(1 - int(t1))
     # t1, t2 = True, True
-    # t1, t2 = False, False
+    t1, t2 = False, False
     self.mms = [
         MapManager(PLAYER0, env_cfg, t1),
         MapManager(PLAYER1, env_cfg, t2)
@@ -937,24 +937,25 @@ class LuxS3Env(gym.Env):
       # game end reward
       r_game = 0
       team_wins = raw_obs[mm.player]['team_wins']
-      if self.is_game_done(raw_obs, mm.player):
-        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-          r_game = 0.05
-        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-          r_game = -0.05
+
+      # if self.is_game_done(raw_obs, mm.player):
+      # if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+      # r_game = 0.05
+      # elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+      # r_game = -0.05
 
       # match end reward
       r_match = 0
-      # prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
-      # diff = team_wins - prev_team_wins
-      # if diff[mm.player_id] > 0:
-      # r_match = 0.05
-      # elif diff[mm.enemy_id] > 0:
-      # r_match = -0.05
+      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      diff = team_wins - prev_team_wins
+      if diff[mm.player_id] > 0:
+        r_match = 0.2
+      elif diff[mm.enemy_id] > 0:
+        r_match = -0.2
 
       r_dead = 0
       r_dead += mm.units_dead_count * (-0.01)
-      r_dead += mm.units_frozen_count * (-0.005)
+      r_dead += mm.units_frozen_count * (-0.001)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
       self._sum_r += abs(r)
