@@ -285,21 +285,6 @@ class MapManager:
     mf['energy'] = mat_trans(mf['energy'])
     mf['tile_type'] = mat_trans(mf['tile_type'])
 
-    def transpose_positions(positions):
-      for i, v in enumerate(positions):
-        positions[i] = (v[1], v[0])
-
-    transpose_positions(ob['units']['position'][0])
-    transpose_positions(ob['units']['position'][1])
-
-    ob['sensor_mask'] = ob['sensor_mask'].T
-
-    mf = ob['map_features']
-    mf['energy'] = mf['energy'].T
-    mf['tile_type'] = mf['tile_type'].T
-
-    transpose_positions(ob['relic_nodes'])
-
   def infer_units_info(self, ob, model_action):
     if (model_action is None
         or len(self.past_obs) == 0) or ob['match_steps'] <= 1:
@@ -657,7 +642,9 @@ class LuxS3Env(gym.Env):
 
     env_cfg = info['params']
     # t1, t2 = seed_to_transpose(self._seed)
-    t1, t2 = False, True
+
+    t1 = (self._seed % 2 == 0)
+    t2 = bool(1 - int(t1))
     self.mms = [
         MapManager(PLAYER0, env_cfg, t1),
         MapManager(PLAYER1, env_cfg, t2)
