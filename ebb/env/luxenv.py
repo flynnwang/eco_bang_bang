@@ -256,7 +256,7 @@ class MapManager:
   def step_observe_corner_cells_num(self):
     new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
     return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum() +
-            new_ob_mask[7:24, 16:16].sum())
+            new_ob_mask[7:17, 7:17].sum())
 
   def update_counters(self):
     self.last_observed_num = self.observed.sum()

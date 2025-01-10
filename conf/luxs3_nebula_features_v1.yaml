@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250109_nebula_features_0
+name: run_20250109_nebula_features_3
 
 r_new_observed: 0.0005
 r_visit_relic_nb: 0.0003
