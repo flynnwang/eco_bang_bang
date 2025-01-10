@@ -67,7 +67,7 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.003
+entropy_cost: 0.005
 baseline_cost: 1.
 teacher_kl_cost: 0.001
 teacher_baseline_cost: 0.0

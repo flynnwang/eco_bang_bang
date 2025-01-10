@@ -646,7 +646,7 @@ class LuxS3Env(gym.Env):
     t1 = (self._seed % 2 == 0)
     t2 = bool(1 - int(t1))
     # t1, t2 = True, True
-    t1, t2 = False, False
+    # t1, t2 = False, False
     self.mms = [
         MapManager(PLAYER0, env_cfg, t1),
         MapManager(PLAYER1, env_cfg, t2)
