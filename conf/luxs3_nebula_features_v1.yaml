@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250109_nebula_features_3
+name: run_20250109_nebula_features_4_shaping_no_teacher
 
 r_new_observed: 0.0005
 r_visit_relic_nb: 0.0003
@@ -29,6 +29,7 @@ group: luxs3_neblua_features
 obs_space_kwargs: {}
 reward_space_kwargs: {}
 reward_schema: shaping
+#reward_schema: game_win_loss2
 
 ## TRAINING params
 total_steps: 3e8
@@ -76,7 +77,7 @@ reduction: sum
 
 
 # Pretrained model for KL loss
-use_teacher: True
+use_teacher: False
 teacher_load_dir: /home/flynnwang/runs/ebb/01-09/23-04-48
 teacher_checkpoint_file: 000000000_weights.pt
 
