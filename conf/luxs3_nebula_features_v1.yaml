@@ -8,14 +8,13 @@ hydra:
 
 name: run_20250109_nebula_features_4_shaping_no_teacher
 
-r_new_observed: 0.0005
-r_visit_relic_nb: 0.0003
+r_new_observed: 0.001
+r_visit_relic_nb: 0.001
 r_team_point: 0.001
-r_dead_units: 0
-r_match: 0
-r_game: 0.05
-r_frozen_uints: -0.01
-r_dead_uints: -0.1
+r_match: 0.2
+r_game: 0
+r_frozen_uints: -0.001
+r_dead_uints: -0.01
 
 ## WANDB params
 # The wandb project name

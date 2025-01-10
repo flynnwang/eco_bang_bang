@@ -1,5 +1,5 @@
 from collections import OrderedDict, deque, defaultdict, Counter
-
+from functools import cached_property
 import random
 
 import gym
@@ -251,6 +251,18 @@ class MapManager:
   @property
   def step_new_observed_num(self):
     return self.observed.sum() - self.last_observed_num
+
+  @property
+  def anti_main_diag_area(self):
+    x = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.bool)
+    for i in range(MAP_WIDTH):
+      x[i, MAP_WIDTH - i - 1] = True
+    return maximum_filter(x, size=3)
+
+  @property
+  def step_observe_anti_main_diag_area(self):
+    new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
+    return (new_ob_mask & self.anti_main_diag_area).sum()
 
   @property
   def step_observe_corner_cells_num(self):
@@ -916,28 +928,26 @@ class LuxS3Env(gym.Env):
   def _convert_shaping_reward(self, raw_obs, env_state):
 
     def _convert(mm, ob):
-      MIN_WARMUP_MATCH_STEP = 3
+      MIN_WARMUP_MATCH_STEP = 1
 
       r = 0
 
       # reward for open unobserved cells
       r_explore = 0
-      if mm.match_step > 11:
-        # r_explore = mm.step_new_observed_num * 0.0005  # 24*24 * 0.001 = 0.576
-        r_explore = mm.step_observe_corner_cells_num * 0.0005
+      if mm.match_step > MIN_WARMUP_MATCH_STEP:
+        r_explore = mm.step_observe_anti_main_diag_area * 0.001
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
-      if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0003
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001
 
       # reward for units sit on hidden relic node.
       r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
 
-      # game end reward
-      r_game = 0
       team_wins = raw_obs[mm.player]['team_wins']
 
+      # game end reward
+      r_game = 0
       # if self.is_game_done(raw_obs, mm.player):
       # if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
       # r_game = 0.05
@@ -958,11 +968,10 @@ class LuxS3Env(gym.Env):
       r_dead += mm.units_frozen_count * (-0.001)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
-      self._sum_r += abs(r)
 
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-      # f' r_game={r_game}, sum_r={(self._sum_r / 2):.5f} r_dead={r_dead}')
+      # f' r_game={r_game}, r_dead={r_dead}')
       return r
 
     return [
