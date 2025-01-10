@@ -181,6 +181,7 @@ class PytorchEnv(gym.Wrapper):
       if x.dtype == np.int32:
         dtype = torch.int32
       return torch.from_numpy(x).to(self.device, non_blocking=True).to(dtype)
+      # return torch.from_numpy(x).to(self.device).to(dtype)
 
 
 class DictEnv(gym.Wrapper):

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250109_nebula_features_shaping_reward_r0
+name: run_20250110_rewarding_shaping_v0
 
 r_new_observed: 0.001
 r_visit_relic_nb: 0.001
@@ -24,7 +24,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_neblua_features_v2
+group: luxs3_reward_shaping
 
 ## ENV params
 obs_space_kwargs: {}
@@ -61,8 +61,7 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 5e-5
-  #lr: 1e-4
+  lr: 1e-5
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
@@ -104,11 +103,6 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-
-#load_dir: /home/flynnwang/runs/ebb/01-08/08-10-22
-#checkpoint_file: 009104896.pt
-#load_dir: /home/flynnwang/runs/ebb/01-10/17-08-10
-#checkpoint_file: 003022720.pt
 load_dir:
 checkpoint_file:
 #
