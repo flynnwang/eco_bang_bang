@@ -165,14 +165,19 @@ class VisionMap:
       self.vision += self._add_vision(p, self.unit_sensor_range, v)
 
 
+def seed_to_transpose(s):
+  return bool(s & 1), bool((s // 2) & 1)
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 2
 
-  def __init__(self, player, env_cfg):
+  def __init__(self, player, env_cfg, transpose=False):
     self.player_id = int(player[-1])
     self.player = player
     self.env_cfg = env_cfg
+    self.transpose = transpose
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.visible = None
     self.observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
@@ -258,22 +263,42 @@ class MapManager:
     self.last_relic_nb_visited = self.get_visited_relic_nb_num()
     self.last_relic_node_num = self.is_relic_node.sum()
 
-  def mirror(self, ob):
+  def mirror(self, ob, kind='M'):
+    # print(f'{self.game_step}, kind={kind}')
+    position_trans = anti_diag_sym_i
+    mat_trans = anti_diag_sym
+    if kind == 'T':
+      position_trans = lambda x: (x[1], x[0])
+      mat_trans = lambda x: x.T
 
-    def mirror_positions(positions):
+    def update_positions(positions):
       for i, v in enumerate(positions):
-        positions[i] = anti_diag_sym_i(v)
+        positions[i] = position_trans(v)
 
-    mirror_positions(ob['units']['position'][0])
-    mirror_positions(ob['units']['position'][1])
+    update_positions(ob['units']['position'][0])
+    update_positions(ob['units']['position'][1])
+    update_positions(ob['relic_nodes'])
 
-    ob['sensor_mask'] = anti_diag_sym(ob['sensor_mask'])
+    ob['sensor_mask'] = mat_trans(ob['sensor_mask'])
 
     mf = ob['map_features']
-    mf['energy'] = anti_diag_sym(mf['energy'])
-    mf['tile_type'] = anti_diag_sym(mf['tile_type'])
+    mf['energy'] = mat_trans(mf['energy'])
+    mf['tile_type'] = mat_trans(mf['tile_type'])
 
-    mirror_positions(ob['relic_nodes'])
+    def transpose_positions(positions):
+      for i, v in enumerate(positions):
+        positions[i] = (v[1], v[0])
+
+    transpose_positions(ob['units']['position'][0])
+    transpose_positions(ob['units']['position'][1])
+
+    ob['sensor_mask'] = ob['sensor_mask'].T
+
+    mf = ob['map_features']
+    mf['energy'] = mf['energy'].T
+    mf['tile_type'] = mf['tile_type'].T
+
+    transpose_positions(ob['relic_nodes'])
 
   def infer_units_info(self, ob, model_action):
     if (model_action is None
@@ -384,6 +409,9 @@ class MapManager:
     # Mirror should go first before everything else.
     if self.player_id == 1:
       self.mirror(ob)
+
+    if self.transpose:
+      self.mirror(ob, 'T')
 
     # use non-infered units position
     self.vision_map.update(ob['units_mask'][self.player_id],
@@ -628,7 +656,11 @@ class LuxS3Env(gym.Env):
     final_state = info['state']
 
     env_cfg = info['params']
-    self.mms = [MapManager(PLAYER0, env_cfg), MapManager(PLAYER1, env_cfg)]
+    t1, t2 = seed_to_transpose(self._seed)
+    self.mms = [
+        MapManager(PLAYER0, env_cfg, t1),
+        MapManager(PLAYER1, env_cfg, t2)
+    ]
     self._update_mms(raw_obs, model_actions=None)
 
     self.prev_raw_obs = raw_obs
@@ -667,6 +699,11 @@ class LuxS3Env(gym.Env):
       uid = i
 
       a = np.int32(action[i][0])  # unbox [a] => a
+
+      # Note: transpose shoud happen before mirror
+      if mm.transpose:
+        a = TRANSPOSED_ACTION[a]
+
       if mm.player_id == 1:
         a = MIRRORED_ACTION[a]
 
