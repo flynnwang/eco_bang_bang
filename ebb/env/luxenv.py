@@ -656,7 +656,8 @@ class LuxS3Env(gym.Env):
     final_state = info['state']
 
     env_cfg = info['params']
-    t1, t2 = seed_to_transpose(self._seed)
+    # t1, t2 = seed_to_transpose(self._seed)
+    t1, t2 = False, True
     self.mms = [
         MapManager(PLAYER0, env_cfg, t1),
         MapManager(PLAYER1, env_cfg, t2)
