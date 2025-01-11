@@ -4,6 +4,9 @@ import random
 import sys
 
 import gym
+
+gym.logger.set_level(40)
+
 import numpy as np
 from gym import spaces
 from luxai_s3.wrappers import LuxAIS3GymEnv
@@ -493,7 +496,7 @@ class MapManager:
     return self.get_visited_relic_nb_num() - self.last_relic_nb_visited
 
   def update_visited_node(self, unit_positions, ob):
-    self.unit_positions = np.zeros((MAP_SHAPE2), dtype=np.bool)
+    self.unit_positions = np.zeros((MAP_SHAPE2), dtype=bool)
     self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
     self.visited[self.unit_positions] = 1
 
@@ -696,7 +699,7 @@ class LuxS3Env(gym.Env):
     TODO: to encode SAP action, prev observation is required.
     """
     action = action[UNITS_ACTION]
-    print(f'action = {action}, {action}', file=sys.stderr)
+    # print(f'action = {action}, {action}', file=sys.stderr)
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i in range(MAX_UNIT_NUM):
       # uid = mm.unit_idx_to_id[i]

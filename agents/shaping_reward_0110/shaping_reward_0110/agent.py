@@ -49,7 +49,7 @@ class Agent:
                  reward_schema="shaping")
     flags = Namespace(**flags)
     model = create_model(flags, self.env.observation_space, device=DEVICE)
-    print(f"Model created", file=sys.stderr)
+    # print(f"Model created", file=sys.stderr)
 
     model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               MODEL_FILE_NAME)
@@ -57,7 +57,7 @@ class Agent:
       print(f"Model file not found: {model_path}", file=sys.stderr)
       raise RuntimeError("model not found")
 
-    print(f"Loading model...", file=sys.stderr)
+    # print(f"Loading model...", file=sys.stderr)
     checkpoint_state = torch.load(model_path,
                                   map_location=DEVICE,
                                   weights_only=True)
