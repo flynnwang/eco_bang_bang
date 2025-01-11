@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250111_rewarding_shaping_r0
+name: run_20250111_rewarding_shaping_r1
 
 r_new_observed: 0.001
 r_visit_relic_nb: 0.001
@@ -103,8 +103,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir:
-checkpoint_file:
+load_dir: /home/flynnwang/runs/ebb/01-11/07-44-35
+checkpoint_file: 059956864.pt
 #load_dir: /home/flynnwang/runs/ebb/01-11/03-45-26
 #checkpoint_file: 016636416.pt
 #

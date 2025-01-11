@@ -944,7 +944,7 @@ class LuxS3Env(gym.Env):
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
-      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.005
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0005
 
       # reward for units sit on hidden relic node.
       r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
