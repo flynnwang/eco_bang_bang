@@ -1,6 +1,7 @@
 from collections import OrderedDict, deque, defaultdict, Counter
 from functools import cached_property
 import random
+import sys
 
 import gym
 import numpy as np
@@ -257,7 +258,7 @@ class MapManager:
     x = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.bool)
     for i in range(MAP_WIDTH):
       x[i, MAP_WIDTH - i - 1] = True
-    return maximum_filter(x, size=5)
+    return maximum_filter(x, size=3)
 
   @property
   def step_observe_anti_main_diag_area(self):
@@ -267,10 +268,8 @@ class MapManager:
   @property
   def step_observe_corner_cells_num(self):
     new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
-    return (new_ob_mask[0:4 + 1, 20:23 + 1].sum() +
-            new_ob_mask[19:23 + 1, 0:4 + 1].sum())
-    # return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum()
-    # new_ob_mask[7:17, 7:17].sum())
+    return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum() +
+            new_ob_mask[7:17, 7:17].sum())
 
   def update_counters(self):
     self.last_observed_num = self.observed.sum()
@@ -697,6 +696,7 @@ class LuxS3Env(gym.Env):
     TODO: to encode SAP action, prev observation is required.
     """
     action = action[UNITS_ACTION]
+    print(f'action = {action}, {action}', file=sys.stderr)
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i in range(MAX_UNIT_NUM):
       # uid = mm.unit_idx_to_id[i]
@@ -936,8 +936,7 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_observe_anti_main_diag_area * 0.0005
-        r_explore = mm.step_observe_corner_cells_num * 0.001
+        r_explore = mm.step_observe_anti_main_diag_area * 0.001
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
@@ -967,7 +966,7 @@ class LuxS3Env(gym.Env):
 
       r_dead = 0
       r_dead += mm.units_dead_count * (-0.01)
-      r_dead += mm.units_frozen_count * (-0.0005)
+      r_dead += mm.units_frozen_count * (-0.001)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
 

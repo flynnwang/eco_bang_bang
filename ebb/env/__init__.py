@@ -3,7 +3,6 @@ from typing import Optional
 
 from .luxenv import LuxS3Env, MapManager
 from .wrappers import VecEnv, PytorchEnv, DictEnv
-from .const import *
 
 
 def create_env(flags, device: torch.device) -> DictEnv:
