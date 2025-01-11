@@ -3,6 +3,9 @@ from functools import cached_property
 import random
 
 import gym
+
+gym.logger.set_level(40)
+
 import numpy as np
 from gym import spaces
 from luxai_s3.wrappers import LuxAIS3GymEnv
@@ -254,7 +257,7 @@ class MapManager:
 
   @property
   def anti_main_diag_area(self):
-    x = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.bool)
+    x = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     for i in range(MAP_WIDTH):
       x[i, MAP_WIDTH - i - 1] = True
     return maximum_filter(x, size=5)
@@ -937,11 +940,11 @@ class LuxS3Env(gym.Env):
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
         r_explore = mm.step_observe_anti_main_diag_area * 0.0005
-        r_explore = mm.step_observe_corner_cells_num * 0.001
+        r_explore += mm.step_observe_corner_cells_num * 0.001
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
-      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.005
 
       # reward for units sit on hidden relic node.
       r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
@@ -966,7 +969,7 @@ class LuxS3Env(gym.Env):
         r_match = -0.2
 
       r_dead = 0
-      r_dead += mm.units_dead_count * (-0.01)
+      r_dead += mm.units_dead_count * (-0.001)
       r_dead += mm.units_frozen_count * (-0.0005)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
@@ -1065,6 +1068,10 @@ class LuxS3Env(gym.Env):
           actions_mask[i][ACTION_CENTER] = 1
 
         action_centered_positions.add(pos)
+
+      # Can always stay on green cell for more energy
+      if mm.cell_energy[pos[0]][pos[1]] > 0:
+        actions_mask[i][ACTION_CENTER] = 1
 
     return {UNITS_ACTION: actions_mask}
 
