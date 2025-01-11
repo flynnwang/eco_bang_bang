@@ -257,7 +257,7 @@ class MapManager:
     x = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.bool)
     for i in range(MAP_WIDTH):
       x[i, MAP_WIDTH - i - 1] = True
-    return maximum_filter(x, size=3)
+    return maximum_filter(x, size=5)
 
   @property
   def step_observe_anti_main_diag_area(self):
@@ -267,8 +267,10 @@ class MapManager:
   @property
   def step_observe_corner_cells_num(self):
     new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
-    return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum() +
-            new_ob_mask[7:17, 7:17].sum())
+    return (new_ob_mask[0:4 + 1, 20:23 + 1].sum() +
+            new_ob_mask[19:23 + 1, 0:4 + 1].sum())
+    # return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum()
+    # new_ob_mask[7:17, 7:17].sum())
 
   def update_counters(self):
     self.last_observed_num = self.observed.sum()
@@ -935,11 +937,12 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_observe_anti_main_diag_area * 0.0007
+        r_explore = mm.step_observe_anti_main_diag_area * 0.0005
+        r_explore = mm.step_observe_corner_cells_num * 0.001
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
-      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0005
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.001
 
       # reward for units sit on hidden relic node.
       r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
@@ -965,7 +968,7 @@ class LuxS3Env(gym.Env):
 
       r_dead = 0
       r_dead += mm.units_dead_count * (-0.01)
-      r_dead += mm.units_frozen_count * (-0.001)
+      r_dead += mm.units_frozen_count * (-0.0005)
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
 

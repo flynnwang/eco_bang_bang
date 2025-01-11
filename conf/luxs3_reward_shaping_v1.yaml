@@ -8,14 +8,14 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250110_rewarding_shaping_v0
+name: run_20250111_rewarding_shaping_r0
 
 r_new_observed: 0.001
 r_visit_relic_nb: 0.001
 r_team_point: 0.001
 r_match: 0.2
 r_game: 0
-r_frozen_uints: -0.001
+r_frozen_uints: -0.0005
 r_dead_uints: -0.01
 
 ## WANDB params
@@ -24,7 +24,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reward_shaping
+group: luxs3_reward_shaping_v2
 
 ## ENV params
 obs_space_kwargs: {}
@@ -61,14 +61,14 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 1e-5
+  lr: 3e-5
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.005
+entropy_cost: 0.007
 baseline_cost: 1.
 teacher_kl_cost: 0.001
 teacher_baseline_cost: 0.0
@@ -105,6 +105,8 @@ debug: False
 
 load_dir:
 checkpoint_file:
+#load_dir: /home/flynnwang/runs/ebb/01-11/03-45-26
+#checkpoint_file: 016636416.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
