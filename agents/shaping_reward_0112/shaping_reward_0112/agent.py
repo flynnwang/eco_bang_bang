@@ -13,8 +13,8 @@ from .model import create_model
 MODEL_FILE_NAME = "035899392_weights.pt"
 
 DO_SAMPLE = True
-DEVICE = 'cpu'
-# DEVICE = 'cuda:0'
+# DEVICE = 'cpu'
+DEVICE = 'cuda:0'
 
 
 def _to_tensor(x: Union[Dict, np.ndarray],
