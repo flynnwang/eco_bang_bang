@@ -24,7 +24,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reward_shaping_v2
+group: luxs3_reward_shaping_v3
 
 ## ENV params
 obs_space_kwargs: {}
