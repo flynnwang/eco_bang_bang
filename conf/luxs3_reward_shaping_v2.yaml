@@ -8,15 +8,15 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250111_shaping_reward_fix_r0
+name: run_20250111_win_loss_teacher
 
 r_new_observed: 0.001
-r_visit_relic_nb: 0.001
+r_visit_relic_nb: 0.0005
 r_team_point: 0.001
-r_match: 0.2
+r_match: 0.3
 r_game: 0
 r_frozen_uints: -0.0005
-r_dead_uints: -0.01
+r_dead_uints: -0.001
 
 ## WANDB params
 # The wandb project name
@@ -24,13 +24,13 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reward_shaping_v3
+group: luxs3_stay_on_green_cell
 
 ## ENV params
 obs_space_kwargs: {}
 reward_space_kwargs: {}
-reward_schema: shaping
-#reward_schema: game_win_loss2
+#reward_schema: shaping
+reward_schema: game_win_loss2
 
 ## TRAINING params
 total_steps: 2e8
@@ -79,9 +79,9 @@ reduction: sum
 
 
 # Pretrained model for KL loss
-use_teacher: False
-teacher_load_dir: /home/flynnwang/runs/ebb/01-09/23-04-48
-teacher_checkpoint_file: 000000000_weights.pt
+use_teacher: True
+teacher_load_dir: /home/flynnwang/runs/ebb/01-11/23-29-46
+teacher_checkpoint_file: 033763072_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True

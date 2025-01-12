@@ -964,9 +964,9 @@ class LuxS3Env(gym.Env):
       prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
-        r_match = 0.2
+        r_match = 0.3
       elif diff[mm.enemy_id] > 0:
-        r_match = -0.2
+        r_match = -0.3
 
       r_dead = 0
       r_dead += mm.units_dead_count * (-0.001)
@@ -1063,8 +1063,9 @@ class LuxS3Env(gym.Env):
       # Can only stay on hidden relic node
       if mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL:
 
-        # Only one units can stay
+        # Only one units can stay and must stay on it!
         if pos not in action_centered_positions:
+          actions_mask[i][:] = 0
           actions_mask[i][ACTION_CENTER] = 1
 
         action_centered_positions.add(pos)
