@@ -705,7 +705,7 @@ class LuxS3Env(gym.Env):
       # uid = mm.unit_idx_to_id[i]
       uid = i
 
-      a = np.int32(action[i][0])  # unbox [a] => a
+      a = int(action[i][0])  # unbox [a] => a
 
       # Note: transpose shoud happen before mirror
       if mm.transpose:
