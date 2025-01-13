@@ -213,6 +213,7 @@ class MapManager:
     self._nebula_energy_reduction = NebulaEnergyReduction()
     self.nebula_vision_reduction = 0
     self.vision_map = VisionMap(self.unit_sensor_range)
+    self.total_team_points = 0
 
   @property
   def nebula_energy_reduction(self):
@@ -1177,6 +1178,7 @@ class LuxS3Env(gym.Env):
         info['_match_observed_node_num'] = mm.match_observed.sum()
         info['_match_visited_node_num'] = mm.match_visited.sum()
 
+        mm.total_team_points += tp0
         info['_match_team_points'] = tp0
         info['_winner_match_team_points'] = max(tp0, tp1)
 
@@ -1189,16 +1191,25 @@ class LuxS3Env(gym.Env):
         info['_match_dead_units'] = mm.total_units_dead_count
         info['_match_frozen_units'] = mm.total_units_frozen_count
 
+      info['_game_total_match_points'] = 0
+      info['_game_observed_node_num'] = 0
+      info['_game_visited_node_num'] = 0
+
       info['_game_total_hidden_relic_nodes_num'] = 0
       info['_game_total_found_relic_nodes_num'] = 0
 
       info['_game_visited_relic_nb_nodes_num'] = 0
       info['_game_total_relic_nb_nodes_num'] = 0
       if done:
+        info['_game_total_match_points'] = mm.total_team_points
+
         info['_game_visited_relic_nb_nodes_num'] = (
             mm.get_game_visited_relic_nb_num())
         info['_game_total_relic_nb_nodes_num'] = ((mm.is_relic_neighbour
                                                    > 0).sum())
+
+        info['_game_observed_node_num'] = mm.game_observed.sum()
+        info['_game_visited_node_num'] = mm.game_visited.sum()
 
       info['_game_total_hidden_relic_nodes_num'] = (
           env_state.relic_nodes_map_weights > 0).sum()

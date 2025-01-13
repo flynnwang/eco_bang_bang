@@ -624,6 +624,18 @@ def learn(
         stats['Env']['game_total_visited_relic_nb_nodes_num'] = (
             game_done_sum(visited_relics_nb_num))
 
+        _game_total_match_points = batch["info"]['_game_total_match_points']
+        stats['Env']['game_total_match_points'] = (
+            game_done_mean(_game_total_match_points))
+
+        _game_observed_node_num = batch["info"]['_game_observed_node_num']
+        stats['Env']['game_observed_node_num'] = (
+            game_done_mean(_game_observed_node_num))
+
+        _game_visited_node_num = batch["info"]['_game_visited_node_num']
+        stats['Env']['game_visited_node_num'] = (
+            game_done_mean(_game_visited_node_num))
+
       optimizer.zero_grad()
       if flags.use_mixed_precision:
         # https://wandb.ai/wandb_fc/tips/reports/How-to-Use-GradScaler-in-PyTorch--VmlldzoyMTY5MDA5

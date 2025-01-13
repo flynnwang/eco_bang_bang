@@ -63,9 +63,7 @@ def get_default_flags(flags: DictConfig) -> DictConfig:
   return OmegaConf.create(flags)
 
 
-# @hydra.main(config_path="conf", config_name="autodl_teacher_config_zero")
-# @hydra.main(config_path="conf", config_name="luxs3_teacher_win_loss_v1")
-@hydra.main(config_path="conf", config_name="luxs3_reward_shaping_v1")
+@hydra.main(version_base="1.1", config_path="conf", config_name="")
 def main(flags: DictConfig):
   cli_conf = OmegaConf.from_cli()
   if Path("config.yaml").exists():
