@@ -20,8 +20,8 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs: {}
 reward_space_kwargs: {}
-#reward_schema: exploration_reward
-reward_schema: game_win_loss2
+reward_schema: shaping
+#reward_schema: game_win_loss2
 reward_shaping_params:
   new_observed_down_tri: 0.0005
   new_observed_main_diag: 0.0005

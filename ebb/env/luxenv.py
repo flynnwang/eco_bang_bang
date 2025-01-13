@@ -276,7 +276,7 @@ class MapManager:
   @property
   def step_observe_anti_diag_down_tri(self):
     new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
-    return new_ob_mask & self.anti_diag_down_tri
+    return (new_ob_mask & self.anti_diag_down_tri).sum()
 
   @property
   def step_observe_corner_cells_num(self):
@@ -502,7 +502,8 @@ class MapManager:
     return mask, position, energy
 
   def get_visited_relic_nb_num(self):
-    sym_visited = self.visited | anti_diag_sym(self.visited)
+    # sym_visited = self.visited | anti_diag_sym(self.visited)
+    sym_visited = self.visited
     return ((sym_visited > 0) & (self.is_relic_neighbour > 0)).sum()
 
   @property
