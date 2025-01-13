@@ -511,7 +511,7 @@ def learn(
 
       # _action_sap = batch["info"]['_action_sap']
 
-      def compute_mean_count_done(v):
+      def game_done_mean(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
