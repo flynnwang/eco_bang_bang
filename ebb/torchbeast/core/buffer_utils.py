@@ -130,13 +130,12 @@ def create_buffers(
       #
       # action needs to be int64 for torch.gather
       actions={
-          UNITS_ACTION:
-          # dict(size=(t + 1, n, MAX_UNIT_NUM, MOVE_ACTION_NUM),
-          dict(size=(t + 1, n, MAX_UNIT_NUM, 1), dtype=torch.int64),
+          UNITS_ACTION: dict(size=(t + 1, n, MAX_UNIT_NUM, 1),
+                             dtype=torch.int64),
       },
       policy_logits={
           UNITS_ACTION:
-          dict(size=(t + 1, n, MAX_UNIT_NUM, MOVE_ACTION_NUM),
+          dict(size=(t + 1, n, MAX_UNIT_NUM, ALL_ACTION_NUM),
                dtype=torch.float32),
       },
       #

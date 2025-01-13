@@ -9,17 +9,18 @@ gym.logger.set_level(40)
 import numpy as np
 from gym import spaces
 from luxai_s3.wrappers import LuxAIS3GymEnv
+from scipy.ndimage import maximum_filter
 
 from random import randint
 
 from .const import *
 
-EXT_ACTION_SHAPE = (MAX_UNIT_NUM, MOVE_ACTION_NUM)
+EXT_ACTION_SHAPE = (MAX_UNIT_NUM, ALL_ACTION_NUM)
 
 # Let's use move action only first
 ACTION_SPACE = spaces.Dict({
     UNITS_ACTION:
-    spaces.MultiDiscrete(np.zeros(MAX_UNIT_NUM, dtype=int) + MOVE_ACTION_NUM)
+    spaces.MultiDiscrete(np.zeros(MAX_UNIT_NUM, dtype=int) + ALL_ACTION_NUM)
 })
 
 MAP_SHAPE = (1, MAP_WIDTH, MAP_HEIGHT)
@@ -92,7 +93,13 @@ def manhatten_distance(p1, p2):
   return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
 
 
-from scipy.ndimage import maximum_filter
+def generate_manhattan_mask(mat, center, range_limit):
+  rows, cols = mat.shape
+  x_center, y_center = center
+  x, y = np.ogrid[:rows, :cols]
+  manhattan_distance = np.abs(x - x_center) + np.abs(y - y_center)
+  mask = manhattan_distance <= range_limit
+  return mask
 
 
 def anti_diag_sym(A):
@@ -173,11 +180,28 @@ def seed_to_transpose(s):
   return bool(s & 1), bool((s // 2) & 1)
 
 
+class SapIndexer:
+
+  def __init__(self):
+    self.position_to_idx = {}
+    self.idx_to_position = {}
+
+    mat = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.bool)
+    center = (12, 12)
+    self.mask = generate_manhattan_mask(mat, center, MAX_SAP_RANGE)
+
+    delta_positions = np.argwhere(self.mask > 0) - np.array(center,
+                                                            dtype=np.int32)
+    for i, (x, y), in enumerate(delta_positions):
+      self.position_to_idx[(x, y)] = i
+      self.idx_to_position[i] = (x, y)
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 2
 
-  def __init__(self, player, env_cfg, transpose=False):
+  def __init__(self, player, env_cfg, transpose=False, sap_indexer=None):
     self.player_id = int(player[-1])
     self.player = player
     self.env_cfg = env_cfg
@@ -209,6 +233,8 @@ class MapManager:
     self._nebula_energy_reduction = NebulaEnergyReduction()
     self.nebula_vision_reduction = 0
     self.vision_map = VisionMap(self.unit_sensor_range)
+    self.sap_indexer = sap_indexer or SapIndexer()
+
     self.total_team_points = 0
 
     self.units_on_relic_num = 0
@@ -241,6 +267,10 @@ class MapManager:
   @property
   def unit_sap_cost(self):
     return self.env_cfg['unit_sap_cost']
+
+  @property
+  def unit_sap_range(self):
+    return self.env_cfg['unit_sap_range']
 
   def update_cell_type(self, ob):
     # adding 1 to start cell type from 0
@@ -492,10 +522,20 @@ class MapManager:
 
     self.update_frozen_or_dead_units(env_state)
     self.update_vision_map()
+    self.update_sap_position_by_enemy_position()
 
     # print(
     # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
     # )
+  def update_sap_position_by_enemy_position(self):
+    """Enemy position for sap action"""
+    self.enemy_position_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
+      if mask and energy >= 0:
+        self.enemy_position_mask[pos[0], pos[1]] = True
+
+    self.enemy_position_mask = maximum_filter(self.enemy_position_mask, size=3)
 
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
@@ -651,6 +691,11 @@ class MapManager:
     relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
     return relic_nodes
 
+  def get_sap_mask(self, pos, sap_range_limit):
+    mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    mask = generate_manhattan_mask(mask, pos, sap_range_limit)
+    return mask & self.enemy_position_mask
+
 
 class LuxS3Env(gym.Env):
 
@@ -711,15 +756,18 @@ class LuxS3Env(gym.Env):
     env_cfg = info['params']
     # t1, t2 = seed_to_transpose(self._seed)
 
+    sap_indexer = SapIndexer()
+
     t1 = (self._seed % 2 == 0)
     t2 = bool(1 - int(t1))
     # t1, t2 = True, True
     t1, t2 = False, False
     self.mms = [
-        MapManager(PLAYER0, env_cfg, t1),
-        MapManager(PLAYER1, env_cfg, t2)
+        MapManager(PLAYER0, env_cfg, transpose=t1, sap_indexer=sap_indexer),
+        MapManager(PLAYER1, env_cfg, transpose=t2, sap_indexer=sap_indexer)
     ]
     self._update_mms(raw_obs, model_actions=None, env_state=final_state)
+    self.sap_indexer = sap_indexer
 
     self.prev_raw_obs = raw_obs
     done = False
@@ -750,6 +798,27 @@ class LuxS3Env(gym.Env):
 
     TODO: to encode SAP action, prev observation is required.
     """
+
+    def encode(a):
+      if a < MOVE_ACTION_NUM:
+        x, y = 0, 0
+      else:
+        a -= MOVE_ACTION_NUM
+        x, y = self.sap_indexer.idx_to_position[a]
+        a = ACTION_SAP
+        # print(f'sap: dx={x}, dy={y}')
+
+      # Note: transpose shoud happen before mirror
+      if mm.transpose:
+        a = TRANSPOSED_ACTION[a]
+        x, y = y, x
+
+      if mm.player_id == 1:
+        a = MIRRORED_ACTION[a]
+        x, y = anti_diag_sym_i((x, y))
+
+      return a, x, y
+
     action = action[UNITS_ACTION]
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
     for i in range(MAX_UNIT_NUM):
@@ -757,16 +826,10 @@ class LuxS3Env(gym.Env):
       uid = i
 
       a = int(action[i][0])  # unbox [a] => a
-
-      # Note: transpose shoud happen before mirror
-      if mm.transpose:
-        a = TRANSPOSED_ACTION[a]
-
-      if mm.player_id == 1:
-        a = MIRRORED_ACTION[a]
+      a, x, y = encode(a)
 
       # Set the unit action based on its real unit info.
-      unit_actions[uid][0] = a
+      unit_actions[uid][:] = (a, x, y)
     return unit_actions
 
   def compute_actions_taken(self, model_actions):
@@ -1123,9 +1186,7 @@ class LuxS3Env(gym.Env):
 
       units.append((energy, i, pos))
 
-    # sort units by energy
-    units.sort()
-    for energy, i, pos in units:
+    def update_move_action_mask(i, pos, energy):
       # has enough energy to move
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
@@ -1135,31 +1196,44 @@ class LuxS3Env(gym.Env):
           continue
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
-
-        # do not move onto the next cell if will frozen there.
-        # map_energy = mm.cell_energy[nx][ny]
-
-        # TODO: add nebula energy reduction here.
-        # if mm.cell_type[nx][ny] == CELL_NEBULA:
-        # map_energy -=
-        # if (mm.team_point_mass[nx][ny] >= 0
-        # or energy + map_energy >= mm.unit_move_cost):
         actions_mask[i][k] = 1
 
       # Can only stay on hidden relic node
       if mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL:
 
-        # Only one units can stay and must stay on it!
+        # Only one units can stay and force it to stay there
         if pos not in action_centered_positions:
-          # actions_mask[i][:] = 0
+          # actions_mask[i][:MOVE_ACTION_NUM] = 0
           actions_mask[i][ACTION_CENTER] = 1
-
-        action_centered_positions.add(pos)
+          action_centered_positions.add(pos)
 
       # Can always stay on green cell (not relic node) for more energy
       if ((not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
           and mm.cell_energy[pos[0]][pos[1]] > 0):
         actions_mask[i][ACTION_CENTER] = 1
+
+    def update_sap_action_mask(i, pos, energy):
+      # if energy < mm.unit_sap_cost:
+      # return
+
+      # TODO: how to coodinate sap to not sap on same cell
+      unit_sap_mask = mm.get_sap_mask(pos, mm.unit_sap_range)
+      sap_dxdy = np.argwhere(unit_sap_mask) - np.array(pos, dtype=np.int32)
+      for dx, dy in sap_dxdy:
+        try:
+          sap_id = mm.sap_indexer.position_to_idx[(dx, dy)]
+        except Exception as e:
+          __import__('ipdb').set_trace()
+          raise e
+        sap_id += MOVE_ACTION_NUM
+        actions_mask[i][sap_id] = 1
+
+    # sort units by energy
+    units.sort()
+    action_centered_positions = set()
+    for energy, i, pos in units:
+      update_move_action_mask(i, pos, energy)
+      update_sap_action_mask(i, pos, energy)
 
     return {UNITS_ACTION: actions_mask}
 
@@ -1188,7 +1262,10 @@ class LuxS3Env(gym.Env):
       for i in range(MAX_UNIT_NUM):
         a = action[i][0]
         if taken_masks[i][a] > 0:
-          name = ACTION_ID_TO_NAME[a]
+          aid = a
+          if aid >= MOVE_ACTION_NUM:
+            aid = ACTION_SAP
+          name = ACTION_ID_TO_NAME[aid]
           action_count[name] += 1
 
       # append '_' for each action name

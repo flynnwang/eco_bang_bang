@@ -508,8 +508,7 @@ def learn(
       _action_move_down = batch["info"]['_action_down']
       _action_move_left = batch["info"]['_action_left']
       _action_move_right = batch["info"]['_action_right']
-
-      # _action_sap = batch["info"]['_action_sap']
+      _action_sap = batch["info"]['_action_sap']
 
       def game_done_mean(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
@@ -556,7 +555,8 @@ def learn(
               _action_move_left.sum().detach().item(),
               'action_move_right':
               _action_move_right.sum().detach().item(),
-              # 'action_sap': _action_sap.sum().detach().item() / total_move,
+              'action_sap':
+              _action_sap.sum().detach().item(),
           },
           "Loss": {
               "td_lambda_returns_mean": td,
