@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250113_rewarding_shaping_with_state_reset_r0
+name: run_20250113_reward_shaping_using_match_observed_r0
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reward_shaping_with_state_reset
+group: luxs3_reward_shaping_using_match_observed
 
 ## ENV params
 obs_space_kwargs: {}
@@ -24,7 +24,7 @@ reward_space_kwargs: {}
 reward_schema: shaping
 #reward_schema: game_win_loss2
 reward_shaping_params:
-  new_observed_down_tri: 0.0005
+  new_observed_down_tri: 0.0001
   new_observed_main_diag: 0.0005
   new_observed_corners: 0.001
   relic_nb: 0.0005
@@ -36,7 +36,7 @@ reward_shaping_params:
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 16
+num_actors: 20
 n_actor_envs: 16
 
 unroll_length: 16
@@ -63,7 +63,7 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 3e-5
+  lr: 1e-5
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
@@ -82,12 +82,12 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: False
-teacher_load_dir: /home/flynnwang/runs/ebb/01-09/23-04-48
-teacher_checkpoint_file: 000000000_weights.pt
+teacher_load_dir:
+teacher_checkpoint_file:
 
 # MISCELLANEOUS params
 use_mixed_precision: True
-max_one_gpu_actor_num: 4
+max_one_gpu_actor_num: 0
 actor_device: cuda:0
 learner_device: cuda:1
 

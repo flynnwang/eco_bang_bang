@@ -27,7 +27,7 @@ import wandb
 import warnings
 
 import torch
-from torch.cuda import amp
+from torch import amp
 from torch import multiprocessing as mp
 from torch import nn
 from torch.nn import functional as F
@@ -352,7 +352,8 @@ def learn(
   learner_batch_size = flags.batch_size  # for game of 2 teams self-play
   # learner_batch_size = flags.batch_size  # for game of single player
   with lock:
-    with amp.autocast(enabled=flags.use_mixed_precision):
+    with amp.autocast(flags.learner_device.type,
+                      enabled=flags.use_mixed_precision):
       flattened_batch = buffers_apply(
           batch, lambda x: torch.flatten(x, start_dim=0, end_dim=1))
       learner_outputs = learner_model(flattened_batch)
@@ -495,12 +496,6 @@ def learn(
       _step_team_points = batch["info"]['_step_team_points']
       _unit_total_energy = batch["info"]['_unit_total_energy']
 
-      _match_team_points = batch["info"]['_match_team_points']
-      _winner_match_team_points = batch["info"]['_winner_match_team_points']
-      _match_observed_node_num = batch["info"]['_match_observed_node_num']
-      _match_visited_node_num = batch["info"]['_match_visited_node_num']
-
-      _step_new_observed_num = batch["info"]['_step_new_observed_num']
       _step_new_found_relic_node_num = batch["info"][
           '_step_new_found_relic_node_num']
       _step_new_visited_relic_nb_num = batch["info"][
@@ -514,22 +509,22 @@ def learn(
       _action_move_left = batch["info"]['_action_left']
       _action_move_right = batch["info"]['_action_right']
 
-      _winner = batch["info"]['_winner']
-      _match_dead_units = batch["info"]['_match_dead_units']
-      _match_frozen_units = batch["info"]['_match_frozen_units']
-
       # _action_sap = batch["info"]['_action_sap']
 
       def compute_mean_count_done(v):
         return v[batch["done"]][~v[batch["done"]].isnan()].to(
             torch.float).mean().detach().item()
 
+      def game_done_sum(v):
+        return v[batch["done"]][~v[batch["done"]].isnan()].to(
+            torch.float).sum().detach().item()
+
       match_played_mask = batch["info"]['_match_played']
 
-      def compute_match_mean_count(v):
+      def match_done_mean(v):
         return v[match_played_mask > 0].to(torch.float).mean().detach().item()
 
-      def compute_match_done_sum(v):
+      def match_done_sum(v):
         return v[match_played_mask > 0].to(torch.float).sum().detach().item()
 
       def sum_non_nan(v):
@@ -539,7 +534,6 @@ def learn(
       td = td_lambda_returns.vs.mean().detach().item()
       buffer_num = flags.batch_size * flags.unroll_length
       batch_sz = flags.batch_size
-      unroll_length = flags.unroll_length
       stats = {
           "Env": {
               'step_team_points':
@@ -548,12 +542,6 @@ def learn(
               _step_reward.sum().detach().item() / buffer_num,
               'unit_total_energy':
               _unit_total_energy.sum().detach().item() / buffer_num,
-              'step_new_observed_num':
-              _step_new_observed_num.sum().detach().item() / buffer_num,
-              'unroll_step_new_found_relic_node_num':
-              _step_new_found_relic_node_num.sum().detach().item() / batch_sz,
-              'unroll_step_new_visited_relic_nb_num':
-              _step_new_visited_relic_nb_num.sum().detach().item() / batch_sz,
               'step_actionable_unit_num':
               _step_actionable_unit_num.sum().detach().item() / buffer_num,
 
@@ -589,46 +577,52 @@ def learn(
           "Misc": {
               "learning_rate": last_lr,
               "total_games_played": total_games_played,
-              "match_played_in_batch": match_played,
           },
       }
 
       if match_played > 0:
-        stats['Env']['match_team_points2'] = compute_match_mean_count(
-            _match_team_points)
-        stats['Env']['winner_match_team_points'] = compute_match_mean_count(
+        stats['Env']['match_played_in_batch'] = match_played
+
+        _match_team_points = batch["info"]['_match_team_points']
+        _winner_match_team_points = batch["info"]['_winner_match_team_points']
+        stats['Env']['match_team_points'] = match_done_mean(_match_team_points)
+        stats['Env']['winner_match_team_points'] = match_done_mean(
             _winner_match_team_points)
-        stats['Env']['match_observed_node_num'] = compute_match_mean_count(
+
+        _match_observed_node_num = batch["info"]['_match_observed_node_num']
+        _match_visited_node_num = batch["info"]['_match_visited_node_num']
+        stats['Env']['match_observed_node_num'] = match_done_mean(
             _match_observed_node_num)
-        stats['Env']['match_visited_node_num'] = compute_match_mean_count(
+        stats['Env']['match_visited_node_num'] = match_done_mean(
             _match_visited_node_num)
-        stats['Env']['match_actionable_unit_num'] = compute_match_mean_count(
+
+        stats['Env']['match_actionable_unit_num'] = match_done_mean(
             _step_actionable_unit_num)
 
-        hidden_relics_num = batch["info"][
-            '_match_total_hidden_relic_nodes_num']
-        found_relics_num = batch["info"]['_match_total_found_relic_nodes_num']
-        stats['Env'][
-            'match_total_hidden_relic_nodes_num'] = compute_match_done_sum(
-                hidden_relics_num)
-        stats['Env'][
-            'match_total_found_relic_nodes_num'] = compute_match_done_sum(
-                found_relics_num)
+        _winner = batch["info"]['_winner']
+        stats['Env']['match_win_by_player1'] = match_done_sum(_winner)
 
-        relics_nb_num = batch["info"]['_match_total_relic_nb_nodes_num']
-        visited_relics_nb_num = batch["info"][
-            '_match_visited_relic_nb_nodes_num']
-        stats['Env'][
-            'match_total_relic_nb_nodes_num'] = compute_match_done_sum(
-                relics_nb_num)
-        stats['Env'][
-            'match_total_visited_relic_nb_nodes_num'] = compute_match_done_sum(
-                visited_relics_nb_num)
-        stats['Env']['match_win_by_player1'] = compute_match_done_sum(_winner)
-        stats['Env']['match_frozen_units'] = compute_match_mean_count(
+        _match_dead_units = batch["info"]['_match_dead_units']
+        _match_frozen_units = batch["info"]['_match_frozen_units']
+        stats['Env']['match_frozen_units'] = match_done_mean(
             _match_frozen_units)
-        stats['Env']['match_dead_units'] = compute_match_mean_count(
-            _match_dead_units)
+        stats['Env']['match_dead_units'] = match_done_mean(_match_dead_units)
+
+      if games_played > 0:
+        hidden_relics_num = batch["info"]['_game_total_hidden_relic_nodes_num']
+        found_relics_num = batch["info"]['_game_total_found_relic_nodes_num']
+        stats['Env']['game_total_hidden_relic_nodes_num'] = game_done_sum(
+            hidden_relics_num)
+        stats['Env']['game_total_found_relic_nodes_num'] = game_done_sum(
+            found_relics_num)
+
+        relics_nb_num = batch["info"]['_game_total_relic_nb_nodes_num']
+        visited_relics_nb_num = batch["info"][
+            '_game_visited_relic_nb_nodes_num']
+        stats['Env']['game_total_relic_nb_nodes_num'] = (
+            game_done_sum(relics_nb_num))
+        stats['Env']['game_total_visited_relic_nb_nodes_num'] = (
+            game_done_sum(visited_relics_nb_num))
 
       optimizer.zero_grad()
       if flags.use_mixed_precision:
@@ -825,7 +819,7 @@ def train(flags):
     scaled_pct_complete = pct_complete * (1. - min_pct)
     return 1. - scaled_pct_complete
 
-  grad_scaler = amp.GradScaler()
+  grad_scaler = amp.GradScaler(flags.learner_device.type)
   scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
   if checkpoint_state is not None and not flags.weights_only:
     scheduler.load_state_dict(checkpoint_state["scheduler_state_dict"])

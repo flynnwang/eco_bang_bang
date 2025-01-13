@@ -44,17 +44,18 @@ OB = OrderedDict([
                                                 shape=MAP_SHAPE)),
     ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('game_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('match_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('match_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # use this to indicate nodes of unvisited relic cells (and its neighbour)
-    ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('game_unvisited_relic_nb', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
-    #
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    #
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('is_team_born_cell', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # units team map
     ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -183,13 +184,14 @@ class MapManager:
     self.transpose = transpose
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    self.observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    self.last_observed_num = 0
-    self.visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.match_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.game_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.match_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.game_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.is_relic_node = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.last_relic_node_num = 0
     self.is_relic_neighbour = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    self.last_relic_nb_visited = 0
+    self.last_game_visited_relic_nb_num = 0
 
     self.prev_team_point = 0
     self.team_point_mass = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.float32)
@@ -246,14 +248,11 @@ class MapManager:
     self.cell_type[ct] = cells_sym[ct]
 
   def update_visible_and_observed(self, ob):
-    self.visible = ob['sensor_mask'].astype(np.int32)
-    self.prev_observed = self.observed.copy()
-    self.observed |= self.visible
-    # self.observed |= anti_diag_sym(self.visible)
-
-  @property
-  def step_new_observed_num(self):
-    return self.observed.sum() - self.last_observed_num
+    self.visible = ob['sensor_mask'].astype(bool)
+    self.prev_match_observed = self.match_observed.copy()
+    self.prev_game_observed = self.game_observed.copy()
+    self.match_observed |= self.visible
+    self.game_observed |= self.visible
 
   @cached_property
   def anti_main_diag_area(self):
@@ -264,7 +263,7 @@ class MapManager:
 
   @property
   def step_observe_anti_main_diag_area(self):
-    new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
+    new_ob_mask = (~self.prev_game_observed) & self.game_observed
     return (new_ob_mask & self.anti_main_diag_area).sum()
 
   @cached_property
@@ -275,20 +274,18 @@ class MapManager:
 
   @property
   def step_observe_anti_diag_down_tri(self):
-    new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
+    new_ob_mask = (~self.prev_match_observed) & self.match_observed
     return (new_ob_mask & self.anti_diag_down_tri).sum()
 
   @property
   def step_observe_corner_cells_num(self):
-    new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
+    new_ob_mask = (self.prev_game_observed <= 0) & (self.match_observed > 0)
     return (new_ob_mask[0:4 + 1, 20:23 + 1].sum() +
-            new_ob_mask[19:23 + 1, 0:4 + 1].sum())
-    # return (new_ob_mask[0:12, 12:24].sum() + new_ob_mask[12:24, 0:11].sum()
-    # new_ob_mask[7:17, 7:17].sum())
+            new_ob_mask[19:23 + 1, 0:4 + 1].sum() +
+            new_ob_mask[9:9, 14 + 1:14 + 1].sum())
 
   def update_counters(self):
-    self.last_observed_num = self.observed.sum()
-    self.last_relic_nb_visited = self.get_visited_relic_nb_num()
+    self.last_game_visited_relic_nb_num = self.get_game_visited_relic_nb_num()
     self.last_relic_node_num = self.is_relic_node.sum()
 
   def mirror(self, ob, kind='M'):
@@ -418,8 +415,8 @@ class MapManager:
       self.past_obs.clear()
       self.total_units_dead_count = 0
       self.total_units_frozen_count = 0
-      self.visible[:, :] = 0
-      self.visited[:, :] = 0
+      self.match_visited[:, :] = 0
+      self.match_observed[:, :] = 0
 
     # Mirror should go first before everything else.
     if self.player_id == 1:
@@ -501,19 +498,19 @@ class MapManager:
 
     return mask, position, energy
 
-  def get_visited_relic_nb_num(self):
-    # sym_visited = self.visited | anti_diag_sym(self.visited)
-    sym_visited = self.visited
-    return ((sym_visited > 0) & (self.is_relic_neighbour > 0)).sum()
+  def get_game_visited_relic_nb_num(self):
+    return ((self.game_visited) & (self.is_relic_neighbour > 0)).sum()
 
   @property
   def step_new_visited_relic_nb_num(self):
-    return self.get_visited_relic_nb_num() - self.last_relic_nb_visited
+    return (self.get_game_visited_relic_nb_num() -
+            self.last_game_visited_relic_nb_num)
 
   def update_visited_node(self, unit_positions, ob):
     self.unit_positions = np.zeros((MAP_SHAPE2), dtype=bool)
     self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
-    self.visited[self.unit_positions] = 1
+    self.match_visited[self.unit_positions] = 1
+    self.game_visited |= self.match_visited
 
   def count_on_relic_nodes_units(self, env_state):
     return ((env_state.relic_nodes_map_weights > 0) &
@@ -609,9 +606,7 @@ class MapManager:
 
   def get_relic_nb_nodes_to_visit(self):
     to_visit = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    # visited = self.visited | anti_diag_sym(self.visited)
-    visited = self.visited
-    to_visit[(visited == 0) & (self.is_relic_neighbour > 0)] = 1
+    to_visit[(~self.game_visited) & (self.is_relic_neighbour > 0)] = 1
     return to_visit
 
   def get_must_be_relic_nodes(self):
@@ -868,12 +863,14 @@ class LuxS3Env(gym.Env):
     o['vision_map'] = (mm.vision_map.vision).astype(np.float32) / norm
 
     o['visible'] = mm.visible.astype(np.float32)
-    o['observed'] = mm.observed.astype(np.float32)
-    o['visited'] = mm.visited.astype(np.float32)
+    o['match_observed'] = mm.match_observed.astype(np.float32)
+    # o['game_observed'] = mm.game_observed.astype(np.float32)
+    o['match_visited'] = mm.match_visited.astype(np.float32)
+    o['game_visited'] = mm.match_visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit
-    o['is_relic_neighbour'] = mm.get_relic_nb_nodes_to_visit()
+    o['game_unvisited_relic_nb'] = mm.get_relic_nb_nodes_to_visit()
 
     # places need unit stay
     o['team_point_prob'] = mm.get_must_be_relic_nodes()
@@ -882,14 +879,10 @@ class LuxS3Env(gym.Env):
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
     o['cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
+
     # print(
     # f"nebula_energy_reduction={mm.nebula_energy_reduction}, vision_reduction={mm.nebula_vision_reduction}"
     # )
-
-    # is_player0 = -1
-    # if mm.player_id == 0:
-    # is_player0 = 1
-    o['is_team_born_cell'] = scalar(0, 1)
 
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
@@ -959,12 +952,12 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore += (mm.step_observe_anti_diag_down_tri *
-                      wt['new_observed_down_tri'])
-        r_explore += (mm.step_observe_anti_main_diag_area *
-                      wt['new_observed_main_diag'])
         r_explore += (mm.step_observe_corner_cells_num *
-                      wt['new_observed_corners'])
+                      wt['new_observed_corners'])  # per game
+        r_explore += (mm.step_observe_anti_main_diag_area *
+                      wt['new_observed_main_diag'])  # per game
+        r_explore += (mm.step_observe_anti_diag_down_tri *
+                      wt['new_observed_down_tri'])  # per match
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
@@ -1000,8 +993,8 @@ class LuxS3Env(gym.Env):
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
 
       # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.2f} '
-      # f' r_game={r_game}, r_dead={r_dead}')
+      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.4f} '
+      # f' r_match={r_match}, r_dead={r_dead}')
       return r
 
     return [
@@ -1154,22 +1147,10 @@ class LuxS3Env(gym.Env):
       info['player'] = (int(self._seed) %
                         1000) * 100 + mm.player_id  # for testing
       info['_step_reward'] = step_reward
-      info['_step_new_observed_num'] = mm.step_new_observed_num
       info['_step_new_found_relic_node_num'] = mm.step_new_found_relic_node_num
       info['_step_new_visited_relic_nb_num'] = mm.step_new_visited_relic_nb_num
       info['_step_actionable_unit_num'] = self._actions_taken_mask[
           mm.player_id][UNITS_ACTION].any(axis=-1, keepdims=True).sum()
-
-      info['_match_observed_node_num'] = mm.observed.sum()
-      info['_match_visited_node_num'] = mm.visited.sum()
-
-      info['_match_total_hidden_relic_nodes_num'] = (
-          env_state.relic_nodes_map_weights > 0).sum()
-      info['_match_total_found_relic_nodes_num'] = (mm.team_point_mass
-                                                    >= 30).sum()
-      info['_match_total_relic_nb_nodes_num'] = (mm.is_relic_neighbour
-                                                 > 0).sum()
-      info['_match_visited_relic_nb_nodes_num'] = mm.get_visited_relic_nb_num()
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
@@ -1182,6 +1163,9 @@ class LuxS3Env(gym.Env):
       # )
       info['_step_team_points'] = max(tp0 - tp1, 0)
 
+      info['_match_observed_node_num'] = 0
+      info['_match_visited_node_num'] = 0
+
       info['_match_team_points'] = 0
       info['_winner_match_team_points'] = 0
       info['_match_played'] = 0
@@ -1190,15 +1174,36 @@ class LuxS3Env(gym.Env):
       info['_match_frozen_units'] = 0
       match_step = raw_obs[PLAYER0]['match_steps']
       if match_step == MAX_MATCH_STEPS:
+        info['_match_observed_node_num'] = mm.match_observed.sum()
+        info['_match_visited_node_num'] = mm.match_visited.sum()
+
         info['_match_team_points'] = tp0
         info['_winner_match_team_points'] = max(tp0, tp1)
+
         info['_match_played'] = 1
         if team_win > enemy_win:
           info['_winner'] = mm.player_id
         else:
           info['_winner'] = mm.enemy_id
+
         info['_match_dead_units'] = mm.total_units_dead_count
         info['_match_frozen_units'] = mm.total_units_frozen_count
+
+      info['_game_total_hidden_relic_nodes_num'] = 0
+      info['_game_total_found_relic_nodes_num'] = 0
+
+      info['_game_visited_relic_nb_nodes_num'] = 0
+      info['_game_total_relic_nb_nodes_num'] = 0
+      if done:
+        info['_game_visited_relic_nb_nodes_num'] = (
+            mm.get_game_visited_relic_nb_num())
+        info['_game_total_relic_nb_nodes_num'] = ((mm.is_relic_neighbour
+                                                   > 0).sum())
+
+      info['_game_total_hidden_relic_nodes_num'] = (
+          env_state.relic_nodes_map_weights > 0).sum()
+      info['_game_total_found_relic_nodes_num'] = (mm.team_point_mass
+                                                   >= 30).sum()
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
