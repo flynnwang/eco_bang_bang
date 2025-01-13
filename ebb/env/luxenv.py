@@ -182,7 +182,7 @@ class MapManager:
     self.env_cfg = env_cfg
     self.transpose = transpose
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    self.visible = None
+    self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.last_observed_num = 0
     self.visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
@@ -249,13 +249,13 @@ class MapManager:
     self.visible = ob['sensor_mask'].astype(np.int32)
     self.prev_observed = self.observed.copy()
     self.observed |= self.visible
-    self.observed |= anti_diag_sym(self.visible)
+    # self.observed |= anti_diag_sym(self.visible)
 
   @property
   def step_new_observed_num(self):
     return self.observed.sum() - self.last_observed_num
 
-  @property
+  @cached_property
   def anti_main_diag_area(self):
     x = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     for i in range(MAP_WIDTH):
@@ -266,6 +266,17 @@ class MapManager:
   def step_observe_anti_main_diag_area(self):
     new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
     return (new_ob_mask & self.anti_main_diag_area).sum()
+
+  @cached_property
+  def anti_diag_down_tri(self):
+    mp = np.tri(MAP_WIDTH, MAP_HEIGHT, k=0, dtype=bool)
+    mp = np.flip(mp, axis=1)
+    return mp
+
+  @property
+  def step_observe_anti_diag_down_tri(self):
+    new_ob_mask = (self.prev_observed <= 0) & (self.observed > 0)
+    return new_ob_mask & self.anti_diag_down_tri
 
   @property
   def step_observe_corner_cells_num(self):
@@ -401,12 +412,14 @@ class MapManager:
     self.total_units_frozen_count += self.units_frozen_count
 
   def update(self, ob, model_action=None):
-    # Match restarted
+    # Match restarted and reset some of the unit states
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
       self.past_obs.clear()
       self.total_units_dead_count = 0
       self.total_units_frozen_count = 0
+      self.visible[:, :] = 0
+      self.visited[:, :] = 0
 
     # Mirror should go first before everything else.
     if self.player_id == 1:
@@ -595,8 +608,9 @@ class MapManager:
 
   def get_relic_nb_nodes_to_visit(self):
     to_visit = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    sym_visited = self.visited | anti_diag_sym(self.visited)
-    to_visit[(sym_visited == 0) & (self.is_relic_neighbour > 0)] = 1
+    # visited = self.visited | anti_diag_sym(self.visited)
+    visited = self.visited
+    to_visit[(visited == 0) & (self.is_relic_neighbour > 0)] = 1
     return to_visit
 
   def get_must_be_relic_nodes(self):
@@ -607,9 +621,13 @@ class MapManager:
 
 class LuxS3Env(gym.Env):
 
-  def __init__(self, reward_schema=None, game_env=None):
+  def __init__(self,
+               reward_schema=None,
+               game_env=None,
+               reward_shaping_params=None):
     self.reward_schema = reward_schema
     self.game = game_env or LuxAIS3GymEnv(numpy_output=True)
+    self.reward_shaping_params = reward_shaping_params
     self.mms = None
     self.prev_raw_obs = None
     self._seed = None
@@ -930,6 +948,7 @@ class LuxS3Env(gym.Env):
       ]
 
   def _convert_shaping_reward(self, raw_obs, env_state):
+    wt = self.reward_shaping_params
 
     def _convert(mm, ob):
       MIN_WARMUP_MATCH_STEP = 1
@@ -939,38 +958,43 @@ class LuxS3Env(gym.Env):
       # reward for open unobserved cells
       r_explore = 0
       if mm.match_step > MIN_WARMUP_MATCH_STEP:
-        r_explore = mm.step_observe_anti_main_diag_area * 0.0005
-        r_explore += mm.step_observe_corner_cells_num * 0.001
+        r_explore += (mm.step_observe_anti_diag_down_tri *
+                      wt['new_observed_down_tri'])
+        r_explore += (mm.step_observe_anti_main_diag_area *
+                      wt['new_observed_main_diag'])
+        r_explore += (mm.step_observe_corner_cells_num *
+                      wt['new_observed_corners'])
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0
-      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * 0.0005
+      r_visit_relic_nb = mm.step_new_visited_relic_nb_num * wt['relic_nb']
 
       # reward for units sit on hidden relic node.
-      r_team_point = mm.count_on_relic_nodes_units(env_state) * 0.001
+      r_team_point = (mm.count_on_relic_nodes_units(env_state) *
+                      wt['team_point'])
 
       team_wins = raw_obs[mm.player]['team_wins']
 
       # game end reward
       r_game = 0
-      # if self.is_game_done(raw_obs, mm.player):
-      # if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
-      # r_game = 0.05
-      # elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
-      # r_game = -0.05
+      if self.is_game_done(raw_obs, mm.player):
+        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+          r_game = wt['game_result']
+        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+          r_game = -wt['game_result']
 
       # match end reward
       r_match = 0
       prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
-        r_match = 0.3
+        r_match = wt['match_result']
       elif diff[mm.enemy_id] > 0:
-        r_match = -0.3
+        r_match = -wt['match_result']
 
       r_dead = 0
-      r_dead += mm.units_dead_count * (-0.001)
-      r_dead += mm.units_frozen_count * (-0.0005)
+      r_dead += mm.units_dead_count * wt['dead_uints']
+      r_dead += mm.units_frozen_count * wt['frozen_uints']
 
       r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
 
@@ -1158,6 +1182,7 @@ class LuxS3Env(gym.Env):
       info['_step_team_points'] = max(tp0 - tp1, 0)
 
       info['_match_team_points'] = 0
+      info['_winner_match_team_points'] = 0
       info['_match_played'] = 0
       info['_winner'] = 0
       info['_match_dead_units'] = 0
@@ -1165,6 +1190,7 @@ class LuxS3Env(gym.Env):
       match_step = raw_obs[PLAYER0]['match_steps']
       if match_step == MAX_MATCH_STEPS:
         info['_match_team_points'] = tp0
+        info['_winner_match_team_points'] = max(tp0, tp1)
         info['_match_played'] = 1
         if team_win > enemy_win:
           info['_winner'] = mm.player_id

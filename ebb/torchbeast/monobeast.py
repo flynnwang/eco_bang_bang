@@ -496,6 +496,7 @@ def learn(
       _unit_total_energy = batch["info"]['_unit_total_energy']
 
       _match_team_points = batch["info"]['_match_team_points']
+      _winner_match_team_points = batch["info"]['_winner_match_team_points']
       _match_observed_node_num = batch["info"]['_match_observed_node_num']
       _match_visited_node_num = batch["info"]['_match_visited_node_num']
 
@@ -595,6 +596,8 @@ def learn(
       if match_played > 0:
         stats['Env']['match_team_points2'] = compute_match_mean_count(
             _match_team_points)
+        stats['Env']['winner_match_team_points'] = compute_match_mean_count(
+            _winner_match_team_points)
         stats['Env']['match_observed_node_num'] = compute_match_mean_count(
             _match_observed_node_num)
         stats['Env']['match_visited_node_num'] = compute_match_mean_count(

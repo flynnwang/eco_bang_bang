@@ -10,14 +10,6 @@ hydra:
 
 name: run_20250112_rewarding_shaping_r0
 
-r_new_observed: 0.0005
-r_visit_relic_nb: 0.0005
-r_team_point: 0.001
-r_match: 0.2
-r_game: 0
-r_frozen_uints: -0.0005
-r_dead_uints: -0.01
-
 ## WANDB params
 # The wandb project name
 project: lux_s3
@@ -31,15 +23,25 @@ obs_space_kwargs: {}
 reward_space_kwargs: {}
 reward_schema: shaping
 #reward_schema: game_win_loss2
+reward_shaping_params:
+  new_observed_down_tri: 0.0005
+  new_observed_main_diag: 0.0005
+  new_observed_corners: 0.001
+  relic_nb: 0.0005
+  team_point: 0.001
+  match_result: 0.3
+  game_result: 0
+  frozen_uints: -0.0005
+  dead_uints: 0
 
 ## TRAINING params
 total_steps: 2e8
 num_actors: 16
-n_actor_envs: 4
+n_actor_envs: 2
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`
-batch_size: 8
+batch_size: 4
 discounting: 0.999
 
 ## MODEL params
