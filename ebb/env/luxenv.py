@@ -1173,7 +1173,7 @@ class LuxS3Env(gym.Env):
 
       # Team points stats
       tp0 = raw_obs1['team_points'][mm.player_id]
-      tp1 = prev_obs1['team_points'][mm.player_id]
+      tp1 = prev_obs1['team_points'][mm.enemy_id]
 
       team_win = raw_obs1['team_wins'][mm.player_id]
       enemy_win = raw_obs1['team_wins'][mm.enemy_id]

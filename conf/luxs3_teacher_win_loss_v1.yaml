@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250112_luxs3_teacher_win_loss_r0
+name: run_20250112_luxs3_teacher_win_loss_r0_kl_cost_0.0001_entropy_0.0001
 
 r_new_observed: 0.0005
 r_visit_relic_nb: 0.0005
@@ -68,9 +68,9 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.001
+entropy_cost: 0.0001
 baseline_cost: 1.
-teacher_kl_cost: 0.005
+teacher_kl_cost: 0.0001
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -80,11 +80,14 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-12/09-59-49
-teacher_checkpoint_file: 035899392_weights.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-12/23-42-44
+teacher_checkpoint_file: 025653888_weights.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-12/09-59-49
+#teacher_checkpoint_file: 035899392_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
+# < max_one_gpu_actor_num: use learner device
 max_one_gpu_actor_num: 8
 actor_device: cuda:0
 learner_device: cuda:1

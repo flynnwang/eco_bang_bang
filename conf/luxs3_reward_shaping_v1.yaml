@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250112_rewarding_shaping_r0
+name: run_20250113_rewarding_shaping_with_state_reset_r0
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reward_shaping_v3
+group: luxs3_reward_shaping_with_state_reset
 
 ## ENV params
 obs_space_kwargs: {}
@@ -37,7 +37,7 @@ reward_shaping_params:
 ## TRAINING params
 total_steps: 2e8
 num_actors: 16
-n_actor_envs: 2
+n_actor_envs: 16
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`
@@ -70,7 +70,7 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.007
+entropy_cost: 0.005
 baseline_cost: 1.
 teacher_kl_cost: 0.001
 teacher_baseline_cost: 0.0
@@ -87,7 +87,7 @@ teacher_checkpoint_file: 000000000_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
-max_one_gpu_actor_num: 8
+max_one_gpu_actor_num: 4
 actor_device: cuda:0
 learner_device: cuda:1
 
