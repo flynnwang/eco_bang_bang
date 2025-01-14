@@ -205,15 +205,22 @@ class MapManager:
     # Use idx for model feature encoding and id for action encoding
     # self.unit_idx_to_id = list(range(MAX_UNIT_NUM))
     # random.shuffle(self.unit_idx_to_id)
-    self.units_frozen_count = 0
-    self.units_dead_count = 0
-    self.total_units_frozen_count = 0
-    self.total_units_dead_count = 0
 
     self._nebula_energy_reduction = NebulaEnergyReduction()
     self.nebula_vision_reduction = 0
     self.vision_map = VisionMap(self.unit_sensor_range)
     self.total_team_points = 0
+
+    self.units_on_relic_num = 0
+    self.prev_units_on_relis_num = 0
+
+    self.units_frozen_count = 0
+    self.prev_units_frozen_count = 0
+    self.total_units_frozen_count = 0
+
+    self.units_dead_count = 0
+    self.prev_units_dead_count = 0
+    self.total_units_dead_count = 0
 
   @property
   def nebula_energy_reduction(self):
@@ -379,10 +386,20 @@ class MapManager:
         # print(
         # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}'
         # )
+  @property
+  def step_units_on_relic_num(self):
+    return self.units_on_relic_num - self.prev_units_on_relic_num
 
-  def update_frozen_or_dead_units(self):
+  def update_frozen_or_dead_units(self, env_state):
+    self.prev_units_on_relic_num = self.units_on_relic_num
+    self.prev_units_frozen_count = self.units_frozen_count
+    self.prev_units_dead_count = self.units_dead_count
+
     if self.match_step <= 1 or len(self.past_obs) < 2:
       return
+
+    if env_state:
+      self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
 
     self.units_frozen_count = 0
     self.units_dead_count = 0
@@ -416,11 +433,19 @@ class MapManager:
     self.total_units_dead_count += self.units_dead_count
     self.total_units_frozen_count += self.units_frozen_count
 
+  @property
+  def step_units_frozen_count(self):
+    return self.units_frozen_count - self.prev_units_frozen_count
+
+  @property
+  def step_units_dead_count(self):
+    return self.units_dead_count - self.prev_units_dead_count
+
     # print(
     # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, energy_sum={self.units_position_energy_sum}, n_units={n_units}'
     # )
 
-  def update(self, ob, model_action=None):
+  def update(self, ob, model_action=None, env_state=None):
     # Match restarted and reset some of the unit states
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
@@ -429,6 +454,9 @@ class MapManager:
       self.total_units_frozen_count = 0
       self.match_visited[:, :] = 0
       self.match_observed[:, :] = 0
+      self.prev_units_on_relis_num = self.units_on_relic_num = 0
+      self.prev_units_dead_count = self.units_dead_count = 0
+      self.prev_units_frozen_count = self.units_frozen_count = 0
 
     # Mirror should go first before everything else.
     if self.player_id == 1:
@@ -465,7 +493,7 @@ class MapManager:
     if len(self.past_obs) > self.MAX_PAST_OB_NUM:
       self.past_obs.pop()
 
-    self.update_frozen_or_dead_units()
+    self.update_frozen_or_dead_units(env_state)
     self.update_vision_map()
 
     # print(
@@ -657,12 +685,12 @@ class LuxS3Env(gym.Env):
   def seed(self, seed):
     self._seed = seed
 
-  def _update_mms(self, obs, model_actions):
+  def _update_mms(self, obs, model_actions, env_state=None):
     a0, a1 = None, None
     if model_actions is not None:
       a0, a1 = model_actions
-    self.mms[0].update(obs[PLAYER0], a0)
-    self.mms[1].update(obs[PLAYER1], a1)
+    self.mms[0].update(obs[PLAYER0], a0, env_state)
+    self.mms[1].update(obs[PLAYER1], a1, env_state)
 
   def reset(self, seed=None):
     if seed is None:
@@ -694,7 +722,7 @@ class LuxS3Env(gym.Env):
         MapManager(PLAYER0, env_cfg, t1),
         MapManager(PLAYER1, env_cfg, t2)
     ]
-    self._update_mms(raw_obs, model_actions=None)
+    self._update_mms(raw_obs, model_actions=None, env_state=final_state)
 
     self.prev_raw_obs = raw_obs
     done = False
@@ -831,8 +859,16 @@ class LuxS3Env(gym.Env):
       if len(nodes) > 0:
         extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
 
-      extras[12] = mm.units_frozen_count / MAX_UNIT_NUM
-      extras[13] = mm.units_dead_count / MAX_UNIT_NUM
+      extras[12] = mm.step_units_dead_count / MAX_UNIT_NUM
+      extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
+
+      extras[14] = mm.step_units_on_relic_num / MAX_UNIT_NUM
+
+      extras[15] = mm.step_new_visited_relic_nb_num / MAX_UNIT_NUM
+
+      extras[16] = mm.step_observe_corner_cells_num / 60
+      extras[17] = mm.step_observe_anti_main_diag_area / 200
+      extras[18] = mm.step_observe_anti_diag_down_tri / 300
       # print(nodes)
       # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
       # print(
@@ -978,8 +1014,7 @@ class LuxS3Env(gym.Env):
       r_visit_relic_nb = mm.step_new_visited_relic_nb_num * wt['relic_nb']
 
       # reward for units sit on hidden relic node.
-      r_team_point = (mm.count_on_relic_nodes_units(env_state) *
-                      wt['team_point'])
+      r_team_point = (mm.step_units_on_relic_num * wt['team_point'])
 
       team_wins = raw_obs[mm.player]['team_wins']
 
@@ -1001,14 +1036,17 @@ class LuxS3Env(gym.Env):
         r_match = -wt['match_result']
 
       r_dead = 0
-      r_dead += mm.units_dead_count * wt['dead_uints']
-      r_dead += mm.units_frozen_count * wt['frozen_uints']
+      r_dead += mm.step_units_dead_count * wt['dead_uints']
+      r_frozen = 0
+      r_frozen += mm.step_units_frozen_count * wt['frozen_uints']
 
-      r = r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point + r_dead
+      r = (r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point +
+           r_dead + r_frozen)
 
-      # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.4f} '
-      # f' r_match={r_match}, r_dead={r_dead}')
+      print(
+          f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.4f} '
+          f' r_visit_relic_nb={r_visit_relic_nb}, r_team_point={r_team_point}, r_dead={r_dead}'
+          f' r_frozen={r_frozen}')
       return r
 
     return [

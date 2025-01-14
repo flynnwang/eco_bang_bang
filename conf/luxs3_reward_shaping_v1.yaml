@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250113_reward_shaping_using_match_observed_r0
+name: run_20250114_first_visit_team_point_reward_t0
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_reward_shaping_using_match_observed
+group: luxs3_first_visit_team_point_reward
 
 ## ENV params
 obs_space_kwargs: {}
@@ -24,16 +24,16 @@ reward_space_kwargs: {}
 reward_schema: shaping
 #reward_schema: game_win_loss2
 reward_shaping_params:
-  new_observed_down_tri: 0.0001
-  new_observed_main_diag: 0.0005
-  new_observed_corners: 0.001
-  relic_nb: 0.0005
-  team_point: 0.001
-  match_result: 0.3
+  new_observed_down_tri: 0.0005
+  new_observed_main_diag: 0.001
+  new_observed_corners: 0.002
+  relic_nb: 0.01
+  team_point: 0.05
+  match_result: 0
   game_result: 0
-  frozen_uints: -0.0005
+  frozen_uints: -0.02
   dead_uints: 0
-  units_position_energy_sum: 0.00001
+  units_position_energy_sum: 0
 
 ## TRAINING params
 total_steps: 2e8
@@ -42,7 +42,7 @@ n_actor_envs: 16
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`
-batch_size: 4
+batch_size: 8
 discounting: 0.999
 
 ## MODEL params
@@ -71,9 +71,9 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 0.005
+entropy_cost: 0.007
 baseline_cost: 1.
-teacher_kl_cost: 0.001
+teacher_kl_cost: 0.0005
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
