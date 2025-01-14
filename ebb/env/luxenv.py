@@ -1143,7 +1143,7 @@ class LuxS3Env(gym.Env):
 
         # Only one units can stay and must stay on it!
         if pos not in action_centered_positions:
-          actions_mask[i][:] = 0
+          # actions_mask[i][:] = 0
           actions_mask[i][ACTION_CENTER] = 1
 
         action_centered_positions.add(pos)
