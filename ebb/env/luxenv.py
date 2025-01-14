@@ -386,6 +386,9 @@ class MapManager:
 
     self.units_frozen_count = 0
     self.units_dead_count = 0
+    self.units_position_energy_sum = 0
+
+    n_units = 0
     for i in range(MAX_UNIT_NUM):
       is_dead, is_frozen = False, False
       mask, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
@@ -398,6 +401,10 @@ class MapManager:
             and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
           is_frozen = True
 
+      if mask and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL):
+        self.units_position_energy_sum += self.cell_energy[p0[0], p0[1]]
+        n_units += 1
+
       # if is_dead:
       # print(
       # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} is_dead={is_dead}, is_frozen={is_frozen}'
@@ -408,6 +415,10 @@ class MapManager:
 
     self.total_units_dead_count += self.units_dead_count
     self.total_units_frozen_count += self.units_frozen_count
+
+    # print(
+    # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, energy_sum={self.units_position_energy_sum}, n_units={n_units}'
+    # )
 
   def update(self, ob, model_action=None):
     # Match restarted and reset some of the unit states
@@ -959,6 +970,8 @@ class LuxS3Env(gym.Env):
                       wt['new_observed_main_diag'])  # per game
         r_explore += (mm.step_observe_anti_diag_down_tri *
                       wt['new_observed_down_tri'])  # per match
+        r_explore += (mm.units_position_energy_sum / 100 *
+                      wt['units_position_energy_sum'])  # per step
 
       # reward for visit relic neighbour node s
       r_visit_relic_nb = 0

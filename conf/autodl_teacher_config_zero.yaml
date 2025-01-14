@@ -32,6 +32,7 @@ reward_shaping_params:
   game_result: 0
   frozen_uints: -0.0005
   dead_uints: 0
+  units_position_energy_sum: 0.00001
 
 ## TRAINING params
 total_steps: 3e8
