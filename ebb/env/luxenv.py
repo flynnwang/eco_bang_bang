@@ -1015,7 +1015,12 @@ class LuxS3Env(gym.Env):
       r_visit_relic_nb = mm.step_new_visited_relic_nb_num * wt['relic_nb']
 
       # reward for units sit on hidden relic node.
-      r_team_point = (mm.step_units_on_relic_num * wt['team_point'])
+      r_units_on_relic = (mm.step_units_on_relic_num * wt['units_on_relic'])
+
+      r_team_point = max(
+          ob['team_points'][mm.player_id] -
+          self.prev_raw_obs[mm.player]['team_points'][mm.player_id], 0)
+      r_team_point *= wt['team_point']
 
       team_wins = raw_obs[mm.player]['team_wins']
 
@@ -1042,7 +1047,7 @@ class LuxS3Env(gym.Env):
       r_frozen += mm.step_units_frozen_count * wt['frozen_uints']
 
       r = (r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point +
-           r_dead + r_frozen)
+           r_units_on_relic + r_dead + r_frozen)
 
       # if r != 0:
       # if r_team_point != 0:
