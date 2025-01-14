@@ -1094,7 +1094,9 @@ class LuxS3Env(gym.Env):
   def _get_available_action_mask(self, mm):
     """Mask for unit action: compute available action based on unit position"""
     actions_mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
+
     units = []
+    action_centered_positions = set()
     for i in range(MAX_UNIT_NUM):
       unit_mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
 
@@ -1102,16 +1104,19 @@ class LuxS3Env(gym.Env):
       if not unit_mask:
         continue
 
+      # Empty energy unit must stay
+      pos = (int(pos[0]), int(pos[1]))
+      if energy == 0:
+        action_centered_positions.add(pos)
+
       # Unit runs out of energy
       if energy < mm.unit_move_cost:
         continue
 
-      pos = (int(pos[0]), int(pos[1]))
       units.append((energy, i, pos))
 
     # sort units by energy
     units.sort()
-    action_centered_positions = set()
     for energy, i, pos in units:
       # has enough energy to move
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
@@ -1229,11 +1234,11 @@ class LuxS3Env(gym.Env):
       info['_match_frozen_units'] = 0
       match_step = raw_obs[PLAYER0]['match_steps']
 
-      if mm.prev_units_on_relic_num != mm.units_on_relic_num:
-        print(
-            f"step={raw_obs[PLAYER0]['steps']}, match_steps={mm.match_step} done={done}, player_id={mm.player_id} team_point={tp0}, "
-            f" units_on_relic_num={mm.units_on_relic_num}, pret_on_relic_num={mm.prev_units_on_relic_num}"
-        )
+      # if mm.prev_units_on_relic_num != mm.units_on_relic_num:
+      # print(
+      # f"step={raw_obs[PLAYER0]['steps']}, match_steps={mm.match_step} done={done}, player_id={mm.player_id} team_point={tp0}, "
+      # f" units_on_relic_num={mm.units_on_relic_num}, pret_on_relic_num={mm.prev_units_on_relic_num}"
+      # )
 
       if match_step == MAX_MATCH_STEPS:
         info['_match_observed_node_num'] = mm.match_observed.sum()
