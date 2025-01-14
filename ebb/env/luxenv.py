@@ -863,15 +863,15 @@ class LuxS3Env(gym.Env):
       extras[12] = mm.step_units_dead_count / MAX_UNIT_NUM
       extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
 
-      extras[14] = mm.step_units_on_relic_num / MAX_UNIT_NUM
+      # extras[14] = mm.step_units_on_relic_num / MAX_UNIT_NUM
 
-      extras[15] = mm.step_new_visited_relic_nb_num / MAX_UNIT_NUM
+      # extras[15] = mm.step_new_visited_relic_nb_num / MAX_UNIT_NUM
 
-      extras[16] = mm.step_observe_corner_cells_num / 60
-      extras[17] = mm.step_observe_anti_main_diag_area / 200
-      extras[18] = mm.step_observe_anti_diag_down_tri / 300
+      # extras[16] = mm.step_observe_corner_cells_num / 60
+      # extras[17] = mm.step_observe_anti_main_diag_area / 200
+      # extras[18] = mm.step_observe_anti_diag_down_tri / 300
 
-      extras[19] = mm.units_frozen_count / MAX_UNIT_NUM
+      # extras[19] = mm.units_frozen_count / MAX_UNIT_NUM
       # extras[10] = mm.units_frozen_count / MAX_UNIT_NUM
       # print(nodes)
       # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
