@@ -212,7 +212,7 @@ class MapManager:
     self.total_team_points = 0
 
     self.units_on_relic_num = 0
-    self.prev_units_on_relis_num = 0
+    self.prev_units_on_relic_num = 0
 
     self.units_frozen_count = 0
     self.prev_units_frozen_count = 0
@@ -398,8 +398,7 @@ class MapManager:
     if self.match_step <= 1 or len(self.past_obs) < 2:
       return
 
-    if env_state:
-      self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
+    self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
 
     self.units_frozen_count = 0
     self.units_dead_count = 0
@@ -454,7 +453,7 @@ class MapManager:
       self.total_units_frozen_count = 0
       self.match_visited[:, :] = 0
       self.match_observed[:, :] = 0
-      self.prev_units_on_relis_num = self.units_on_relic_num = 0
+      self.prev_units_on_relic_num = self.units_on_relic_num = 0
       self.prev_units_dead_count = self.units_dead_count = 0
       self.prev_units_frozen_count = self.units_frozen_count = 0
 
@@ -802,7 +801,9 @@ class LuxS3Env(gym.Env):
     }
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
-    self._update_mms(raw_obs, model_actions=model_action)
+    self._update_mms(raw_obs,
+                     model_actions=model_action,
+                     env_state=final_state)
 
     done = self.is_game_done(raw_obs, PLAYER0)
 
@@ -1043,10 +1044,12 @@ class LuxS3Env(gym.Env):
       r = (r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point +
            r_dead + r_frozen)
 
-      print(
-          f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.4f} '
-          f' r_visit_relic_nb={r_visit_relic_nb}, r_team_point={r_team_point}, r_dead={r_dead}'
-          f' r_frozen={r_frozen}')
+      # if r != 0:
+      # if r_team_point != 0:
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.4f} '
+      # f' r_visit_relic_nb={r_visit_relic_nb}, r_team_point={r_team_point}, r_dead={r_dead}'
+      # f' r_frozen={r_frozen}')
       return r
 
     return [
@@ -1225,6 +1228,13 @@ class LuxS3Env(gym.Env):
       info['_match_dead_units'] = 0
       info['_match_frozen_units'] = 0
       match_step = raw_obs[PLAYER0]['match_steps']
+
+      if mm.prev_units_on_relic_num != mm.units_on_relic_num:
+        print(
+            f"step={raw_obs[PLAYER0]['steps']}, match_steps={mm.match_step} done={done}, player_id={mm.player_id} team_point={tp0}, "
+            f" units_on_relic_num={mm.units_on_relic_num}, pret_on_relic_num={mm.prev_units_on_relic_num}"
+        )
+
       if match_step == MAX_MATCH_STEPS:
         info['_match_observed_node_num'] = mm.match_observed.sum()
         info['_match_visited_node_num'] = mm.match_visited.sum()
