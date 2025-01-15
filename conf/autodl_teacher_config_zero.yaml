@@ -23,16 +23,19 @@ reward_space_kwargs: {}
 reward_schema: shaping
 #reward_schema: game_win_loss2
 reward_shaping_params:
-  new_observed_down_tri: 0.0005
-  new_observed_main_diag: 0.001
-  new_observed_corners: 0.002
-  relic_nb: 0.01
-  team_point: 0.05
-  match_result: 0
+  new_observed_down_tri: 0.0003
+  new_observed_main_diag: 0.0005
+  new_observed_corners: 0.001
+  relic_nb: 0.001
+  units_on_relic: 0.001
+  team_point: 0.0003
+  match_result: 0.3
   game_result: 0
-  frozen_uints: -0.02
+  first_frozen_uints: -0.001
+  stay_frozen_units: -0.0005
   dead_uints: 0
   units_position_energy_sum: 0
+  kill_units: 0.01
 
 ## TRAINING params
 total_steps: 3e8

@@ -36,6 +36,7 @@ reward_shaping_params:
   stay_frozen_units: -0.0005
   dead_uints: 0
   units_position_energy_sum: 0
+  kill_units: 0.01
 
 ## TRAINING params
 total_steps: 2e8
@@ -67,16 +68,16 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 1e-5
+  lr: 3e-5
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 3e-5
+entropy_cost: 5e-4
 baseline_cost: 1.
-teacher_kl_cost: 1e-4
+teacher_kl_cost: 5e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8

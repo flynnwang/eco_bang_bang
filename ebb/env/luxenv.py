@@ -287,9 +287,10 @@ class MapManager:
 
   @property
   def step_observe_corner_cells_num(self):
+    sz = 8
     new_ob_mask = (self.prev_game_observed <= 0) & (self.match_observed > 0)
-    return (new_ob_mask[0:4 + 1, 20:23 + 1].sum() +
-            new_ob_mask[19:23 + 1, 0:4 + 1].sum() +
+    return (new_ob_mask[0:sz + 1, (MAP_WIDTH - sz):23 + 1].sum() +
+            new_ob_mask[(MAP_WIDTH - sz):23 + 1, 0:sz + 1].sum() +
             new_ob_mask[9:9, 14 + 1:14 + 1].sum())
 
   def update_counters(self):
@@ -435,11 +436,7 @@ class MapManager:
 
   @property
   def step_units_frozen_count(self):
-    return self.units_frozen_count - self.prev_units_frozen_count
-
-  @property
-  def step_units_dead_count(self):
-    return self.units_dead_count - self.prev_units_dead_count
+    return max(self.units_frozen_count - self.prev_units_frozen_count, 0)
 
     # print(
     # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, energy_sum={self.units_position_energy_sum}, n_units={n_units}'
@@ -861,7 +858,7 @@ class LuxS3Env(gym.Env):
       if len(nodes) > 0:
         extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
 
-      extras[12] = mm.step_units_dead_count / MAX_UNIT_NUM
+      extras[12] = mm.units_dead_count / MAX_UNIT_NUM
       extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
 
       # extras[14] = mm.step_units_on_relic_num / MAX_UNIT_NUM
@@ -1046,20 +1043,21 @@ class LuxS3Env(gym.Env):
         r_match = -wt['match_result']
 
       r_dead = 0
-      r_dead += mm.step_units_dead_count * wt['dead_uints']
+      r_dead += mm.units_dead_count * wt['dead_uints']
       r_frozen = 0
       r_frozen += mm.step_units_frozen_count * wt['first_frozen_uints']
       r_frozen += mm.units_frozen_count * wt['stay_frozen_units']
 
-      r = (r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point +
-           r_units_on_relic + r_dead + r_frozen)
+      r_kill = self.mms[mm.enemy_id].units_dead_count * wt['kill_units']
 
-      # if r != 0:
-      # if r_team_point != 0:
+      r = (r_explore + +r_visit_relic_nb + r_game + r_match + r_team_point +
+           r_units_on_relic + r_dead + r_frozen + r_kill)
+
+      # if r_kill != 0:
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, r={r:.5f} explore={r_explore:.4f} '
       # f' r_visit_relic_nb={r_visit_relic_nb}, r_team_point={r_team_point}, r_dead={r_dead}'
-      # f' r_frozen={r_frozen}')
+      # f' r_frozen={r_frozen}, r_kill={r_kill}')
       return r
 
     return [
