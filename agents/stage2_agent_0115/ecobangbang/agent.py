@@ -10,11 +10,16 @@ from .env.const import UNITS_ACTION
 from .env.luxenv import MapManager, LuxS3Env
 from .model import create_model
 
-MODEL_FILE_NAME = "057310720_weights.pt"
+SUBMIT_AGENT = False
+
+MODEL_FILE_NAME = "104666368_weights.pt"
 
 DO_SAMPLE = True
-# DEVICE = 'cpu'
-DEVICE = 'cuda:0'
+
+DEVICE = 'cpu'
+if not SUBMIT_AGENT:
+  import random
+  DEVICE = random.sample(['cuda:0', 'cuda:1'], k=1)[0]
 
 
 def _to_tensor(x: Union[Dict, np.ndarray],
@@ -50,7 +55,7 @@ class Agent:
                  reward_schema="shaping")
     flags = Namespace(**flags)
     model = create_model(flags, self.env.observation_space, device=DEVICE)
-    print(f"Model created", file=sys.stderr)
+    # print(f"Model created", file=sys.stderr)
 
     model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               MODEL_FILE_NAME)
@@ -58,7 +63,7 @@ class Agent:
       print(f"Model file not found: {model_path}", file=sys.stderr)
       raise RuntimeError("model not found")
 
-    print(f"Loading model...", file=sys.stderr)
+    # print(f"Loading model...", file=sys.stderr)
     checkpoint_state = torch.load(model_path,
                                   map_location=DEVICE,
                                   weights_only=True)
