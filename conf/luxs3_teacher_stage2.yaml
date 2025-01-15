@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250114_teacher_model_wamup_stage2_r3
+name: run_20250114_teacher_model_wamup_stage2_r3_cont3
 
 ## WANDB params
 # The wandb project name
@@ -86,8 +86,10 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-14/02-26-18
-teacher_checkpoint_file: 053020160_weights.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-15/14-27-56
+teacher_checkpoint_file: 113913856.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-14/02-26-18
+#teacher_checkpoint_file: 053020160_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -109,8 +111,10 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir: /home/flynnwang/runs/ebb/01-15/00-30-51
-checkpoint_file: 060168192.pt
+#load_dir: /home/flynnwang/runs/ebb/01-15/00-30-51
+#checkpoint_file: 060168192.pt
+load_dir: /home/flynnwang/runs/ebb/01-15/14-27-56
+checkpoint_file: 113913856.pt
 #
 weights_only: False
 n_value_warmup_batches: 0

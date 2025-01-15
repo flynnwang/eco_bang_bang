@@ -25,4 +25,4 @@ cp ${WEIGHTS_PATH} ${AGENT_NAME}/ecobangbang
 WEIGHTS_NAME=$(basename "$WEIGHTS_PATH")
 sed -i "s/WEIGHTS_FILE_NAME/$WEIGHTS_NAME/g" "${AGENT_NAME}/ecobangbang/agent.py"
 
-echo "done creating agent: ${AGENT_NAME} with weights: ${WEIGHTS_NAME}"
+echo "OK! agent: ${AGENT_NAME} created with weights: ${WEIGHTS_NAME}"

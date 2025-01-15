@@ -398,7 +398,8 @@ class MapManager:
     if self.match_step <= 1 or len(self.past_obs) < 2:
       return
 
-    self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
+    if env_state is not None:
+      self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
 
     self.units_frozen_count = 0
     self.units_dead_count = 0
@@ -1157,8 +1158,9 @@ class LuxS3Env(gym.Env):
 
         action_centered_positions.add(pos)
 
-      # Can always stay on green cell for more energy
-      if mm.cell_energy[pos[0]][pos[1]] > 0:
+      # Can always stay on green cell (not relic node) for more energy
+      if ((not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
+          and mm.cell_energy[pos[0]][pos[1]] > 0):
         actions_mask[i][ACTION_CENTER] = 1
 
     return {UNITS_ACTION: actions_mask}
