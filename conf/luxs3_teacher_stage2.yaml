@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250114_teacher_model_r6
+name: run_20250114_teacher_model_wamup_stage2_r3
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_teacher_0114
+group: luxs3_teacher_0115
 
 ## ENV params
 obs_space_kwargs: {}
@@ -74,9 +74,9 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 3e-5
+entropy_cost: 5e-5
 baseline_cost: 1.
-teacher_kl_cost: 1e-4
+teacher_kl_cost: 5e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -109,8 +109,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-#load_dir: /home/flynnwang/runs/ebb/01-14/21-13-22
-#checkpoint_file: 007187968.pt
+load_dir: /home/flynnwang/runs/ebb/01-15/00-30-51
+checkpoint_file: 060168192.pt
 #
 weights_only: False
 n_value_warmup_batches: 0

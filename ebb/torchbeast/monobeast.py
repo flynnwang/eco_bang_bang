@@ -699,7 +699,8 @@ def train(flags):
   if flags.load_dir:
     logging.info("Loading checkpoint state...")
     checkpoint_state = torch.load(Path(flags.load_dir) / flags.checkpoint_file,
-                                  map_location=torch.device("cpu"))
+                                  map_location=torch.device("cpu"),
+                                  weights_only=True)
   else:
     checkpoint_state = None
 

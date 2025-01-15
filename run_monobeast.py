@@ -79,6 +79,10 @@ def main(flags: DictConfig):
     new_flags = OmegaConf.load(Path(flags.load_dir) / "config.yaml")
     # Overwrite some parameters
 
+    # default_config = {"--config-name": "luxs3_reward_shaping_v1"}
+    OmegaConf.set_struct(new_flags, False)
+    OmegaConf.set_struct(flags, False)
+    OmegaConf.set_struct(cli_conf, False)
     flags = OmegaConf.merge(new_flags, flags, cli_conf)
 
   flags = get_default_flags(flags)
