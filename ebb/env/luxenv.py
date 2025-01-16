@@ -30,6 +30,9 @@ OB = OrderedDict([
     # Game params
     ('unit_move_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('unit_sensor_range', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('unit_sap_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('unit_sap_range', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('nebula_energy_reduction', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Time & Match
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -61,8 +64,12 @@ OB = OrderedDict([
     # units team map
     ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_loc_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_loc_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Extra baseline mode feature
     ("_baseline_extras",
@@ -199,7 +206,7 @@ class SapIndexer:
 
 class MapManager:
 
-  MAX_PAST_OB_NUM = 2
+  MAX_PAST_OB_NUM = 3
 
   def __init__(self, player, env_cfg, transpose=False, sap_indexer=None):
     self.player_id = int(player[-1])
@@ -517,6 +524,11 @@ class MapManager:
     self.update_cell_energy(ob)
 
     self.past_obs.appendleft(ob)
+
+    # append some default observation to make get_unit_info easier
+    while len(self.past_obs) < self.MAX_PAST_OB_NUM:
+      self.past_obs.appendleft(ob)
+
     if len(self.past_obs) > self.MAX_PAST_OB_NUM:
       self.past_obs.pop()
 
@@ -932,17 +944,15 @@ class LuxS3Env(gym.Env):
 
       extras[12] = mm.units_dead_count / MAX_UNIT_NUM
       extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
+      extras[14] = mm.units_frozen_count / MAX_UNIT_NUM
 
-      # extras[14] = mm.step_units_on_relic_num / MAX_UNIT_NUM
+      extras[15] = mm.unit_sensor_range / MAX_SENSOR_RANGE
+      extras[16] = mm.unit_move_cost / MAX_MOVE_COST
+      extras[17] = mm.unit_sap_cost / MAX_SAP_COST
+      extras[18] = mm.unit_sap_range / MAX_SAP_RANGE
+      extras[19] = mm.nebula_vision_reduction / MAX_VISION_REDUCTION
+      extras[20] = mm.nebula_energy_reduction / MAX_ENERGY_REDUCTION
 
-      # extras[15] = mm.step_new_visited_relic_nb_num / MAX_UNIT_NUM
-
-      # extras[16] = mm.step_observe_corner_cells_num / 60
-      # extras[17] = mm.step_observe_anti_main_diag_area / 200
-      # extras[18] = mm.step_observe_anti_diag_down_tri / 300
-
-      # extras[19] = mm.units_frozen_count / MAX_UNIT_NUM
-      # extras[10] = mm.units_frozen_count / MAX_UNIT_NUM
       # print(nodes)
       # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
       # print(
@@ -956,6 +966,10 @@ class LuxS3Env(gym.Env):
     # Game params
     o['unit_move_cost'] = scalar(mm.unit_move_cost, MAX_MOVE_COST)
     o['unit_sensor_range'] = scalar(mm.unit_sensor_range, MAX_SENSOR_RANGE)
+    o['unit_sap_cost'] = scalar(mm.unit_sap_cost, MAX_SAP_COST)
+    o['unit_sap_range'] = scalar(mm.unit_sap_range, MAX_SAP_RANGE)
+    o['nebula_energy_reduction'] = scalar(mm.nebula_energy_reduction,
+                                          MAX_ENERGY_REDUCTION)
 
     # Time & Match
     o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
@@ -1009,7 +1023,6 @@ class LuxS3Env(gym.Env):
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
-      units_info = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
       for i in range(MAX_UNIT_NUM):
         mask, pos, energy = mm.get_unit_info(player_id, i, t)
         if mask:
@@ -1025,19 +1038,25 @@ class LuxS3Env(gym.Env):
         # Assume position is always present
         unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
 
+      o[f'{prefix}_loc_t{t}'] = unit_pos
+      o[f'{prefix}_energy_t{t}'] = unit_energy
+
+    def add_unit_info(player_id, t):
+      units_info = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
+      for i in range(MAX_UNIT_NUM):
+        mask, pos, energy = mm.get_unit_info(player_id, i, t)
         # add units info
         units_info[i][0] = pos[0]
         units_info[i][1] = pos[1]
         units_info[i][2] = np.int32(energy) if mask else 0
-
-      o[f'{prefix}_loc_t{t}'] = unit_pos
-      o[f'{prefix}_energy_t{t}'] = unit_energy
-      if prefix in ('units', ):
-        o[f'_{prefix}_info'] = units_info
+      o[f'_units_info'] = units_info
 
     # Unit info
     add_unit_feature('units', mm.player_id, t=0)
+    add_unit_feature('units', mm.player_id, t=1)
     add_unit_feature('enemy', mm.enemy_id, t=0)
+    add_unit_feature('enemy', mm.enemy_id, t=1)
+    add_unit_info(mm.player_id, t=0)
 
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
