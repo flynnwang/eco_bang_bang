@@ -38,8 +38,10 @@ OB = OrderedDict([
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Map info
@@ -926,7 +928,9 @@ class LuxS3Env(gym.Env):
       team_points = env_state.team_points[mm.player_id]
       enemy_points = env_state.team_points[mm.enemy_id]
       extras[5] = team_points / TEAM_POINTS_NORM / hidden_relics_num
+
       extras[6] = (team_points - enemy_points) / TEAM_POINTS_NORM
+      extras[6] = max(min(extras[6], 1), -1)
 
       team_energy = get_units_total_energy(env_state, mm.player_id)
       enemy_energy = get_units_total_energy(env_state, mm.enemy_id)
@@ -979,8 +983,16 @@ class LuxS3Env(gym.Env):
     units_points = team_points[mm.player_id]
     enemy_points = team_points[mm.enemy_id]
     o['units_team_points'] = scalar(units_points, TEAM_POINTS_NORM)
-    o['enemy_team_points'] = scalar(units_points - enemy_points,
-                                    TEAM_POINTS_NORM)
+    o['enemy_team_points'] = scalar(
+        max(min(units_points - enemy_points, TEAM_POINTS_NORM),
+            -TEAM_POINTS_NORM), TEAM_POINTS_NORM)
+
+    prev_team_points = self.prev_raw_obs[mm.player]['team_points']
+    o['units_team_points_delta'] = scalar(
+        max(units_points - prev_team_points[mm.player_id], 0), MAX_UNIT_NUM)
+    o['enemy_team_points_delta'] = scalar(
+        max(enemy_points - prev_team_points[mm.enemy_id], 0), MAX_UNIT_NUM)
+
     team_wins = ob['team_wins']
     units_wins = team_wins[mm.player_id]
     enemy_wins = team_wins[mm.enemy_id]
