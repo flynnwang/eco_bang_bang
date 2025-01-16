@@ -1222,8 +1222,8 @@ class LuxS3Env(gym.Env):
         actions_mask[i][ACTION_CENTER] = 1
 
     def update_sap_action_mask(i, pos, energy):
-      # if energy < mm.unit_sap_cost:
-      # return
+      if energy < mm.unit_sap_cost:
+        return
 
       # TODO: how to coodinate sap to not sap on same cell
       unit_sap_mask = mm.get_sap_mask(pos, mm.unit_sap_range)
