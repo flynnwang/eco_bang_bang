@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from .env.const import UNITS_ACTION
-from .env.luxenv import MapManager, LuxS3Env
+from .env.luxenv import MapManager, LuxS3Env, SapIndexer
 from .model import create_model
 
 SUBMIT_AGENT = False
@@ -18,8 +18,9 @@ DO_SAMPLE = True
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
-  import random
-  DEVICE = random.sample(['cuda:0', 'cuda:1'], k=1)[0]
+  # import random
+  # DEVICE = random.sample(['cuda:0', 'cuda:1'], k=1)[0]
+  DEVICE = 'cuda:0'
 
 
 def _to_tensor(x: Union[Dict, np.ndarray],
@@ -42,12 +43,14 @@ class Agent:
 
     self.mm = MapManager(player, env_cfg, transpose=False)
     self.env = LuxS3Env(game_env=1)  # for calling _convert_observation
+    self.env.sap_indexer = SapIndexer()
+    assert self.env.sap_indexer is not None
 
     self.prev_model_action = None
     self.md = self.load_model()
 
   def load_model(self):
-    flags = dict(n_blocks=8,
+    flags = dict(n_blocks=12,
                  hidden_dim=128,
                  base_out_channels=128,
                  embedding_dim=32,
@@ -72,6 +75,9 @@ class Agent:
     return model
 
   def convert_observation(self, raw_obs):
+    if not self.env.prev_raw_obs:
+      self.env.prev_raw_obs = {self.mm.player: raw_obs}
+
     obs = self.env._convert_observation(raw_obs, self.mm, skip_check=True)
     action_mask = self.env._get_available_action_mask(self.mm)
     dev = torch.device(DEVICE)
@@ -92,9 +98,11 @@ class Agent:
 
     model_input = self.convert_observation(raw_obs)
     model_action = self.md(model_input, sample=DO_SAMPLE)["actions"]
+
     # print(model_input, file=sys.stderr)
     self.prev_model_action = model_action
 
     model_action[UNITS_ACTION] = model_action[UNITS_ACTION].squeeze(0)
-    action = self.env._encode_action(model_action, self.mm)
+    action_taken_mask = self.env.get_actions_taken_mask(model_action, self.mm)
+    action = self.env._encode_action(model_action, self.mm, action_taken_mask)
     return action
