@@ -1247,8 +1247,10 @@ class LuxS3Env(gym.Env):
           actions_mask[i][ACTION_CENTER] = 1
           action_centered_positions.add(pos)
 
-      # Can always stay on green cell (not relic node) for more energy
-      if ((not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
+      # Can only stay on green cell (not relic node) for more energy
+      # if unit energy < 100
+      if (energy < 100
+          and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
           and mm.cell_energy[pos[0]][pos[1]] > 0):
         actions_mask[i][ACTION_CENTER] = 1
 
