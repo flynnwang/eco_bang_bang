@@ -1251,7 +1251,7 @@ class LuxS3Env(gym.Env):
       # if unit energy < 100
       if (energy < 100
           and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
-          and mm.cell_energy[pos[0]][pos[1]] > 0):
+          and mm.cell_energy[pos[0]][pos[1]] >= mm.unit_move_cost):
         actions_mask[i][ACTION_CENTER] = 1
 
     def update_sap_action_mask(i, pos, energy):
@@ -1262,11 +1262,7 @@ class LuxS3Env(gym.Env):
       unit_sap_mask = mm.get_sap_mask(pos, mm.unit_sap_range)
       sap_dxdy = np.argwhere(unit_sap_mask) - np.array(pos, dtype=np.int32)
       for dx, dy in sap_dxdy:
-        try:
-          sap_id = mm.sap_indexer.position_to_idx[(dx, dy)]
-        except Exception as e:
-          __import__('ipdb').set_trace()
-          raise e
+        sap_id = mm.sap_indexer.position_to_idx[(dx, dy)]
         sap_id += MOVE_ACTION_NUM
         actions_mask[i][sap_id] = 1
 

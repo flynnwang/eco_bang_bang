@@ -29,7 +29,7 @@ reward_shaping_params:
   new_observed_corners: 0.001
   relic_nb: 0.001
   units_on_relic: 0.001
-  team_point: 0.0003
+  team_point: 0.001
   match_result: 0.3
   game_result: 0
   first_frozen_uints: -0.001
