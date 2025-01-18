@@ -1168,6 +1168,27 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
+  def _convert_match_win_loss(self, raw_obs, env_state):
+    wt = self.reward_shaping_params
+
+    def _convert(mm, ob):
+      team_wins = raw_obs[mm.player]['team_wins']
+
+      # match end reward
+      r_match = 0
+      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      diff = team_wins - prev_team_wins
+      if diff[mm.player_id] > 0:
+        r_match = wt['match_result']
+      elif diff[mm.enemy_id] > 0:
+        r_match = -wt['match_result']
+      return r_match
+
+    return [
+        _convert(self.mms[i], raw_obs[p])
+        for i, p in enumerate([PLAYER0, PLAYER1])
+    ]
+
   def _convert_win_loss_reward2(self, raw_obs, env_state):
 
     def _convert(mm, ob):
@@ -1190,12 +1211,16 @@ class LuxS3Env(gym.Env):
 
   def _convert_reward(self, raw_obs, env_state):
     """Use the match win-loss reward for now."""
-    assert self.reward_schema in ('shaping', 'game_win_loss2')
+    assert self.reward_schema in ('shaping', 'game_win_loss2',
+                                  'match_win_loss')
     if self.reward_schema == 'game_win_loss2':
       reward = self._convert_win_loss_reward2(raw_obs, env_state)
 
     if self.reward_schema == 'shaping':
       reward = self._convert_shaping_reward(raw_obs, env_state)
+
+    if self.reward_schema == 'match_win_loss':
+      reward = self._convert_match_win_loss(raw_obs, env_state)
 
     if SINGLE_PLAER:
       return [reward[0]]  # single player
