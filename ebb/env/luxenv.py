@@ -211,7 +211,12 @@ class MapManager:
 
   MAX_PAST_OB_NUM = 3
 
-  def __init__(self, player, env_cfg, transpose=False, sap_indexer=None):
+  def __init__(self,
+               player,
+               env_cfg,
+               transpose=False,
+               sap_indexer=None,
+               use_mirror=False):
     self.player_id = int(player[-1])
     self.player = player
     self.env_cfg = env_cfg
@@ -257,6 +262,7 @@ class MapManager:
     self.units_dead_count = 0
     self.prev_units_dead_count = 0
     self.total_units_dead_count = 0
+    self.use_mirror = use_mirror
 
   @property
   def nebula_energy_reduction(self):
@@ -496,7 +502,7 @@ class MapManager:
       self.prev_units_frozen_count = self.units_frozen_count = 0
 
     # Mirror should go first before everything else.
-    if self.player_id == 1:
+    if self.use_mirror and self.player_id == 1:
       self.mirror(ob)
 
     if self.transpose:
@@ -777,9 +783,19 @@ class LuxS3Env(gym.Env):
     t2 = bool(1 - int(t1))
     # t1, t2 = True, True
     t1, t2 = False, False
+    use_mirror = self.reward_shaping_params['use_mirror']
+    self.use_mirror = use_mirror
     self.mms = [
-        MapManager(PLAYER0, env_cfg, transpose=t1, sap_indexer=sap_indexer),
-        MapManager(PLAYER1, env_cfg, transpose=t2, sap_indexer=sap_indexer)
+        MapManager(PLAYER0,
+                   env_cfg,
+                   transpose=t1,
+                   sap_indexer=sap_indexer,
+                   use_mirror=use_mirror),
+        MapManager(PLAYER1,
+                   env_cfg,
+                   transpose=t2,
+                   sap_indexer=sap_indexer,
+                   use_mirror=use_mirror)
     ]
     self._update_mms(raw_obs, model_actions=None, env_state=final_state)
     self.sap_indexer = sap_indexer
@@ -833,7 +849,7 @@ class LuxS3Env(gym.Env):
         a = TRANSPOSED_ACTION[a]
         x, y = y, x
 
-      if mm.player_id == 1:
+      if self.use_mirror and mm.player_id == 1:
         a = MIRRORED_ACTION[a]
         x, y = -y, -x
 
