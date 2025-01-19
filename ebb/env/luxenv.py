@@ -502,7 +502,7 @@ class MapManager:
       self.prev_units_frozen_count = self.units_frozen_count = 0
 
     # Mirror should go first before everything else.
-    if self.use_mirror and self.player_id == 1:
+    if self.use_mirror:
       self.mirror(ob)
 
     if self.transpose:
@@ -779,23 +779,23 @@ class LuxS3Env(gym.Env):
 
     sap_indexer = SapIndexer()
 
-    t1 = (self._seed % 2 == 0)
-    t2 = bool(1 - int(t1))
-    # t1, t2 = True, True
-    t1, t2 = False, False
+    tr1 = (self._seed % 2 == 0)
+    tr2 = ((self._seed // 2) % 2 == 0)
+    mirror1 = ((self._seed // 4) % 2 == 0)
+    mirror2 = ((self._seed // 8) % 2 == 0)
     use_mirror = self.reward_shaping_params['use_mirror']
     self.use_mirror = use_mirror
     self.mms = [
         MapManager(PLAYER0,
                    env_cfg,
-                   transpose=t1,
+                   transpose=tr1,
                    sap_indexer=sap_indexer,
-                   use_mirror=use_mirror),
+                   use_mirror=mirror1),
         MapManager(PLAYER1,
                    env_cfg,
-                   transpose=t2,
+                   transpose=tr2,
                    sap_indexer=sap_indexer,
-                   use_mirror=use_mirror)
+                   use_mirror=mirror2)
     ]
     self._update_mms(raw_obs, model_actions=None, env_state=final_state)
     self.sap_indexer = sap_indexer
@@ -849,7 +849,7 @@ class LuxS3Env(gym.Env):
         a = TRANSPOSED_ACTION[a]
         x, y = y, x
 
-      if self.use_mirror and mm.player_id == 1:
+      if mm.use_mirror:
         a = MIRRORED_ACTION[a]
         x, y = -y, -x
 
