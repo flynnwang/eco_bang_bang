@@ -196,7 +196,7 @@ class SapIndexer:
     self.position_to_idx = {}
     self.idx_to_position = {}
 
-    mat = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.bool)
+    mat = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     center = (12, 12)
     self.mask = generate_manhattan_mask(mat, center, MAX_SAP_RANGE)
 

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250118_sap_killer_match_result_shaping_r0
+name: run_20250118_sap_killer_match_result_shaping_r1
 
 ## WANDB params
 # The wandb project name
@@ -76,7 +76,8 @@ min_lr_mod: 0.01
 
 ## LOSS params
 #entropy_cost: 6e-4
-entropy_cost: 1e-3
+#entropy_cost: 1e-3
+entropy_cost: 9e-4
 baseline_cost: 1.
 teacher_kl_cost: 5e-4
 teacher_baseline_cost: 0.0
@@ -88,8 +89,8 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-18/07-40-30
-teacher_checkpoint_file: 094736512.pt
+teacher_load_dir:  /home/flynnwang/runs/ebb/01-18/11-05-57
+teacher_checkpoint_file: 104282624_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -111,8 +112,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir:
-checkpoint_file:
+load_dir: /home/flynnwang/runs/ebb/01-18/11-05-57
+checkpoint_file: 104468160.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
