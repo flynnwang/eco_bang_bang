@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250119_sap_killer_match_result_r1_mr_tr_cont
+name: run_20250119_sap_killer_match_result_r2_mr_tr
 
 ## WANDB params
 # The wandb project name
@@ -113,8 +113,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir: /home/flynnwang/runs/ebb/01-19/13-43-50
-checkpoint_file: 005440320.pt
+load_dir:
+checkpoint_file:
 #
 weights_only: False
 n_value_warmup_batches: 0

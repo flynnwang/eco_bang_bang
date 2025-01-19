@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250116_sap_killer_reward_shaping_r1_cont1
+name: run_20250116_sap_killer_reward_shaping_r2
 
 ## WANDB params
 # The wandb project name
@@ -111,8 +111,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir: /home/flynnwang/runs/ebb/01-17/10-12-41
-checkpoint_file: 019091200.pt
+load_dir:
+checkpoint_file:
 #load_dir: /home/flynnwang/runs/ebb/01-17/07-16-19
 #checkpoint_file: 013455616.pt
 #load_dir: /home/flynnwang/runs/ebb/01-17/00-32-08
