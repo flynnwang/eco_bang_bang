@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250114_teacher_model_r6
+name: run_20250116_sap_killer_reward_shaping_r1_cont1
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_teacher_0114
+group: luxs3_sap_killer
 
 ## ENV params
 obs_space_kwargs: {}
@@ -46,13 +46,13 @@ n_actor_envs: 16
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`
-batch_size: 8
+batch_size: 4
 
 discounting: 0.999
 
 ## MODEL params
 model_arch: conv_model
-n_blocks: 8
+n_blocks: 12
 hidden_dim: 128
 base_out_channels: 128
 embedding_dim: 32
@@ -69,16 +69,16 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 3e-5
+  lr: 5e-5
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 5e-4
+entropy_cost: 4e-4
 baseline_cost: 1.
-teacher_kl_cost: 5e-4
+teacher_kl_cost: 2e-3
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -88,8 +88,8 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-14/02-26-18
-teacher_checkpoint_file: 053020160_weights.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/action_sap_1/
+teacher_checkpoint_file: 021314176_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -111,8 +111,13 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-#load_dir: /home/flynnwang/runs/ebb/01-14/21-13-22
-#checkpoint_file: 007187968.pt
-#
+load_dir: /home/flynnwang/runs/ebb/01-17/10-12-41
+checkpoint_file: 019091200.pt
+#load_dir: /home/flynnwang/runs/ebb/01-17/07-16-19
+#checkpoint_file: 013455616.pt
+#load_dir: /home/flynnwang/runs/ebb/01-17/00-32-08
+#checkpoint_file: 034468864.pt
+
 weights_only: False
+
 n_value_warmup_batches: 0
