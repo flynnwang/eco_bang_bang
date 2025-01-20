@@ -1431,7 +1431,7 @@ class LuxS3Env(gym.Env):
 
       # Can only stay on green cell (not relic node) for more energy
       # if unit energy < 100
-      if (energy < 100
+      if (energy < 300
           and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
           and mm.cell_energy[pos[0]][pos[1]] >= mm.unit_move_cost):
         actions_mask[i][ACTION_CENTER] = 1
@@ -1586,7 +1586,7 @@ class LuxS3Env(gym.Env):
       info['_game_total_hidden_relic_nodes_num'] = (
           env_state.relic_nodes_map_weights > 0).sum()
       info['_game_total_found_relic_nodes_num'] = (mm.team_point_mass
-                                                   >= 30).sum()
+                                                   >= MIN_TP_VAL).sum()
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
