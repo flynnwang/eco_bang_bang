@@ -51,7 +51,7 @@ OB = OrderedDict([
                                                 shape=MAP_SHAPE)),
     ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    # ('game_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('game_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -804,7 +804,7 @@ class MapManager:
     return mask & self.enemy_position_mask
 
   @property
-  def game_visited_num(self):
+  def game_observed_num(self):
     return (self.cell_type != CELL_UNKONWN).sum()
 
 
@@ -1073,6 +1073,7 @@ class LuxS3Env(gym.Env):
                     mm2.is_relic_node.sum()) / MAX_RELIC_NODE_NUM
       extras[22] = (mm.get_game_visited_relic_nb_num() -
                     mm2.get_game_visited_relic_nb_num()) / (6 * 25)
+      extras[23] = (mm.game_observed_num - mm2.game_observed_num) / (24 * 24)
 
       # print(nodes)
       # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
@@ -1129,7 +1130,7 @@ class LuxS3Env(gym.Env):
 
     o['visible'] = mm.visible.astype(np.float32)
     o['match_observed'] = mm.match_observed.astype(np.float32)
-    # o['game_observed'] = mm.game_observed.astype(np.float32)
+    o['game_observed'] = mm.game_observed.astype(np.float32)
     o['match_visited'] = mm.match_visited.astype(np.float32)
     o['game_visited'] = mm.game_visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
@@ -1323,8 +1324,8 @@ class LuxS3Env(gym.Env):
         r_match = -wt['match_result']
 
       r_explore = 0
-      team_visited_num = mm.game_visited_num
-      enemy_visited_num = mm2.game_visited_num
+      team_visited_num = mm.game_observed_num
+      enemy_visited_num = mm2.game_observed_num
       if team_visited_num > enemy_visited_num:
         r_explore = 1
       elif team_visited_num < enemy_visited_num:
