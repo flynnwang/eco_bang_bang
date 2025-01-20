@@ -1064,6 +1064,12 @@ class LuxS3Env(gym.Env):
       extras[19] = mm.nebula_vision_reduction / MAX_VISION_REDUCTION
       extras[20] = mm.nebula_energy_reduction / MAX_ENERGY_REDUCTION
 
+      mm2 = self.mms[mm.enemy_id]
+      extras[21] = (mm.is_relic_node.sum() -
+                    mm2.is_relic_node.sum()) / MAX_RELIC_NODE_NUM
+      extras[22] = (mm.get_game_visited_relic_nb_num() -
+                    mm2.get_game_visited_relic_nb_num()) / (6 * 25)
+
       # print(nodes)
       # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
       # print(
