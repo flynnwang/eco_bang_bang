@@ -135,6 +135,64 @@ def is_pos_on_map(tmp):
   return 0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
 
 
+class HiddenRelicNodeEstimator:
+
+  def __init__(self):
+    self.priori = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+
+  def update(self, is_relic_neighbour, unit_positions, new_team_points):
+    is_relic_nb = (is_relic_neighbour == 1)
+    is_relic_nb = is_relic_nb | (anti_diag_sym(is_relic_nb))
+    self.priori[is_relic_nb & (self.priori == 0)] = PRIORI
+
+    obs = np.argwhere((is_relic_neighbour == 1) & unit_positions)
+    post = self.calc_posteriori_probs(obs, new_team_points)
+    # print(new_team_points, post[post > 0])
+    self.priori[is_relic_nb] = np.clip(post[is_relic_nb], MIN_PROB, MAX_PROB)
+
+  def calculate_p_data(self, obs, n, p):
+    if n < 0:
+      return 0
+
+    m = len(obs)
+
+    # represent the probability of observe k team points from the first j locations.
+    dp = np.zeros((m + 1, n + 1))
+    dp[0][0] = 1
+
+    for j in range(1, m + 1):
+      pos = obs[j - 1]
+      pj = p[pos[0]][pos[1]]
+      for k in range(n + 1):
+        dp[j][k] += dp[j - 1][k] * (1 - pj)
+        if k > 0:
+          dp[j][k] += dp[j - 1][k - 1] * pj
+    return dp[m][n]
+
+  def calc_posteriori_probs(self, observed_cells, new_team_points):
+    m = len(observed_cells)
+    n = min(new_team_points, m)
+
+    p_data = self.calculate_p_data(observed_cells, n, self.priori)
+    assert p_data > 0
+    # print(f'p_data = {p_data}')
+
+    post = self.priori.copy()
+    for i in observed_cells:
+      x, y = i
+      ob_exclude = [c for c in observed_cells if not (c[0] == x and c[1] == y)]
+      # print(observed_cells, ob_exclude, new_team_points)
+      p_data_given_i = self.calculate_p_data(ob_exclude, n - 1, self.priori)
+
+      post_prob = p_data_given_i * self.priori[x][y] / p_data
+      post[x][y] = post_prob
+      # post[y][x] = post_prob
+      # print(
+      # f"post[{x}][{y}] = {post[x][y]}, self.priori[x][y]={self.priori[x][y]}, p_data_given_i={p_data_given_i}"
+      # )
+    return post
+
+
 class NebulaEnergyReduction:
 
   VALID_VALUES = (0, 10, 25)
@@ -216,7 +274,8 @@ class MapManager:
                env_cfg,
                transpose=False,
                sap_indexer=None,
-               use_mirror=False):
+               use_mirror=False,
+               use_hidden_relic_estimator=False):
     self.player_id = int(player[-1])
     self.player = player
     self.env_cfg = env_cfg
@@ -262,7 +321,10 @@ class MapManager:
     self.units_dead_count = 0
     self.prev_units_dead_count = 0
     self.total_units_dead_count = 0
+
     self.use_mirror = use_mirror
+    self.use_hidden_relic_estimator = use_hidden_relic_estimator
+    self.hidden_relic_estimator = HiddenRelicNodeEstimator()
 
   @property
   def nebula_energy_reduction(self):
@@ -527,8 +589,8 @@ class MapManager:
 
     self.update_relic_node(ob)
 
-    self.update_team_point_mass(ob, unit_positions)
-    self.prev_team_point = ob['team_points'][self.player_id]
+    if not self.use_hidden_relic_estimator:
+      self.update_team_point_mass(ob, unit_positions)
 
     self.update_cell_energy(ob)
 
@@ -545,6 +607,10 @@ class MapManager:
     self.update_vision_map()
     self.update_sap_position_by_enemy_position()
 
+    if self.use_hidden_relic_estimator:
+      self.update_hidden_relic_estimator(ob)
+
+    self.prev_team_point = ob['team_points'][self.player_id]
     # print(
     # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
     # )
@@ -636,8 +702,27 @@ class MapManager:
     is_visible_tr = anti_diag_sym(is_visible)
     self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
-  def get_team_point(self):
-    return ob['team_points'][self.player_id]
+  def update_hidden_relic_estimator(self, ob):
+    team_point = ob['team_points'][self.player_id]
+    new_team_points = team_point - self.prev_team_point
+    self.hidden_relic_estimator.update(self.is_relic_neighbour,
+                                       self.unit_positions, new_team_points)
+
+    p = self.hidden_relic_estimator.priori.copy()
+    self.team_point_mass = p.copy()
+
+    min_val = MIN_PROB + 1e-5
+    is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
+    self.team_point_mass[is_min_prob] = 0
+
+    max_val = MAX_PROB - 1e-5
+    is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
+    self.team_point_mass[is_max_prob] = 1
+
+    self.team_point_mass = np.maximum(self.team_point_mass,
+                                      anti_diag_sym(self.team_point_mass))
+
+    # print(f'update_hidden_relic_estimator: {self.team_point_mass}, {tmp}')
 
   def update_team_point_mass(self, ob, unit_positions):
     """Update team point confidence"""
@@ -708,9 +793,10 @@ class MapManager:
     return to_visit
 
   def get_must_be_relic_nodes(self):
-    relic_nodes = -np.ones((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
-    return relic_nodes
+    return self.team_point_mass
+    # relic_nodes = -np.ones((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    # relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
+    # return relic_nodes
 
   def get_sap_mask(self, pos, sap_range_limit):
     mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
@@ -783,21 +869,23 @@ class LuxS3Env(gym.Env):
     tr2 = ((self._seed // 2) % 2 == 0)
     mirror1 = ((self._seed // 4) % 2 == 0)
     mirror2 = ((self._seed // 8) % 2 == 0)
-    use_mirror = self.reward_shaping_params['use_mirror']
-    self.use_mirror = use_mirror
     # print(f'tr1={tr1}, mirror1={mirror1}')
     # print(f'tr2={tr2}, mirror2={mirror2}')
+    use_hidden_relic_estimator = self.reward_shaping_params[
+        'use_hidden_relic_estimator']
     self.mms = [
         MapManager(PLAYER0,
                    env_cfg,
                    transpose=tr1,
                    sap_indexer=sap_indexer,
-                   use_mirror=mirror1),
+                   use_mirror=mirror1,
+                   use_hidden_relic_estimator=use_hidden_relic_estimator),
         MapManager(PLAYER1,
                    env_cfg,
                    transpose=tr2,
                    sap_indexer=sap_indexer,
-                   use_mirror=mirror2)
+                   use_mirror=mirror2,
+                   use_hidden_relic_estimator=use_hidden_relic_estimator),
     ]
     self._update_mms(raw_obs, model_actions=None, env_state=final_state)
     self.sap_indexer = sap_indexer
@@ -1033,7 +1121,7 @@ class LuxS3Env(gym.Env):
     o['match_observed'] = mm.match_observed.astype(np.float32)
     # o['game_observed'] = mm.game_observed.astype(np.float32)
     o['match_visited'] = mm.match_visited.astype(np.float32)
-    o['game_visited'] = mm.match_visited.astype(np.float32)
+    o['game_visited'] = mm.game_visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit

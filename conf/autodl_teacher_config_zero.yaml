@@ -24,6 +24,8 @@ reward_schema: match_explore_win_loss
 #reward_schema: game_win_loss2
 reward_shaping_params:
   use_mirror: False
+  use_hidden_relic_estimator: True
+
   new_observed_down_tri: 0.0003
   new_observed_main_diag: 0.0005
   new_observed_corners: 0.001
