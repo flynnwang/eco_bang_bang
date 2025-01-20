@@ -1225,7 +1225,7 @@ class LuxS3Env(gym.Env):
         r_match = -wt['match_result']
 
       r_explore = 0
-      team_relic_found_num = mm.is_relic_node().sum()
+      team_relic_found_num = mm.is_relic_node.sum()
       enemy_relic_found_num = mm2.is_relic_node.sum()
       if team_relic_found_num > enemy_relic_found_num:
         r_explore = 1
