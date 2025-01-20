@@ -803,6 +803,10 @@ class MapManager:
     mask = generate_manhattan_mask(mask, pos, sap_range_limit)
     return mask & self.enemy_position_mask
 
+  @property
+  def game_visited_num(self):
+    return (self.cell_type != CELL_UNKONWN).sum()
+
 
 class LuxS3Env(gym.Env):
 
@@ -1319,11 +1323,11 @@ class LuxS3Env(gym.Env):
         r_match = -wt['match_result']
 
       r_explore = 0
-      team_relic_found_num = mm.is_relic_node.sum()
-      enemy_relic_found_num = mm2.is_relic_node.sum()
-      if team_relic_found_num > enemy_relic_found_num:
+      team_visited_num = mm.game_visited_num
+      enemy_visited_num = mm2.game_visited_num
+      if team_visited_num > enemy_visited_num:
         r_explore = 1
-      elif team_relic_found_num < enemy_relic_found_num:
+      elif team_visited_num < enemy_visited_num:
         r_explore = -1
       else:
         team_visited_relic_nb_num = mm.get_game_visited_relic_nb_num()
