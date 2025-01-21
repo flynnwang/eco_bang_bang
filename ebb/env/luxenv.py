@@ -1038,15 +1038,15 @@ class LuxS3Env(gym.Env):
         hidden_relics_num = 1
       team_points = env_state.team_points[mm.player_id]
       enemy_points = env_state.team_points[mm.enemy_id]
-      extras[5] = team_points / TEAM_POINTS_NORM / hidden_relics_num
+      extras[5] = team_points / 100 / hidden_relics_num
 
       extras[6] = (team_points - enemy_points) / TEAM_POINTS_NORM
       extras[6] = max(min(extras[6], 1), -1)
 
       team_energy = get_units_total_energy(env_state, mm.player_id)
       enemy_energy = get_units_total_energy(env_state, mm.enemy_id)
-      extras[7] = team_energy / 1000
-      extras[8] = (team_energy - enemy_energy) / 1000
+      extras[7] = team_energy / 2000
+      extras[8] = np.clip((team_energy - enemy_energy) / 500, -1, 1)
 
       extras[9] = hidden_relics_num / MAX_HIDDEN_RELICS_NUM
 
@@ -1072,8 +1072,9 @@ class LuxS3Env(gym.Env):
       extras[21] = (mm.is_relic_node.sum() -
                     mm2.is_relic_node.sum()) / MAX_RELIC_NODE_NUM
       extras[22] = (mm.get_game_visited_relic_nb_num() -
-                    mm2.get_game_visited_relic_nb_num()) / (6 * 25)
-      extras[23] = (mm.game_observed_num - mm2.game_observed_num) / (24 * 24)
+                    mm2.get_game_visited_relic_nb_num()) / (3 * 25)
+      extras[23] = ((mm.game_observed_num - mm2.game_observed_num) /
+                    (24 * 24 / 2))
 
       # print(nodes)
       # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
