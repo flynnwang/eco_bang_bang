@@ -1314,39 +1314,43 @@ class LuxS3Env(gym.Env):
       team_wins = raw_obs[mm.player]['team_wins']
       mm2 = self.mms[mm.enemy_id]
 
-      # match end reward
       r_match = 0
-      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
-      diff = team_wins - prev_team_wins
-      if diff[mm.player_id] > 0:
-        r_match = wt['match_result']
-      elif diff[mm.enemy_id] > 0:
-        r_match = -wt['match_result']
+      team_points = raw_obs[mm.player]['team_points'][mm.player_id]
+      enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
+      if team_points > enemy_points:
+        r_match = 1
+      elif team_points < enemy_points:
+        r_match = -1
 
-      r_explore = 0
-      team_visited_num = mm.game_observed_num
-      enemy_visited_num = mm2.game_observed_num
-      if team_visited_num > enemy_visited_num:
-        r_explore = 1
-      elif team_visited_num < enemy_visited_num:
-        r_explore = -1
-      else:
-        team_visited_relic_nb_num = mm.get_game_visited_relic_nb_num()
-        enemy_visited_relic_nb_num = mm2.get_game_visited_relic_nb_num()
-        if team_visited_relic_nb_num > enemy_visited_relic_nb_num:
-          r_explore = 1
-        elif team_visited_relic_nb_num < enemy_visited_relic_nb_num:
-          r_explore = -1
-        else:
-          r_explore = r_match
+      r_observed = 0
+      team_observed_num = mm.game_observed_num
+      enemy_observed_num = mm2.game_observed_num
+      if team_observed_num > enemy_observed_num:
+        r_observed = 1
+      elif team_observed_num < enemy_observed_num:
+        r_observed = -1
+
+      r_relic_nb = 0
+      team_visited_relic_nb_num = mm.get_game_visited_relic_nb_num()
+      enemy_visited_relic_nb_num = mm2.get_game_visited_relic_nb_num()
+      if team_visited_relic_nb_num > enemy_visited_relic_nb_num:
+        r_relic_nb = 1
+      elif team_visited_relic_nb_num < enemy_visited_relic_nb_num:
+        r_relic_nb = -1
 
       r = 0
-      if mm.game_step <= 200:
+      if mm.game_step <= 150:
         if mm.match_step == MAX_MATCH_STEPS:
-          r = r_explore
+          r = r_observed
+      if mm.game_step <= 250:
+        if mm.match_step == MAX_MATCH_STEPS:
+          r = r_relic_nb
       else:
         r = r_match
 
+      print(
+          f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}'
+      )
       return r
 
     return [
