@@ -1340,14 +1340,13 @@ class LuxS3Env(gym.Env):
         r_relic_nb = -1
 
       r = 0
-      if mm.game_step <= 150:
-        if mm.match_step == MAX_MATCH_STEPS:
+      if mm.match_step == MAX_MATCH_STEPS:
+        if mm.game_step <= 150:
           r = r_observed
-      if mm.game_step <= 250:
-        if mm.match_step == MAX_MATCH_STEPS:
+        if mm.game_step <= 250:
           r = r_relic_nb
-      else:
-        r = r_match
+        else:
+          r = r_match
 
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}'
