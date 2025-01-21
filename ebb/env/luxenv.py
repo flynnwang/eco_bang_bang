@@ -1349,9 +1349,9 @@ class LuxS3Env(gym.Env):
       else:
         r = r_match
 
-      print(
-          f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}'
-      )
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}'
+      # )
       return r
 
     return [
