@@ -1343,8 +1343,14 @@ class LuxS3Env(gym.Env):
       if mm.match_step == MAX_MATCH_STEPS:
         if mm.game_step <= 150:
           r = r_observed
+          if r == 0:
+            r = r_relic_nb
+          if r == 0:
+            r = r_match
         if mm.game_step <= 250:
           r = r_relic_nb
+          if r == 0:
+            r = r_match
         else:
           r = r_match
 
