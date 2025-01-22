@@ -38,7 +38,7 @@ from .core.buffer_utils import (Buffers, create_buffers, fill_buffers_inplace,
 from .core.selfplay import split_env_output_by_player, pair_env_output_for_players
 
 from ..env import create_env
-from ..env.luxenv import ACTION_SPACE, OBSERVATION_SPACE
+from ..env.luxenv import ACTION_SPACE, get_ob_sapce
 from ..model import create_model
 from ..utils import flags_to_namespace
 
@@ -700,7 +700,8 @@ def train(flags):
     teacher_flags = None
 
   example_env = create_env(flags, device=flags.actor_device)
-  buffers = create_buffers(flags, OBSERVATION_SPACE,
+  ob_space = get_ob_sapce(flags.obs_space_kwargs)
+  buffers = create_buffers(flags, ob_space,
                            example_env.reset(force=True)["info"])
 
   if flags.load_dir:
@@ -712,7 +713,7 @@ def train(flags):
     checkpoint_state = None
 
   def _make_actor_model(device):
-    a = create_model(flags, OBSERVATION_SPACE, device, reset=1)
+    a = create_model(flags, ob_space, device, reset=1)
     if checkpoint_state is not None:
       logging.info("Loading model parameters from checkpoint state...")
 
@@ -767,10 +768,8 @@ def train(flags):
     actor_processes.append(actor)
     time.sleep(0.5)
 
-  learner_model = create_model(flags,
-                               OBSERVATION_SPACE,
-                               flags.learner_device,
-                               reset=1)
+  ob_space = get_ob_sapce(flags.obs_space_kwargs)
+  learner_model = create_model(flags, ob_space, flags.learner_device, reset=1)
   if checkpoint_state is not None:
     # adapted_dict = {
     # k: v
@@ -801,7 +800,7 @@ def train(flags):
           "It does not make sense to use teacher when teacher_kl_cost <= 0 "
           "and teacher_baseline_cost <= 0")
     teacher_model = create_model(teacher_flags,
-                                 OBSERVATION_SPACE,
+                                 ob_space,
                                  flags.learner_device,
                                  reset=None)
     if flags.teacher_load_dir:

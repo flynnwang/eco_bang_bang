@@ -1,5 +1,6 @@
 from collections import OrderedDict, deque, defaultdict, Counter
 from functools import cached_property
+import copy
 import random
 import sys
 
@@ -62,7 +63,7 @@ OB = OrderedDict([
     # use this to indicate the hidden place of relc nodes.
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # hints for where to go
-    ('energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     #
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
@@ -88,7 +89,12 @@ OB = OrderedDict([
                            MAX_UNIT_NUM])),  # shape: (1, 16, 3)
 ])
 
-OBSERVATION_SPACE = spaces.Dict(OB)
+
+def get_ob_sapce(obs_space_kwargs):
+  ob = copy.copy(OB)
+  if obs_space_kwargs.get('use_energy_cost_map'):
+    ob['energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+  return spaces.Dict(ob)
 
 
 def sigmoid(x):
@@ -875,10 +881,12 @@ class MapManager:
 class LuxS3Env(gym.Env):
 
   def __init__(self,
-               reward_schema=None,
+               reward_schema,
+               obs_space_kwargs,
                game_env=None,
                reward_shaping_params=None):
     self.reward_schema = reward_schema
+    self.obs_space_kwargs = obs_space_kwargs
     self.game = game_env or LuxAIS3GymEnv(numpy_output=True)
     self.reward_shaping_params = reward_shaping_params
     self.mms = None
@@ -897,7 +905,7 @@ class LuxS3Env(gym.Env):
   @property
   def observation_space(self):
     """Obervation space of single player"""
-    return OBSERVATION_SPACE
+    return get_ob_sapce(self.obs_space_kwargs)
 
   def seed(self, seed):
     self._seed = seed
@@ -1207,7 +1215,8 @@ class LuxS3Env(gym.Env):
     # places need unit stay
     o['team_point_prob'] = mm.get_must_be_relic_nodes()
 
-    o['energy_cost_map'] = mm.get_erengy_cost_map_feature()
+    if self.obs_space_kwargs.get('use_energy_cost_map'):
+      o['energy_cost_map'] = mm.get_erengy_cost_map_feature()
 
     # energy_map = np.zeros(MAP_SHAPE2)
     energy_map = mm.cell_energy.copy()
@@ -1258,8 +1267,8 @@ class LuxS3Env(gym.Env):
 
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
-    if not skip_check:
-      assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
+    # if not skip_check:
+    # assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
 
     # expand all feature map with dummy dim 1
     o = {k: np.expand_dims(v, 0) for k, v in o.items()}

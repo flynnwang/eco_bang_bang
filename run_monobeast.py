@@ -32,6 +32,7 @@ def get_default_flags(flags: DictConfig) -> DictConfig:
           flags["batch_size"] // flags["n_actor_envs"]) + 2)
   flags.setdefault("obs_space_kwargs", {})
   flags.setdefault("reward_space_kwargs", {})
+  flags.setdefault("ob_params", {})
 
   # Training params
   flags.setdefault("use_mixed_precision", True)

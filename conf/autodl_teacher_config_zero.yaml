@@ -18,7 +18,9 @@ entity: pyflynn
 group: lux_s3_debug_run
 
 ## ENV params
-obs_space_kwargs: {}
+obs_space_kwargs:
+  use_energy_cost_map: True
+
 reward_space_kwargs: {}
 reward_schema: match_explore_win_loss
 #reward_schema: game_win_loss2
@@ -39,6 +41,7 @@ reward_shaping_params:
   dead_uints: 0
   units_position_energy_sum: 0
   kill_units: 0.01
+
 
 ## TRAINING params
 total_steps: 3e8

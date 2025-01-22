@@ -9,7 +9,7 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from .env.const import *
-from .env.luxenv import OBSERVATION_SPACE, ACTION_SPACE
+from .env.luxenv import ACTION_SPACE
 
 
 class SqueezeExcitation(torch.nn.Module):
