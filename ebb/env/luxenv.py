@@ -844,9 +844,14 @@ class MapManager:
   def compute_energy_cost_map(self):
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(self.unit_move_cost))
 
+    # nebula energy reduction adds extra cost
     cost_map[self.cell_type == CELL_NEBULA] += self.nebula_energy_reduction
-    neg_cell_mask = self.cell_energy < 0
-    cost_map[neg_cell_mask] -= self.cell_energy[neg_cell_mask]
+
+    # cell energy cost change the cost map but max at 0 to prevent from loop
+    cost_map -= self.cell_energy
+    cost_map = np.maximum(cost_map, 0)
+
+    # asteriod is not passable
     cost_map[self.cell_type == CELL_ASTERIOD] = np.inf
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
