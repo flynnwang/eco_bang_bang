@@ -561,6 +561,13 @@ class MapManager:
       self.past_obs.pop()
 
   def update(self, ob, model_action=None, env_state=None):
+    # Mirror should go first before everything else.
+    if self.use_mirror:
+      self.mirror(ob)
+
+    if self.transpose:
+      self.mirror(ob, 'T')
+
     # Match restarted and reset some of the unit states
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
@@ -573,17 +580,10 @@ class MapManager:
       self.prev_units_dead_count = self.units_dead_count = 0
       self.prev_units_frozen_count = self.units_frozen_count = 0
 
-      self.append_ob(ob)
+      # self.append_ob(ob)
 
       # use match_step=0 reset map manager, do not update below
-      return
-
-    # Mirror should go first before everything else.
-    if self.use_mirror:
-      self.mirror(ob)
-
-    if self.transpose:
-      self.mirror(ob, 'T')
+      # return
 
     # use non-infered units position
     self.vision_map.update(ob['units_mask'][self.player_id],
@@ -615,7 +615,7 @@ class MapManager:
     self.update_vision_map()
     self.update_sap_position_by_enemy_position()
 
-    if self.use_hidden_relic_estimator:
+    if self.use_hidden_relic_estimator and ob['match_steps'] > 0:
       self.update_hidden_relic_estimator(ob)
 
     self.prev_team_point = ob['team_points'][self.player_id]
