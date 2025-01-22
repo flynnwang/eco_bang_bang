@@ -216,7 +216,7 @@ class NebulaEnergyReduction:
 class VisionMap:
 
   def __init__(self, unit_sensor_range):
-    self.vision = None
+    self.vision = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
     self.unit_sensor_range = unit_sensor_range
 
   def _add_vision(self, p, unit_sensor_range, wt=1):
@@ -507,8 +507,8 @@ class MapManager:
     if self.match_step <= 1 or len(self.past_obs) < 2:
       return
 
-    if env_state is not None:
-      self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
+    # if env_state is not None:
+    # self.units_on_relic_num = self.count_on_relic_nodes_units(env_state)
 
     self.units_frozen_count = 0
     self.units_dead_count = 0
@@ -550,6 +550,16 @@ class MapManager:
     # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, energy_sum={self.units_position_energy_sum}, n_units={n_units}'
     # )
 
+  def append_ob(self, ob):
+    self.past_obs.appendleft(ob)
+
+    # append some default observation to make get_unit_info easier
+    while len(self.past_obs) < self.MAX_PAST_OB_NUM:
+      self.past_obs.appendleft(ob)
+
+    if len(self.past_obs) > self.MAX_PAST_OB_NUM:
+      self.past_obs.pop()
+
   def update(self, ob, model_action=None, env_state=None):
     # Match restarted and reset some of the unit states
     if ob['match_steps'] == 0:
@@ -562,6 +572,11 @@ class MapManager:
       self.prev_units_on_relic_num = self.units_on_relic_num = 0
       self.prev_units_dead_count = self.units_dead_count = 0
       self.prev_units_frozen_count = self.units_frozen_count = 0
+
+      self.append_ob(ob)
+
+      # use match_step=0 reset map manager, do not update below
+      return
 
     # Mirror should go first before everything else.
     if self.use_mirror:
@@ -594,14 +609,7 @@ class MapManager:
 
     self.update_cell_energy(ob)
 
-    self.past_obs.appendleft(ob)
-
-    # append some default observation to make get_unit_info easier
-    while len(self.past_obs) < self.MAX_PAST_OB_NUM:
-      self.past_obs.appendleft(ob)
-
-    if len(self.past_obs) > self.MAX_PAST_OB_NUM:
-      self.past_obs.pop()
+    self.append_ob(ob)
 
     self.update_frozen_or_dead_units(env_state)
     self.update_vision_map()
@@ -677,6 +685,8 @@ class MapManager:
     self.game_visited |= self.match_visited
 
   def count_on_relic_nodes_units(self, env_state):
+    # TODO: this is bug
+    raise Exception("not mirror / transpose error")
     return ((env_state.relic_nodes_map_weights > 0) &
             (self.unit_positions)).sum()
 
@@ -875,6 +885,7 @@ class LuxS3Env(gym.Env):
     mirror2 = ((self._seed // 8) % 2 == 0)
     # print(f'tr1={tr1}, mirror1={mirror1}')
     # print(f'tr2={tr2}, mirror2={mirror2}')
+    # tr1 = tr2 = mirror1 = mirror2 = False
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -1523,6 +1534,9 @@ class LuxS3Env(gym.Env):
 
     def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward, mm,
                   env_state):
+      # prob = mm.team_point_mass[(env_state.relic_nodes_map_weights > 0)]
+      # print(f"s={mm.game_step}, m={mm.match_step}, probs={prob}")
+
       info = {}
 
       info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
