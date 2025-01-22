@@ -10,7 +10,7 @@ gym.logger.set_level(40)
 import numpy as np
 from gym import spaces
 from luxai_s3.wrappers import LuxAIS3GymEnv
-from scipy.ndimage import maximum_filter
+from scipy.ndimage import maximum_filter, minimum_filter
 
 from random import randint
 
@@ -61,6 +61,8 @@ OB = OrderedDict([
     ('game_unvisited_relic_nb', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # hints for where to go
+    ('energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     #
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
@@ -133,6 +135,22 @@ def unit_move(p, a):
 
 def is_pos_on_map(tmp):
   return 0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
+
+
+def min_cost_bellman_ford(cost_map, energy_cost, N):
+  # assert (cost_map > 0).all()
+
+  # Kernel for neighbor updates (up, down, left, right)
+  kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float64)
+  for _ in range(N):
+    min_neighbors = minimum_filter(energy_cost,
+                                   footprint=kernel,
+                                   mode='constant',
+                                   cval=np.inf)
+    with np.errstate(invalid='ignore'):
+      energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
+
+  return energy_cost
 
 
 class HiddenRelicNodeEstimator:
@@ -817,6 +835,42 @@ class MapManager:
   def game_observed_num(self):
     return (self.cell_type != CELL_UNKONWN).sum()
 
+  def compute_energy_cost_map(self):
+    cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(self.unit_move_cost))
+
+    cost_map[self.cell_type == CELL_NEBULA] += self.nebula_energy_reduction
+    neg_cell_mask = self.cell_energy < 0
+    cost_map[neg_cell_mask] -= self.cell_energy[neg_cell_mask]
+    cost_map[self.cell_type == CELL_ASTERIOD] = np.inf
+
+    energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
+
+    # Two types of position should call for dist cost map:
+    # 1. unvisited relic neighbour
+    # 2. un-occupied hidden relic nodes
+    unvisited_relic_nbs = (~self.game_visited) & (self.is_relic_neighbour > 0)
+    unocc_relic_nodes = (~self.unit_positions) & (self.team_point_mass
+                                                  > MIN_TP_VAL)
+    energy_cost[unvisited_relic_nbs | unocc_relic_nodes] = 0
+
+    energy_cost = min_cost_bellman_ford(cost_map,
+                                        energy_cost,
+                                        N=MAX_MATCH_STEPS)
+    return energy_cost
+
+  def get_erengy_cost_map_feature(self):
+    energy_cost = self.compute_energy_cost_map()
+
+    # Normalize the cost values
+    not_inf = ~np.isinf(energy_cost)
+    non_inf_cost = energy_cost[not_inf]
+    if non_inf_cost.size > 0:
+      mx = non_inf_cost.max()
+      energy_cost[not_inf] /= mx
+
+    energy_cost[np.isinf(energy_cost)] = 1
+    return energy_cost
+
 
 class LuxS3Env(gym.Env):
 
@@ -1152,6 +1206,8 @@ class LuxS3Env(gym.Env):
 
     # places need unit stay
     o['team_point_prob'] = mm.get_must_be_relic_nodes()
+
+    o['energy_cost_map'] = mm.get_erengy_cost_map_feature()
 
     # energy_map = np.zeros(MAP_SHAPE2)
     energy_map = mm.cell_energy.copy()
