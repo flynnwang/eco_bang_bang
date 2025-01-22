@@ -580,6 +580,7 @@ def learn(
           },
       }
 
+      hidden_relics_num = batch["info"]['_game_total_hidden_relic_nodes_num']
       if match_played > 0:
         stats['Env']['match_played_in_batch'] = match_played
 
@@ -588,6 +589,13 @@ def learn(
         stats['Env']['match_team_points'] = match_done_mean(_match_team_points)
         stats['Env']['winner_match_team_points'] = match_done_mean(
             _winner_match_team_points)
+
+        total_hidden_relics_num = match_done_sum(hidden_relics_num)
+        stats['Env']['match_team_points_per_relic'] = (
+            match_done_sum(_match_team_points) / total_hidden_relics_num)
+        stats['Env']['match_winner_team_points_per_relic'] = (
+            match_done_sum(_winner_match_team_points) /
+            total_hidden_relics_num)
 
         _match_observed_node_num = batch["info"]['_match_observed_node_num']
         _match_visited_node_num = batch["info"]['_match_visited_node_num']
@@ -609,7 +617,6 @@ def learn(
         stats['Env']['match_dead_units'] = match_done_mean(_match_dead_units)
 
       if games_played > 0:
-        hidden_relics_num = batch["info"]['_game_total_hidden_relic_nodes_num']
         found_relics_num = batch["info"]['_game_total_found_relic_nodes_num']
         stats['Env']['game_total_hidden_relic_nodes_num'] = game_done_sum(
             hidden_relics_num)
