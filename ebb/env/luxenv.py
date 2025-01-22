@@ -1453,11 +1453,16 @@ class LuxS3Env(gym.Env):
         actions_mask[i][k] = 1
 
       # Can only stay on hidden relic node
-      if mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL:
+      team_point_prob = mm.team_point_mass[pos[0]][pos[1]]
+      if team_point_prob >= MIN_TP_VAL:
 
-        # Only one units can stay and force it to stay there
+        # Only one units can stay
         if pos not in action_centered_positions:
-          # actions_mask[i][:MOVE_ACTION_NUM] = 0
+
+          # force it to stay there
+          if team_point_prob > 0.5 and mm.game_step > MAX_MATCH_STEPS:
+            actions_mask[i][:MOVE_ACTION_NUM] = 0
+
           actions_mask[i][ACTION_CENTER] = 1
           action_centered_positions.add(pos)
 

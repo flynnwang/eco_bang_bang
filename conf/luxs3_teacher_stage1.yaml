@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250120_match_explore_with_relic_estimator_restart_r0
+name: run_20250120_match_explore_with_relic_estimator_restart_r4
 
 ## WANDB params
 # The wandb project name
@@ -80,7 +80,7 @@ min_lr_mod: 0.01
 #entropy_cost: 6e-4
 entropy_cost: 3e-3
 baseline_cost: 1.
-teacher_kl_cost: 1e-4
+teacher_kl_cost: 6e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -91,7 +91,7 @@ reduction: sum
 # Pretrained model for KL loss
 use_teacher: True
 teacher_load_dir: /home/flynnwang/runs/ebb/01-21/21-13-58
-teacher_checkpoint_file: 061835968_weights.p             t
+teacher_checkpoint_file: 061835968_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -113,8 +113,10 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir:
-checkpoint_file:
+load_dir: /home/flynnwang/runs/ebb/01-22/13-30-31
+checkpoint_file: 077043136.pt
+#load_dir: /home/flynnwang/runs/ebb/01-22/10-00-47
+#checkpoint_file: 059385024.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
