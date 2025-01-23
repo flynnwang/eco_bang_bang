@@ -350,6 +350,9 @@ class MapManager:
     self.use_hidden_relic_estimator = use_hidden_relic_estimator
     self.hidden_relic_estimator = HiddenRelicNodeEstimator()
 
+    self.energy_cost_map = None
+    self.units_energy_cost_change = 0
+
   @property
   def nebula_energy_reduction(self):
     return self._nebula_energy_reduction.best_guess()
@@ -537,6 +540,7 @@ class MapManager:
     self.units_frozen_count = 0
     self.units_dead_count = 0
     self.units_position_energy_sum = 0
+    self.units_energy_cost_change = 0
 
     n_units = 0
     for i in range(MAX_UNIT_NUM):
@@ -550,6 +554,12 @@ class MapManager:
         if (e0 == 0 and e1 >= 0
             and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
           is_frozen = True
+
+        if self.energy_cost_map is not None:
+          c0 = self.energy_cost_map[p0[0]][p0[1]]
+          c1 = self.energy_cost_map[p1[0]][p1[1]]
+          if not np.isinf(c0) and not np.isinf(c1):
+            self.units_energy_cost_change += (c1 - c0)  # cost net reduced
 
       if mask and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL):
         self.units_position_energy_sum += self.cell_energy[p0[0], p0[1]]
@@ -642,6 +652,8 @@ class MapManager:
     if self.use_hidden_relic_estimator and ob['match_steps'] > 0:
       self.update_hidden_relic_estimator(ob)
 
+    self.energy_cost_map = self.compute_energy_cost_map()
+    # print(self.energy_cost_map)
     self.prev_team_point = ob['team_points'][self.player_id]
     # print(
     # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
@@ -849,10 +861,13 @@ class MapManager:
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
     cost_map -= self.cell_energy
-    cost_map = np.maximum(cost_map, 0)
+    cost_map = np.maximum(cost_map, 1)
 
     # asteriod is not passable
-    cost_map[self.cell_type == CELL_ASTERIOD] = np.inf
+    # cost_map[self.cell_type == CELL_ASTERIOD] = np.inf
+
+    # use a big value for asteriod
+    cost_map[self.cell_type == CELL_ASTERIOD] = 50
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
 
@@ -860,9 +875,13 @@ class MapManager:
     # 1. unvisited relic neighbour
     # 2. un-occupied hidden relic nodes
     unvisited_relic_nbs = (~self.game_visited) & (self.is_relic_neighbour > 0)
-    unocc_relic_nodes = (~self.unit_positions) & (self.team_point_mass
-                                                  > MIN_TP_VAL)
-    energy_cost[unvisited_relic_nbs | unocc_relic_nodes] = 0
+
+    seed_mask = unvisited_relic_nbs
+    if self.game_step > MAX_MATCH_STEPS:
+      unocc_relic_nodes = (~self.unit_positions) & (self.team_point_mass
+                                                    > MIN_TP_VAL)
+      seed_mask |= unocc_relic_nodes
+    energy_cost[seed_mask] = 0
 
     energy_cost = min_cost_bellman_ford(cost_map,
                                         energy_cost,
@@ -870,7 +889,8 @@ class MapManager:
     return energy_cost
 
   def get_erengy_cost_map_feature(self):
-    energy_cost = self.compute_energy_cost_map()
+    # energy_cost = self.compute_energy_cost_map()
+    energy_cost = self.energy_cost_map.copy()
 
     # Normalize the cost values
     not_inf = ~np.isinf(energy_cost)
@@ -999,7 +1019,7 @@ class LuxS3Env(gym.Env):
   def _encode_action(self, action, mm, action_taken_mask):
     """Translate the model action into game env action.
 
-    TODO: to encode SAP action, prev observation is required.
+    TODO: to encode SAP action, prev  observation is required.
     """
     action_taken_mask = action_taken_mask[UNITS_ACTION]
 
@@ -1435,8 +1455,9 @@ class LuxS3Env(gym.Env):
         else:
           r = r_match
 
+      r += (mm.units_energy_cost_change * 0.0001)
       # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}'
+      # f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}, cost-change={mm.units_energy_cost_change}'
       # )
       return r
 
