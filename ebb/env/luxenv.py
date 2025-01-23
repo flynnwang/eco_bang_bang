@@ -163,16 +163,38 @@ class HiddenRelicNodeEstimator:
 
   def __init__(self):
     self.priori = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+    self.relic_node_positions = set()
 
-  def update(self, is_relic_neighbour, unit_positions, new_team_points):
-    is_relic_nb = (is_relic_neighbour == 1)
-    is_relic_nb = is_relic_nb | (anti_diag_sym(is_relic_nb))
-    self.priori[is_relic_nb & (self.priori == 0)] = PRIORI
+  def check_new_relic_nodes(self, relic_node_positions):
+    new_relic_node_positions = []
+    for pos in relic_node_positions:
+      pos = (int(pos[0]), int(pos[1]))
+      if pos not in self.relic_node_positions:
+        new_relic_node_positions.append(pos)
 
-    obs = np.argwhere((is_relic_neighbour == 1) & unit_positions)
+    if new_relic_node_positions:
+      self.relic_node_positions.update(new_relic_node_positions)
+    return new_relic_node_positions
+
+  def update(self, relic_node_positions, is_relic_neighbour, unit_positions,
+             new_team_points):
+    # first find the newly found relic node positions
+    new_relic_node_positions = self.check_new_relic_nodes(relic_node_positions)
+
+    # update (or reset) new relic node nb with priori
+    new_relic_nb_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), type=bool)
+    new_relic_nb_mask[new_relic_node_positions[:, 0],
+                      new_relic_node_positions[:, 1]] = True
+    new_relic_nb_mask = new_relic_nb_mask | (anti_diag_sym(new_relic_nb_mask))
+    new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
+    self.priori[new_relic_nb_mask] = PRIORI
+
+    is_relc_nb = (self.is_relic_neighbour == 1)
+    obs = np.argwhere(is_relc_nb & unit_positions)
     post = self.calc_posteriori_probs(obs, new_team_points)
     # print(new_team_points, post[post > 0])
-    self.priori[is_relic_nb] = np.clip(post[is_relic_nb], MIN_PROB, MAX_PROB)
+
+    self.priori[is_relc_nb] = np.clip(post[is_relc_nb], MIN_PROB, MAX_PROB)
 
   def calculate_p_data(self, obs, n, p):
     if n < 0:
@@ -219,7 +241,7 @@ class HiddenRelicNodeEstimator:
 
 class NebulaEnergyReduction:
 
-  VALID_VALUES = (0, 10, 25)
+  VALID_VALUES = set([0, 1, 2, 3, 5, 25])
 
   def __init__(self):
     self.counter = Counter()
@@ -248,6 +270,9 @@ class VisionMap:
     v = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
     for r in range(self.unit_sensor_range + 1):
       d = (self.unit_sensor_range - r)
+      if r == 0:
+        d = UNIT_POSITION_VISION_POWER
+
       x0 = max(0, (i - d))
       x1 = min(MAP_WIDTH, (i + d + 1))
       y0 = max(0, (j - d))
@@ -454,15 +479,10 @@ class MapManager:
     mf['energy'] = mat_trans(mf['energy'])
     mf['tile_type'] = mat_trans(mf['tile_type'])
 
-  def infer_units_info(self, ob, model_action):
+  def infer_nebula_energy_reduction(self, ob, model_action):
     if (model_action is None
         or len(self.past_obs) == 0) or ob['match_steps'] <= 1:
       return
-
-    # other sensor range will not be blocked by nebula
-    # if self.unit_sensor_range > 2:
-    # return
-    # assert self.unit_sensor_range == 2
 
     units_action = model_action[UNITS_ACTION]
 
@@ -502,19 +522,6 @@ class MapManager:
 
       a = units_action[i][0]
       p1, e1 = make_action(p0, e0, a)
-
-      if (self.unit_sensor_range == MIN_UNIT_SENSOR_RANGE and not mask
-          and is_pos_on_map(p1)
-          and self.cell_type[p1[0]][p1[1]] in (CELL_NEBULA, CELL_UNKONWN)):
-        ob['units']['position'][pid][i] = p1
-        ob['units']['energy'][pid][i] = e1
-        ob['units_mask'][pid][i] = True
-        # we can also konw that this cell is nebula here, but better done with vision map
-
-        # print(
-        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]} pid={pid}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} by a={ACTION_ID_TO_NAME[a]}'
-        # )
-
       if (m0 and mask and e0 > 0 and energy > 0 and e1 > 0
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
         reduction = e1 - energy
@@ -522,6 +529,7 @@ class MapManager:
         # print(
         # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}'
         # )
+
   @property
   def step_units_on_relic_num(self):
     return self.units_on_relic_num - self.prev_units_on_relic_num
@@ -624,7 +632,7 @@ class MapManager:
                            ob['units']['position'][self.player_id],
                            ob['units']['energy'][self.player_id])
 
-    self.infer_units_info(ob, model_action)
+    self.infer_nebula_energy_reduction(ob, model_action)
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
     self.update_counters()
@@ -749,9 +757,13 @@ class MapManager:
     self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
   def update_hidden_relic_estimator(self, ob):
+    relic_nodes_mask = ob['relic_nodes_mask']
+    relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
+
     team_point = ob['team_points'][self.player_id]
     new_team_points = team_point - self.prev_team_point
-    self.hidden_relic_estimator.update(self.is_relic_neighbour,
+    self.hidden_relic_estimator.update(relic_node_positions,
+                                       self.is_relic_neighbour,
                                        self.unit_positions, new_team_points)
 
     p = self.hidden_relic_estimator.priori.copy()
@@ -852,6 +864,11 @@ class MapManager:
   @property
   def game_observed_num(self):
     return (self.cell_type != CELL_UNKONWN).sum()
+
+  @property
+  def match_observed_num(self):
+    mask = (self.match_observed + anti_diag_sym(self.match_observed)) > 0
+    return mask.sum()
 
   def compute_energy_cost_map(self):
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(self.unit_move_cost))
@@ -1420,42 +1437,25 @@ class LuxS3Env(gym.Env):
       team_points = raw_obs[mm.player]['team_points'][mm.player_id]
       enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
       if team_points > enemy_points:
-        r_match = 1
+        r_match = wt['match_win']
       elif team_points < enemy_points:
-        r_match = -1
+        r_match = -wt['match_win']
 
-      r_observed = 0
-      team_observed_num = mm.game_observed_num
-      enemy_observed_num = mm2.game_observed_num
+      r_match_observed = 0
+      team_observed_num = mm.match_observed_num
+      enemy_observed_num = mm2.match_observed_num
       if team_observed_num > enemy_observed_num:
-        r_observed = 1
+        r_match_observed = wt['match_observed']
       elif team_observed_num < enemy_observed_num:
-        r_observed = -1
-
-      r_relic_nb = 0
-      team_visited_relic_nb_num = mm.get_game_visited_relic_nb_num()
-      enemy_visited_relic_nb_num = mm2.get_game_visited_relic_nb_num()
-      if team_visited_relic_nb_num > enemy_visited_relic_nb_num:
-        r_relic_nb = 1
-      elif team_visited_relic_nb_num < enemy_visited_relic_nb_num:
-        r_relic_nb = -1
+        r_match_observed = -wt['match_observed']
 
       r = 0
       if mm.match_step == MAX_MATCH_STEPS:
-        if mm.game_step <= 150:
-          r = r_observed
-          if r == 0:
-            r = r_relic_nb
-          if r == 0:
-            r = r_match
-        if mm.game_step <= 250:
-          r = r_relic_nb
-          if r == 0:
-            r = r_match
-        else:
-          r = r_match
+        r = r_match
+      elif mm.match_step == HALF_MATCH_STEPS and mm.game_step <= 300:
+        r = r_match_obsevered
 
-      r += (mm.units_energy_cost_change * 0.0001)
+      r += (mm.units_energy_cost_change * wt['energy_cost_change'])
       # print(
       # f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}, cost-change={mm.units_energy_cost_change}'
       # )

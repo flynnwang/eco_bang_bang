@@ -22,23 +22,12 @@ group: luxs3_match_explore_win_loss_0121
 obs_space_kwargs: {}
 reward_space_kwargs: {}
 #reward_schema: game_win_loss2
-#reward_schema: shaping
 reward_schema: match_explore_win_loss
 reward_shaping_params:
   use_hidden_relic_estimator: True
-
-  new_observed_down_tri: 0.0003
-  new_observed_main_diag: 0.0005
-  new_observed_corners: 0.001
-  relic_nb: 0.001
-  units_on_relic: 0.001
-  team_point: 0.0003
-  match_result: 1.0
-  game_result: 0
-  first_frozen_uints: -0.001
-  stay_frozen_units: -0.0005
-  dead_uints: 0
-  units_position_energy_sum: 0
+  energy_cost_change: 0.001
+  match_observed: 1
+  match_win: 1
 
 ## TRAINING params
 total_steps: 2e8
