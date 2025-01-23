@@ -1696,7 +1696,7 @@ class LuxS3Env(gym.Env):
       info['_game_total_hidden_relic_nodes_num'] = (
           env_state.relic_nodes_map_weights > 0).sum()
       info['_game_total_found_relic_nodes_num'] = (mm.team_point_mass
-                                                   >= MIN_TP_VAL).sum()
+                                                   >= 0.5).sum()
 
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")

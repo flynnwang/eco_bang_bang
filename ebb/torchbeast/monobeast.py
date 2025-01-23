@@ -799,8 +799,9 @@ def train(flags):
       raise ValueError(
           "It does not make sense to use teacher when teacher_kl_cost <= 0 "
           "and teacher_baseline_cost <= 0")
+    teacher_ob_space = get_ob_sapce(teacher_flags.obs_space_kwargs)
     teacher_model = create_model(teacher_flags,
-                                 ob_space,
+                                 teacher_ob_space,
                                  flags.learner_device,
                                  reset=None)
     if flags.teacher_load_dir:
