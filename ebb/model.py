@@ -363,9 +363,12 @@ class DictActor(nn.Module):
 
     self.actors = nn.ModuleDict(actors)
 
-  def forward(self, x: torch.Tensor, actions_mask: Dict[str, torch.Tensor],
+  def forward(self,
+              x: torch.Tensor,
+              actions_mask: Dict[str, torch.Tensor],
               origin_input_x: Dict[str, torch.Tensor],
-              sample: bool) -> Tuple[torch.Tensor, torch.Tensor]:
+              sample: bool,
+              probs_output: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     policy_logits_out = {}
     actions_out = {}
     for key, space in self.action_space.spaces.items():
@@ -391,12 +394,15 @@ class DictActor(nn.Module):
       logits = torch.where(aam_filled > 0, logits,
                            torch.zeros_like(logits) + float("-inf"))
 
-      actions = DictActor.logits_to_actions(logits.view(-1, action_dim),
-                                            sample, aam_filled)
+      actions, probs = DictActor.logits_to_actions(logits.view(-1, action_dim),
+                                                   sample, aam_filled)
       actions = actions.view(*logits.shape[:-1], -1)
 
       actions_out[key] = actions
       policy_logits_out[key] = logits
+
+    if probs_output:
+      return policy_logits_out, actions_out, probs
     return policy_logits_out, actions_out
 
   @staticmethod
@@ -414,9 +420,10 @@ class DictActor(nn.Module):
       actions = torch.multinomial(probs,
                                   num_samples=actions_per_square,
                                   replacement=False)
-      return actions
+      return actions, probs
     else:
-      return logits.argsort(dim=-1, descending=True)[..., :actions_per_square]
+      return logits.argsort(dim=-1,
+                            descending=True)[..., :actions_per_square], None
 
 
 class BaselineLayer(nn.Module):
@@ -499,16 +506,17 @@ class BasicActorCriticNetwork(nn.Module):
     baseline_extras = x['_baseline_extras']
 
     base_out = self.base_model(x)
-    policy_logits, actions = self.actor(self.actor_base(base_out),
-                                        actions_mask=actions_mask,
-                                        origin_input_x=x,
-                                        sample=sample,
-                                        **actor_kwargs)
+    policy_logits, actions, probs = self.actor(self.actor_base(base_out),
+                                               actions_mask=actions_mask,
+                                               origin_input_x=x,
+                                               sample=sample,
+                                               **actor_kwargs)
     baseline = self.baseline(self.baseline_base(base_out), baseline_extras)
     # print(baseline)
     return dict(actions=actions,
                 policy_logits=policy_logits,
-                baseline=baseline)
+                baseline=baseline,
+                probs=probs)
 
   def sample_actions(self, *args, **kwargs):
     return self.forward(*args, sample=True, **kwargs)

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250122_game_win_loss_from_teacher
+name: run_20250122_game_win_loss_from_teacher_restart_r1
 
 ## WANDB params
 # The wandb project name
@@ -79,11 +79,13 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-#entropy_cost: 6e-4
 #entropy_cost: 5e-3
-entropy_cost: 1e-4
+#entropy_cost: 3e-3
+entropy_cost: 5e-3
+#entropy_cost: 1e-4
 baseline_cost: 1.
-teacher_kl_cost: 1e-4
+teacher_kl_cost: 1e-3
+#teacher_kl_cost: 1e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -118,10 +120,10 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-#load_dir:
-#checkpoint_file:
-load_dir: /home/flynnwang/runs/ebb/01-23/14-55-24
-checkpoint_file: 080707584.pt
+load_dir:
+checkpoint_file:
+#load_dir: /home/flynnwang/runs/ebb/01-23/14-55-24
+#checkpoint_file: 080707584.pt
 #load_dir: /home/flynnwang/runs/ebb/01-23/03-40-13
 #checkpoint_file: 031968768.pt
 #

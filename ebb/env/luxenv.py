@@ -1559,7 +1559,7 @@ class LuxS3Env(gym.Env):
 
       # Can only stay on green cell (not relic node) for more energy
       # if unit energy < 100
-      if (energy < 300
+      if (energy < 200
           and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
           and mm.cell_energy[pos[0]][pos[1]] >= mm.unit_move_cost):
         actions_mask[i][ACTION_CENTER] = 1
