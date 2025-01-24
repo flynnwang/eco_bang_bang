@@ -52,9 +52,9 @@ OB = OrderedDict([
                                                 shape=MAP_SHAPE)),
     ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('game_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('game_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
@@ -161,9 +161,10 @@ def min_cost_bellman_ford(cost_map, energy_cost, N):
 
 class HiddenRelicNodeEstimator:
 
-  def __init__(self):
+  def __init__(self, enable_anti_sym):
     self.priori = np.zeros((MAP_WIDTH, MAP_HEIGHT))
     self.relic_node_positions = set()
+    self.enable_anti_sym = enable_anti_sym
 
   def check_new_relic_nodes(self, relic_node_positions):
     new_relic_node_positions = []
@@ -174,7 +175,7 @@ class HiddenRelicNodeEstimator:
 
     if new_relic_node_positions:
       self.relic_node_positions.update(new_relic_node_positions)
-    return new_relic_node_positions
+    return np.array(new_relic_node_positions, dtype=int)
 
   def update(self, relic_node_positions, is_relic_neighbour, unit_positions,
              new_team_points):
@@ -182,14 +183,18 @@ class HiddenRelicNodeEstimator:
     new_relic_node_positions = self.check_new_relic_nodes(relic_node_positions)
 
     # update (or reset) new relic node nb with priori
-    new_relic_nb_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), type=bool)
-    new_relic_nb_mask[new_relic_node_positions[:, 0],
-                      new_relic_node_positions[:, 1]] = True
-    new_relic_nb_mask = new_relic_nb_mask | (anti_diag_sym(new_relic_nb_mask))
+    new_relic_nb_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    if new_relic_node_positions.size > 0:
+      new_relic_nb_mask[new_relic_node_positions[:, 0],
+                        new_relic_node_positions[:, 1]] = True
+    if self.enable_anti_sym:
+      new_relic_nb_mask = new_relic_nb_mask | (
+          anti_diag_sym(new_relic_nb_mask))
+
     new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
     self.priori[new_relic_nb_mask] = PRIORI
 
-    is_relc_nb = (self.is_relic_neighbour == 1)
+    is_relc_nb = (is_relic_neighbour == 1)
     obs = np.argwhere(is_relc_nb & unit_positions)
     post = self.calc_posteriori_probs(obs, new_team_points)
     # print(new_team_points, post[post > 0])
@@ -265,19 +270,21 @@ class VisionMap:
     self.vision = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
     self.unit_sensor_range = unit_sensor_range
 
-  def _add_vision(self, p, unit_sensor_range, wt=1):
+  def _add_vision(self, p, unit_sensor_range, wt):
     i, j = p
     v = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=np.int32)
-    for r in range(self.unit_sensor_range + 1):
-      d = (self.unit_sensor_range - r)
-      if r == 0:
-        d = UNIT_POSITION_VISION_POWER
-
+    for r in range(unit_sensor_range + 1):
+      d = (unit_sensor_range - r)
       x0 = max(0, (i - d))
       x1 = min(MAP_WIDTH, (i + d + 1))
       y0 = max(0, (j - d))
       y1 = min(MAP_HEIGHT, (j + d + 1))
-      v[x0:x1, y0:y1] = (r + 1) * wt
+
+      vis = (r + 1) * wt
+      if d == 0:
+        vis = UNIT_POSITION_VISION_POWER * wt
+
+      v[x0:x1, y0:y1] = vis
     return v
 
   def update(self, mask, position, energy):
@@ -324,7 +331,8 @@ class MapManager:
                transpose=False,
                sap_indexer=None,
                use_mirror=False,
-               use_hidden_relic_estimator=False):
+               use_hidden_relic_estimator=False,
+               enable_anti_sym=False):
     self.player_id = int(player[-1])
     self.player = player
     self.env_cfg = env_cfg
@@ -373,10 +381,12 @@ class MapManager:
 
     self.use_mirror = use_mirror
     self.use_hidden_relic_estimator = use_hidden_relic_estimator
-    self.hidden_relic_estimator = HiddenRelicNodeEstimator()
+    self.hidden_relic_estimator = HiddenRelicNodeEstimator(enable_anti_sym)
 
     self.energy_cost_map = None
     self.units_energy_cost_change = 0
+
+    self.enable_anti_sym = enable_anti_sym
 
   @property
   def nebula_energy_reduction(self):
@@ -411,9 +421,10 @@ class MapManager:
     self.cell_type[c] = cells[c]
 
     # also update the symmetrical positions
-    cells_sym = anti_diag_sym(cells)
-    ct = cells_sym > CELL_UNKONWN
-    self.cell_type[ct] = cells_sym[ct]
+    if self.enable_anti_sym:
+      cells_sym = anti_diag_sym(cells)
+      ct = cells_sym > CELL_UNKONWN
+      self.cell_type[ct] = cells_sym[ct]
 
   def update_visible_and_observed(self, ob):
     self.visible = ob['sensor_mask'].astype(bool)
@@ -681,7 +692,8 @@ class MapManager:
 
     # Update cell map with guessed nebula
     self.cell_type[nebula_cell_mask] = CELL_NEBULA
-    self.cell_type[anti_diag_sym(nebula_cell_mask)] = CELL_NEBULA
+    if self.enable_anti_sym:
+      self.cell_type[anti_diag_sym(nebula_cell_mask)] = CELL_NEBULA
 
     vision_reduction = self.vision_map.vision[nebula_cell_mask]
     if vision_reduction.size > 0:
@@ -743,7 +755,9 @@ class MapManager:
     relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
     self.is_relic_node[relic_nodes_positions[:, 0],
                        relic_nodes_positions[:, 1]] = 1
-    self.is_relic_node |= anti_diag_sym(self.is_relic_node)
+    if self.enable_anti_sym:
+      self.is_relic_node |= anti_diag_sym(self.is_relic_node)
+
     self.is_relic_neighbour = maximum_filter(
         (self.is_relic_node == 1).astype(np.int32), size=RELIC_NB_SIZE)
 
@@ -752,9 +766,10 @@ class MapManager:
     is_visible = (self.visible > 0)
     self.cell_energy[is_visible] = energy[is_visible]
 
-    energy_tr = anti_diag_sym(energy)
-    is_visible_tr = anti_diag_sym(is_visible)
-    self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
+    if self.enable_anti_sym:
+      energy_tr = anti_diag_sym(energy)
+      is_visible_tr = anti_diag_sym(is_visible)
+      self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
   def update_hidden_relic_estimator(self, ob):
     relic_nodes_mask = ob['relic_nodes_mask']
@@ -762,23 +777,24 @@ class MapManager:
 
     team_point = ob['team_points'][self.player_id]
     new_team_points = team_point - self.prev_team_point
-    self.hidden_relic_estimator.update(relic_node_positions,
+    self.hidden_relic_estimator.update(relic_nodes_positions,
                                        self.is_relic_neighbour,
                                        self.unit_positions, new_team_points)
 
     p = self.hidden_relic_estimator.priori.copy()
     self.team_point_mass = p.copy()
 
-    min_val = MIN_PROB + 1e-5
-    is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
-    self.team_point_mass[is_min_prob] = 0
+    if self.enable_anti_sym:
+      min_val = MIN_PROB + 1e-5
+      is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
+      self.team_point_mass[is_min_prob] = 0
 
-    max_val = MAX_PROB - 1e-5
-    is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
-    self.team_point_mass[is_max_prob] = 1
+      max_val = MAX_PROB - 1e-5
+      is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
+      self.team_point_mass[is_max_prob] = 1
 
-    self.team_point_mass = np.maximum(self.team_point_mass,
-                                      anti_diag_sym(self.team_point_mass))
+      self.team_point_mass = np.maximum(self.team_point_mass,
+                                        anti_diag_sym(self.team_point_mass))
 
     # print(f'update_hidden_relic_estimator: {self.team_point_mass}, {tmp}')
 
@@ -802,8 +818,9 @@ class MapManager:
     # nearby relic are not team point positions.
     if delta == 0:
       self.team_point_mass[unit_nearby_relic] = NON_TEAM_POINT_MASS
-      self.team_point_mass[anti_diag_sym(
-          unit_nearby_relic)] = NON_TEAM_POINT_MASS
+      if self.enable_anti_sym:
+        self.team_point_mass[anti_diag_sym(
+            unit_nearby_relic)] = NON_TEAM_POINT_MASS
       return
 
     change = 50
@@ -817,7 +834,8 @@ class MapManager:
     # Means something wrong with the curr team point mass
     if delta < 0:
       self.team_point_mass[must_be_team_point] -= change
-      self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
+      if self.enable_anti_sym:
+        self.team_point_mass[anti_diag_sym(must_be_team_point)] -= change
       return
 
     assert delta >= 0
@@ -832,18 +850,21 @@ class MapManager:
     if delta == 0:
       # No new team points
       self.team_point_mass[team_point_candidate] -= change
-      self.team_point_mass[anti_diag_sym(team_point_candidate)] -= change
+      if self.enable_anti_sym:
+        self.team_point_mass[anti_diag_sym(team_point_candidate)] -= change
     elif delta >= num:
       # Every candidate position is a team point position
       self.team_point_mass[team_point_candidate] += change
-      self.team_point_mass[anti_diag_sym(team_point_candidate)] += change
+      if self.enable_anti_sym:
+        self.team_point_mass[anti_diag_sym(team_point_candidate)] += change
     else:
       # num < delta, some of the point is team point
       assert delta < num
       # print('>>>>>>>>>>>>>>', ob['steps'], delta, num, must_be_team_point.sum(), non_team_point.sum())
       self.team_point_mass[team_point_candidate] += (delta / num)
-      self.team_point_mass[anti_diag_sym(team_point_candidate)] += (delta /
-                                                                    num)
+      if self.enable_anti_sym:
+        self.team_point_mass[anti_diag_sym(team_point_candidate)] += (delta /
+                                                                      num)
 
   def get_relic_nb_nodes_to_visit(self):
     to_visit = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
@@ -867,8 +888,7 @@ class MapManager:
 
   @property
   def match_observed_num(self):
-    mask = (self.match_observed + anti_diag_sym(self.match_observed)) > 0
-    return mask.sum()
+    return (self.match_observed > 0).sum()
 
   def compute_energy_cost_map(self):
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(self.unit_move_cost))
@@ -1246,9 +1266,9 @@ class LuxS3Env(gym.Env):
 
     o['visible'] = mm.visible.astype(np.float32)
     o['match_observed'] = mm.match_observed.astype(np.float32)
-    o['game_observed'] = mm.game_observed.astype(np.float32)
+    # o['game_observed'] = mm.game_observed.astype(np.float32)
     o['match_visited'] = mm.match_visited.astype(np.float32)
-    o['game_visited'] = mm.game_visited.astype(np.float32)
+    # o['game_visited'] = mm.game_visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit
@@ -1434,30 +1454,31 @@ class LuxS3Env(gym.Env):
       mm2 = self.mms[mm.enemy_id]
 
       r_match = 0
-      team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-      enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
-      if team_points > enemy_points:
-        r_match = wt['match_win']
-      elif team_points < enemy_points:
-        r_match = -wt['match_win']
-
       r_match_observed = 0
-      team_observed_num = mm.match_observed_num
-      enemy_observed_num = mm2.match_observed_num
-      if team_observed_num > enemy_observed_num:
-        r_match_observed = wt['match_observed']
-      elif team_observed_num < enemy_observed_num:
-        r_match_observed = -wt['match_observed']
 
       r = 0
       if mm.match_step == MAX_MATCH_STEPS:
+        team_points = raw_obs[mm.player]['team_points'][mm.player_id]
+        enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
+        if team_points > enemy_points:
+          r_match = wt['match_win']
+        elif team_points < enemy_points:
+          r_match = -wt['match_win']
+
         r = r_match
       elif mm.match_step == HALF_MATCH_STEPS and mm.game_step <= 300:
-        r = r_match_obsevered
+        team_observed_num = mm.match_observed_num
+        enemy_observed_num = mm2.match_observed_num
+        if team_observed_num > enemy_observed_num:
+          r_match_observed = wt['match_observed']
+        elif team_observed_num < enemy_observed_num:
+          r_match_observed = -wt['match_observed']
 
-      r += (mm.units_energy_cost_change * wt['energy_cost_change'])
+        r = r_match_observed
+
+      # r += (mm.units_energy_cost_change * wt['energy_cost_change'])
       # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, team={team_points} enemy={enemy_points}, cost-change={mm.units_energy_cost_change}'
+      # f'step={mm.game_step} match-step={mm.match_step}, r_match={r_match} r_match_observed={r_match_observed}'
       # )
       return r
 
@@ -1559,7 +1580,7 @@ class LuxS3Env(gym.Env):
 
       # Can only stay on green cell (not relic node) for more energy
       # if unit energy < 100
-      if (energy < 300
+      if (energy < 250
           and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
           and mm.cell_energy[pos[0]][pos[1]] >= mm.unit_move_cost):
         actions_mask[i][ACTION_CENTER] = 1

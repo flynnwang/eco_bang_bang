@@ -25,8 +25,8 @@ reward_space_kwargs: {}
 reward_schema: match_explore_win_loss
 reward_shaping_params:
   use_hidden_relic_estimator: True
-  energy_cost_change: 0.001
-  match_observed: 1
+  energy_cost_change: 0
+  match_observed: 0.5
   match_win: 1
 
 ## TRAINING params
