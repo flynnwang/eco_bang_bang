@@ -10,7 +10,7 @@ from .env.const import UNITS_ACTION
 from .env.luxenv import MapManager, LuxS3Env, SapIndexer
 from .model import create_model
 
-SUBMIT_AGENT = False
+SUBMIT_AGENT = True
 
 MODEL_FILE_NAME = "102854208_weights.pt"
 

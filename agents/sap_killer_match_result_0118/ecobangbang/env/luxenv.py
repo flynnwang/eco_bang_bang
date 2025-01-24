@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 from collections import OrderedDict, deque, defaultdict, Counter
 from functools import cached_property
 import random
