@@ -41,9 +41,17 @@ class Agent:
     self.env_cfg = env_cfg
     # np.random.seed(0)
 
-    self.mm = MapManager(player, env_cfg, transpose=False)
-    self.env = LuxS3Env(game_env=1)  # for calling _convert_observation
-    self.env.sap_indexer = SapIndexer()
+    obs_space_kwargs = {'use_energy_cost_map': True}
+
+    self.mm = MapManager(player,
+                         env_cfg,
+                         transpose=False,
+                         sap_indexer=SapIndexer(),
+                         use_mirror=False,
+                         use_hidden_relic_estimator=True)
+    self.env = LuxS3Env("", obs_space_kwargs=obs_space_kwargs,
+                        game_env=1)  # for calling _convert_observation
+    self.env.sap_indexer = self.mm.sap_indexer
     assert self.env.sap_indexer is not None
 
     self.prev_model_action = None
@@ -55,7 +63,7 @@ class Agent:
                  base_out_channels=128,
                  embedding_dim=32,
                  kernel_size=5,
-                 reward_schema="shaping")
+                 reward_schema="match_explore_win_loss")
     flags = Namespace(**flags)
     model = create_model(flags, self.env.observation_space, device=DEVICE)
     # print(f"Model created", file=sys.stderr)
