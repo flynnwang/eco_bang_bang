@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250115_unit_kill_stage2_b16_r2
+name: run_20250124_match_explore_shaping
 
 ## WANDB params
 # The wandb project name
@@ -16,32 +16,23 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_unit_kill_reward
+group: luxs3_v2_initial_test_sym_info
 
 ## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
-
 reward_space_kwargs: {}
-reward_schema: game_win_loss2
-#reward_schema: shaping
+#reward_schema: game_win_loss2
+reward_schema: match_explore_win_loss
 reward_shaping_params:
-  new_observed_down_tri: 0.0003
-  new_observed_main_diag: 0.0005
-  new_observed_corners: 0.001
-  relic_nb: 0.001
-  units_on_relic: 0.001
-  team_point: 0.0003
-  match_result: 0.3
-  game_result: 0
-  first_frozen_uints: -0.001
-  stay_frozen_units: -0.0005
-  dead_uints: 0
-  units_position_energy_sum: 0
+  use_hidden_relic_estimator: True
+  energy_cost_change: 0
+  match_observed: 0.5
+  match_win: 1
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 10
+num_actors: 12
 n_actor_envs: 16
 
 unroll_length: 16
@@ -52,7 +43,7 @@ discounting: 0.999
 
 ## MODEL params
 model_arch: conv_model
-n_blocks: 8
+n_blocks: 12
 hidden_dim: 128
 base_out_channels: 128
 embedding_dim: 32
@@ -76,9 +67,10 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 5e-5
+#entropy_cost: 6e-4
+entropy_cost: 5e-3
 baseline_cost: 1.
-teacher_kl_cost: 5e-4
+teacher_kl_cost: 6e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -87,9 +79,9 @@ reduction: sum
 
 
 # Pretrained model for KL loss
-use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-15/23-33-08
-teacher_checkpoint_file: 068383744_weights.pt
+use_teacher: False
+teacher_load_dir: /home/flynnwang/runs/ebb/01-21/21-13-58
+teacher_checkpoint_file: 061835968_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -111,8 +103,10 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir: /home/flynnwang/runs/ebb/01-16/07-50-23
-checkpoint_file: 037286656.pt
+load_dir:
+checkpoint_file:
+#load_dir: /home/flynnwang/runs/ebb/01-22/10-00-47
+#checkpoint_file: 059385024.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
