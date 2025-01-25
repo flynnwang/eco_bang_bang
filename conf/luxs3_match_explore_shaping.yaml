@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250124_match_explore_shaping
+name: run_20250124_match_explore_shaping_visited
 
 ## WANDB params
 # The wandb project name

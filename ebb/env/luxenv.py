@@ -888,7 +888,9 @@ class MapManager:
 
   @property
   def match_observed_num(self):
-    return (self.match_observed > 0).sum()
+    # return (self.match_observed > 0).sum()
+    # return (self.visible > 0).sum()
+    return (self.match_visited > 0).sum()
 
   def compute_energy_cost_map(self):
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(self.unit_move_cost))
