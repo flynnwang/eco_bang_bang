@@ -24,6 +24,7 @@ obs_space_kwargs:
 
 reward_space_kwargs: {}
 reward_schema: game_win_loss2
+#reward_schema: match_explore_win_loss
 reward_shaping_params:
   use_hidden_relic_estimator: True
   energy_cost_change: 0
@@ -67,10 +68,13 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-#entropy_cost: 6e-4
-entropy_cost: 3e-3
+#entropy_cost: 5e-3
+#entropy_cost: 3e-3
+entropy_cost: 5e-3
+#entropy_cost: 1e-4
 baseline_cost: 1.
 teacher_kl_cost: 1e-3
+#teacher_kl_cost: 1e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -105,6 +109,8 @@ debug: False
 
 load_dir: /home/flynnwang/runs/ebb/01-25/20-36-34
 checkpoint_file: 011207616.pt
+#load_dir:
+#checkpoint_file:
 #
 weights_only: False
-n_value_warmup_batches: 0
+n_value_warmup_batches: 1
