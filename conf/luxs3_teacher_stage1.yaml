@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250124_stage1_teacher_game_win_loss_r1
+name: run_20250124_stage1_teacher_game_win_loss_v4
 
 ## WANDB params
 # The wandb project name
@@ -17,8 +17,6 @@ project: lux_s3
 entity: pyflynn
 # The wandb group for the run
 group: luxs3_v2_initial_test_sym_info
-
-## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
 
@@ -32,7 +30,7 @@ reward_shaping_params:
   match_win: 1
 
 ## TRAINING params
-total_steps: 2e8
+total_steps: 3e8
 num_actors: 12
 n_actor_envs: 16
 
@@ -70,10 +68,11 @@ min_lr_mod: 0.01
 ## LOSS params
 #entropy_cost: 5e-3
 #entropy_cost: 3e-3
-entropy_cost: 5e-3
-#entropy_cost: 1e-4
+#entropy_cost: 1e-3
+entropy_cost: 2e-4
 baseline_cost: 1.
 teacher_kl_cost: 1e-3
+#teacher_kl_cost: 5e-4
 #teacher_kl_cost: 1e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
@@ -84,8 +83,12 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/01-25/13-00-13
-teacher_checkpoint_file: 038262784.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/01-26/23-37-59
+teacher_checkpoint_file: 157622720.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-26/06-15-08
+#teacher_checkpoint_file: 080654272.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/01-25/13-00-13
+#teacher_checkpoint_file: 038262784.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -107,10 +110,18 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir: /home/flynnwang/runs/ebb/01-25/20-36-34
-checkpoint_file: 011207616.pt
-#load_dir:
-#checkpoint_file:
+#load_dir: /home/flynnwang/runs/ebb/01-27/07-10-29
+#checkpoint_file: 064936384.pt
+#load_dir: /home/flynnwang/runs/ebb/01-26/06-15-08
+#checkpoint_file: 080654272.pt
+#load_dir: /home/flynnwang/runs/ebb/01-25/23-02-54/
+#checkpoint_file: 043695552.pt
+#load_dir: /home/flynnwang/runs/ebb/01-25/20-36-34
+#checkpoint_file: 011207616.pt
+#load_dir: /home/flynnwang/runs/ebb/01-28/08-14-39
+#checkpoint_file: 031808384.pt
+load_dir:
+checkpoint_file:
 #
 weights_only: False
 n_value_warmup_batches: 1

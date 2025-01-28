@@ -740,11 +740,8 @@ class MapManager:
     self.match_visited[self.unit_positions] = 1
     self.game_visited |= self.match_visited
 
-  def count_on_relic_nodes_units(self, env_state):
-    # TODO: this is bug
-    raise Exception("not mirror / transpose error")
-    return ((env_state.relic_nodes_map_weights > 0) &
-            (self.unit_positions)).sum()
+  def count_on_relic_nodes_units(self):
+    return ((self.team_point_mass > MIN_TP_VAL) & (self.unit_positions)).sum()
 
   @property
   def step_new_found_relic_node_num(self):
@@ -1196,7 +1193,8 @@ class LuxS3Env(gym.Env):
 
       extras[12] = mm.units_dead_count / MAX_UNIT_NUM
       extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
-      extras[14] = mm.units_frozen_count / MAX_UNIT_NUM
+      # extras[14] = mm.units_frozen_count / MAX_UNIT_NUM
+      extras[14] = mm.count_on_relic_nodes_units() / MAX_UNIT_NUM
 
       extras[15] = mm.unit_sensor_range / MAX_SENSOR_RANGE
       extras[16] = mm.unit_move_cost / MAX_MOVE_COST

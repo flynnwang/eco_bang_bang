@@ -501,22 +501,31 @@ class BasicActorCriticNetwork(nn.Module):
   def forward(self,
               x1: Dict[str, Union[dict, torch.Tensor]],
               sample: bool = True,
+              probs_output=False,
               **actor_kwargs) -> Dict[str, Any]:
     x, actions_mask = self.dict_input_layer(x1)
     baseline_extras = x['_baseline_extras']
 
     base_out = self.base_model(x)
-    policy_logits, actions, probs = self.actor(self.actor_base(base_out),
-                                               actions_mask=actions_mask,
-                                               origin_input_x=x,
-                                               sample=sample,
-                                               **actor_kwargs)
+    ret = self.actor(self.actor_base(base_out),
+                     actions_mask=actions_mask,
+                     origin_input_x=x,
+                     sample=sample,
+                     probs_output=probs_output,
+                     **actor_kwargs)
     baseline = self.baseline(self.baseline_base(base_out), baseline_extras)
-    # print(baseline)
-    return dict(actions=actions,
-                policy_logits=policy_logits,
-                baseline=baseline,
-                probs=probs)
+
+    if probs_output:
+      policy_logits, actions, probs = ret
+      return dict(actions=actions,
+                  policy_logits=policy_logits,
+                  baseline=baseline,
+                  probs=probs)
+    else:
+      policy_logits, actions = ret
+      return dict(actions=actions,
+                  policy_logits=policy_logits,
+                  baseline=baseline)
 
   def sample_actions(self, *args, **kwargs):
     return self.forward(*args, sample=True, **kwargs)

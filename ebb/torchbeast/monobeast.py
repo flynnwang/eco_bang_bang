@@ -152,12 +152,12 @@ def compute_teacher_kl_loss(
   if actions_taken_mask is not None:
     assert actions_taken_mask.shape == kl_div.shape, (actions_taken_mask.shape,
                                                       kl_div.shape)
-    mask = actions_taken_mask.any(dim=-1, keepdim=True)
-    am = actions_taken_mask.clone()
-    am[mask.expand(*am.shape)] = 1
-    # kl_div_masked = torch.where(actions_taken_mask > 0, kl_div,
-    # torch.zeros_like(kl_div))
-    kl_div_masked = kl_div * am.float()
+    # mask = actions_taken_mask.any(dim=-1, keepdim=True)
+    # am = actions_taken_mask.clone()
+    # am[mask.expand(*am.shape)] = 1
+    # kl_div_masked = kl_div * am.float()
+    kl_div_masked = torch.where(actions_taken_mask > 0, kl_div,
+                                torch.zeros_like(kl_div))
   else:
     kl_div_masked = kl_div
   return kl_div_masked.sum(dim=-1).sum(dim=-1)
