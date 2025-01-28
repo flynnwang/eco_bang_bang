@@ -388,6 +388,8 @@ class MapManager:
 
     self.enable_anti_sym = enable_anti_sym
 
+    self.match_wins = 0
+
   @property
   def nebula_energy_reduction(self):
     return self._nebula_energy_reduction.best_guess()
@@ -1490,16 +1492,26 @@ class LuxS3Env(gym.Env):
   def _convert_win_loss_reward2(self, raw_obs, env_state):
 
     def _convert(mm, ob):
+      if mm.match_step == MAX_MATCH_STEPS:
+        team_points = raw_obs[mm.player]['team_points'][mm.player_id]
+        enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
+        if team_points > enemy_points:
+          mm.match_wins += 1
+        elif team_points < enemy_points:
+          mm.match_wins -= 1
+        # print(f'team_points={team_points} enemy_points={enemy_points}')
+
       # game end reward
       r_game = 0
-      team_wins = raw_obs[mm.player]['team_wins']
       if self.is_game_done(raw_obs, mm.player):
-        if team_wins[mm.player_id] > team_wins[mm.enemy_id]:
+        if mm.match_wins > 0:
           r_game = 1
-        elif team_wins[mm.player_id] < team_wins[mm.enemy_id]:
+        elif mm.match_wins < 0:
           r_game = -1
 
-      # print(f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}')
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}, match_wins={mm.match_wins}'
+      # )
       return r_game
 
     return [
