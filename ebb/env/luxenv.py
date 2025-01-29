@@ -1462,10 +1462,12 @@ class LuxS3Env(gym.Env):
       if mm.match_step == MAX_MATCH_STEPS:
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
         enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
-        if team_points > enemy_points:
-          r_match = wt['match_win']
-        elif team_points < enemy_points:
-          r_match = -wt['match_win']
+        net_win_points = team_points - enemy_points
+        r_match = max(min(net_win_points / 50, 3), -3)
+        # if team_points > enemy_points:
+        # r_match = wt['match_win']
+        # elif team_points < enemy_points:
+        # r_match = -wt['match_win']
 
         r = r_match
       elif mm.match_step == HALF_MATCH_STEPS and mm.game_step <= 300:
@@ -1593,9 +1595,9 @@ class LuxS3Env(gym.Env):
 
       # Can only stay on green cell (not relic node) for more energy
       # if unit energy < 100
-      if (energy < 250
+      if (energy < 120
           and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
-          and mm.cell_energy[pos[0]][pos[1]] >= mm.unit_move_cost):
+          and mm.cell_energy[pos[0]][pos[1]] >= 5):
         actions_mask[i][ACTION_CENTER] = 1
 
     def update_sap_action_mask(i, pos, energy):
