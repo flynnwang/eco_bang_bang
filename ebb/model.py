@@ -583,6 +583,12 @@ def create_model(flags,
         reward_max=+5,
         zero_sum=False,
     )
+  if flags.reward_schema in ('shaping_v2', ):
+    reward_spec = RewardSpec(
+        reward_min=-5,
+        reward_max=+5,
+        zero_sum=False,
+    )
   assert reward_spec is not None
 
   md = _create_model(observation_space,

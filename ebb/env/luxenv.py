@@ -1490,6 +1490,28 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
+  def _convert_shaping_reward_v2(self, raw_obs, env_state):
+    wt = self.reward_shaping_params
+
+    def _convert(mm, ob):
+      r_match = 0
+      r = 0
+      if mm.match_step == MAX_MATCH_STEPS:
+        relic_num = (env_state.relic_nodes_map_weights > 0).sum() // 2
+
+        team_points = raw_obs[mm.player]['team_points'][mm.player_id]
+        r_match = team_points / MAX_MATCH_STEPS / relic_num
+        r = r_match
+
+      print(
+          f'step={mm.game_step} match-step={mm.match_step}, r_match={r_match}')
+      return r
+
+    return [
+        _convert(self.mms[i], raw_obs[p])
+        for i, p in enumerate([PLAYER0, PLAYER1])
+    ]
+
   def _convert_win_loss_reward2(self, raw_obs, env_state):
 
     def _convert(mm, ob):
@@ -1523,7 +1545,8 @@ class LuxS3Env(gym.Env):
   def _convert_reward(self, raw_obs, env_state):
     """Use the match win-loss reward for now."""
     assert self.reward_schema in ('shaping', 'game_win_loss2',
-                                  'match_win_loss', 'match_explore_win_loss')
+                                  'match_win_loss', 'match_explore_win_loss',
+                                  'shaping_v2')
     if self.reward_schema == 'game_win_loss2':
       reward = self._convert_win_loss_reward2(raw_obs, env_state)
 
@@ -1535,6 +1558,9 @@ class LuxS3Env(gym.Env):
 
     if self.reward_schema == 'match_explore_win_loss':
       reward = self._convert_match_explore_win_loss(raw_obs, env_state)
+
+    if self.reward_schema == 'shaping_v2':
+      reward = self._convert_shaping_reward_v2(raw_obs, env_state)
 
     if SINGLE_PLAER:
       return [reward[0]]  # single player
