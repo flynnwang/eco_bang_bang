@@ -783,17 +783,16 @@ class MapManager:
     p = self.hidden_relic_estimator.priori.copy()
     self.team_point_mass = p.copy()
 
-    if self.enable_anti_sym:
-      min_val = MIN_PROB + 1e-5
-      is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
-      self.team_point_mass[is_min_prob] = 0
+    min_val = MIN_PROB + 1e-5
+    is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
+    self.team_point_mass[is_min_prob] = 0
 
-      max_val = MAX_PROB - 1e-5
-      is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
-      self.team_point_mass[is_max_prob] = 1
+    max_val = MAX_PROB - 1e-5
+    is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
+    self.team_point_mass[is_max_prob] = 1
 
-      self.team_point_mass = np.maximum(self.team_point_mass,
-                                        anti_diag_sym(self.team_point_mass))
+    self.team_point_mass = np.maximum(self.team_point_mass,
+                                      anti_diag_sym(self.team_point_mass))
 
     # print(f'update_hidden_relic_estimator: {self.team_point_mass}, {tmp}')
 
@@ -1595,9 +1594,9 @@ class LuxS3Env(gym.Env):
 
       # Can only stay on green cell (not relic node) for more energy
       # if unit energy < 100
-      if (energy < 120
+      if (energy < 150
           and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
-          and mm.cell_energy[pos[0]][pos[1]] >= 5):
+          and mm.cell_energy[pos[0]][pos[1]] >= 6):
         actions_mask[i][ACTION_CENTER] = 1
 
     def update_sap_action_mask(i, pos, energy):

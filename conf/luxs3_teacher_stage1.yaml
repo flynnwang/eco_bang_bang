@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250124_stage1_teacher_game_win_loss_v4
+name: run_20250124_stage1_teacher_game_win_loss_v5_r1
 
 ## WANDB params
 # The wandb project name
@@ -71,7 +71,7 @@ min_lr_mod: 0.01
 #entropy_cost: 1e-3
 entropy_cost: 2e-4
 baseline_cost: 1.
-teacher_kl_cost: 1e-3
+teacher_kl_cost: 5e-4
 #teacher_kl_cost: 5e-4
 #teacher_kl_cost: 1e-4
 teacher_baseline_cost: 0.0
@@ -120,8 +120,10 @@ debug: False
 #checkpoint_file: 011207616.pt
 #load_dir: /home/flynnwang/runs/ebb/01-28/08-14-39
 #checkpoint_file: 031808384.pt
-load_dir:
-checkpoint_file:
+#load_dir: /home/flynnwang/runs/ebb/01-28/21-16-12
+#checkpoint_file: 040636928.pt
+load_dir: /home/flynnwang/runs/ebb/01-29/06-06-58
+checkpoint_file: 045250560.pt
 #
 weights_only: False
 n_value_warmup_batches: 1
