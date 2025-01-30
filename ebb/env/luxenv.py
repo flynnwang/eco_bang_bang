@@ -1279,7 +1279,8 @@ class LuxS3Env(gym.Env):
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
 
     # cells need a visit
-    o['game_unvisited_relic_nb'] = mm.get_relic_nb_nodes_to_visit()
+    # o['game_unvisited_relic_nb'] = mm.get_relic_nb_nodes_to_visit()
+    o['game_unvisited_relic_nb'] = mm.is_relic_neighbour.astype(np.float32)
 
     # places need unit stay
     o['team_point_prob'] = mm.get_must_be_relic_nodes()
@@ -1505,14 +1506,14 @@ class LuxS3Env(gym.Env):
       r_match = 0
       r = 0
       if mm.match_step == MAX_MATCH_STEPS:
-        relic_num = (env_state.relic_nodes_map_weights > 0).sum() // 2
+        relic_num = ((env_state.relic_nodes_map_weights > 0).sum() / 2 + 0.1)
 
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        r_match = team_points / MAX_MATCH_STEPS / relic_num
+        r_match = team_points / MAX_MATCH_STEPS / relic_num * 3
         r = r_match
 
-      print(
-          f'step={mm.game_step} match-step={mm.match_step}, r_match={r_match}')
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, r_match={r_match}')
       return r
 
     return [
