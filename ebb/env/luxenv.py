@@ -181,6 +181,8 @@ class HiddenRelicNodeEstimator:
              new_team_points):
     # first find the newly found relic node positions
     new_relic_node_positions = self.check_new_relic_nodes(relic_node_positions)
+    # if new_relic_node_positions.size > 0:
+    # print(f"new_relic_node_positions: {new_relic_node_positions}")
 
     # update (or reset) new relic node nb with priori
     new_relic_nb_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
@@ -192,7 +194,11 @@ class HiddenRelicNodeEstimator:
           anti_diag_sym(new_relic_nb_mask))
 
     new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
-    self.priori[new_relic_nb_mask] = PRIORI
+    # if new_relic_nb_mask.sum() > 0:
+    # print(f"reset new_relic_nb_mask: {new_relic_nb_mask.sum()}")
+    tmp_pri = self.priori.copy()
+    tmp_pri[new_relic_nb_mask] = PRIORI
+    self.priori = np.maximum(self.priori, tmp_pri)
 
     is_relc_nb = (is_relic_neighbour == 1)
     obs = np.argwhere(is_relc_nb & unit_positions)
