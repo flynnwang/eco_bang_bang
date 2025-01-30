@@ -211,6 +211,7 @@ def act(
     actor_model: torch.nn.Module,
     buffers: Buffers,
 ):
+  use_single_player = flags.obs_space_kwargs['use_single_player']
 
   if flags.debug:
     catch_me = AssertionError
@@ -231,6 +232,10 @@ def act(
       env.seed()
 
     def actor_mode_apply(env_output):
+      if use_single_player:
+        agent_out = actor_model(env_output)
+        return [(env_output, agent_out)]
+
       lef_env_out, rig_env_out = split_env_output_by_player(env_output)
       lef_agent_out = actor_model(lef_env_out)
       rig_agent_out = actor_model(rig_env_out)
@@ -248,10 +253,14 @@ def act(
       left_index = free_queue.get()
       if left_index is None:
         break
-      right_index = free_queue.get()
-      if right_index is None:
-        break
-      buffer_indices = [left_index, right_index]
+
+      buffer_indices = [left_index]
+
+      if not use_single_player:
+        right_index = free_queue.get()
+        if right_index is None:
+          break
+        buffer_indices.append(right_index)
 
       # Write old rollout end.
       _fill_buffers(buffer_indices, env_agent_output, 0)
@@ -265,7 +274,11 @@ def act(
         timings.time("model")
 
         # TODO: merge actions to step env
-        actions = get_merged_actions(env_agent_output)
+        if not use_single_player:
+          actions = get_merged_actions(env_agent_output)
+        else:
+          actions = env_agent_output[0][1]['actions']
+
         env_output = env.step(actions)
         # env_output = env.step(agent_output["actions"])
         if env_output["done"].any():
@@ -291,8 +304,9 @@ def act(
         _fill_buffers(buffer_indices, env_agent_output, t + 1)
 
         timings.time("write")
-      full_queue.put(left_index)
-      full_queue.put(right_index)
+
+      for idx in buffer_indices:
+        full_queue.put(idx)
 
     if actor_index == 0:
 

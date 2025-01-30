@@ -11,10 +11,11 @@ from ebb.env.luxenv import ACTION_SPACE
 
 class VecEnv(gym.Env):
 
-  def __init__(self, envs: List[gym.Env]):
+  def __init__(self, envs: List[gym.Env], use_single_player=False):
     assert len(envs) > 0
     self.envs = envs
     self.last_outs = [() for _ in range(len(self.envs))]
+    self.use_single_player = use_single_player
 
   @staticmethod
   def _stack_dict(x: List[Union[Dict, np.ndarray]],
@@ -38,6 +39,10 @@ class VecEnv(gym.Env):
       "For each env_out of [x1, x2], flatten it to x1, x2 ..."
       for env_out in env_outs:
         obs, reward, done, info = env_out
+        if self.use_single_player:
+          yield obs[0], reward[0], done, info[0]
+          continue
+
         done = [done] * 2
         for out in zip(obs, reward, done, info):
           yield out
@@ -48,10 +53,13 @@ class VecEnv(gym.Env):
     reward_stacked = np.array(reward_list)
     done_stacked = np.array(done_list)
     info_stacked = VecEnv._stack_dict(info_list)
-    assert len(obs_list) == 2 * len(env_outs)
-    assert len(reward_list) == 2 * len(env_outs)
-    assert len(done_list) == 2 * len(env_outs)
-    assert len(info_list) == 2 * len(env_outs)
+
+    if not self.use_single_player:
+      assert len(obs_list) == 2 * len(env_outs)
+      assert len(reward_list) == 2 * len(env_outs)
+      assert len(done_list) == 2 * len(env_outs)
+      assert len(info_list) == 2 * len(env_outs)
+
     return obs_stacked, reward_stacked, done_stacked, info_stacked
 
   def reset(self, force: bool = False, **kwargs):
@@ -70,8 +78,8 @@ class VecEnv(gym.Env):
     return ret
 
   def step(self, actions: Dict[str, torch.Tensor]):
-    assert len(actions) == len(
-        ACTION_SPACE), 'number of actions match len(ACTION_SPACE)'
+    # assert len(actions) == len(
+    # ACTION_SPACE), 'number of  actions match len(ACTION_SPACE)'
 
     def groupby(iterable, n):
       """
@@ -97,9 +105,22 @@ class VecEnv(gym.Env):
         y = {key: g[i][1] for i, key in enumerate(action_keys)}
         yield x, y
 
-    self.last_outs = [
-        env.step(a) for env, a in zip(self.envs, merged_actions(actions))
-    ]
+    def single_player_actions(actions):
+      action_keys = list(ACTION_SPACE.keys())
+      groups = [groupby(_d(actions[k]), 1) for k in action_keys]
+      for g in zip(*groups):
+        x = {key: g[i][0] for i, key in enumerate(action_keys)}
+        yield x
+
+    if self.use_single_player:
+      self.last_outs = [
+          env.step(a)
+          for env, a in zip(self.envs, single_player_actions(actions))
+      ]
+    else:
+      self.last_outs = [
+          env.step(a) for env, a in zip(self.envs, merged_actions(actions))
+      ]
     return self._vectorize_env_outs(self.last_outs)
 
   def render(self, idx: int, mode: str = None, **kwargs):
@@ -180,6 +201,7 @@ class PytorchEnv(gym.Wrapper):
       dtype = torch.float32
       if x.dtype == np.int32:
         dtype = torch.int32
+
       return torch.from_numpy(x).to(self.device, non_blocking=True).to(dtype)
       # return torch.from_numpy(x).to(self.device).to(dtype)
 

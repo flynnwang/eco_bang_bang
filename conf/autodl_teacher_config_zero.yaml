@@ -20,6 +20,8 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
+  use_single_player: True
+
 
 reward_space_kwargs: {}
 reward_schema: shaping_v2
@@ -35,7 +37,7 @@ reward_shaping_params:
 ## TRAINING params
 total_steps: 3e8
 num_actors: 1
-n_actor_envs: 1
+n_actor_envs: 2
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`

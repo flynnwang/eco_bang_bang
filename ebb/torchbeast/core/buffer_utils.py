@@ -20,10 +20,7 @@ def fill_buffers_inplace(buffers: Union[Dict, torch.Tensor],
     for key, val in copy(fill_vals).items():
       fill_buffers_inplace(buffers[key], val, step, key_hint=key)
   else:
-    try:
-      buffers[step, ...] = fill_vals[:]
-    except:
-      __import__('ipdb').set_trace()
+    buffers[step, ...] = fill_vals[:]
 
 
 def stack_buffers(buffers: Buffers,
@@ -147,7 +144,11 @@ def create_buffers(
 
   # for self-play, we will expand env output into two buffer, that's why we need
   # to split it into half here.
-  _, splited_info = split_env_output_by_player(example_info)
+  use_single_player = flags.obs_space_kwargs['use_single_player']
+  if not use_single_player:
+    _, splited_info = split_env_output_by_player(example_info)
+  else:
+    splited_info = example_info
 
   buffers: Buffers = []
   for _ in range(flags.num_buffers):

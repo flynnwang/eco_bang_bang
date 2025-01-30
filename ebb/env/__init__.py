@@ -12,7 +12,7 @@ def create_env(flags, device: torch.device) -> DictEnv:
                    obs_space_kwargs=flags.obs_space_kwargs,
                    reward_shaping_params=flags.reward_shaping_params)
     envs.append(env)
-  env = VecEnv(envs)
+  env = VecEnv(envs, flags.obs_space_kwargs['use_single_player'])
   env = PytorchEnv(env, device)
   env = DictEnv(env)
   return env

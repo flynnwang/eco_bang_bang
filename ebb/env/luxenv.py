@@ -975,6 +975,11 @@ class LuxS3Env(gym.Env):
     """Obervation space of single player"""
     return get_ob_sapce(self.obs_space_kwargs)
 
+  @property
+  def use_single_player(self):
+    """Obervation space of single player"""
+    return self.obs_space_kwargs["use_single_player"]
+
   def seed(self, seed):
     self._seed = seed
 
@@ -1104,6 +1109,12 @@ class LuxS3Env(gym.Env):
     return unit_actions
 
   def compute_actions_taken(self, model_actions):
+    # if self.use_single_player:
+    # return [self.get_actions_taken_mask(model_actions[0], self.mms[0])]
+    # except Exception as e:
+    # __import__('ipdb').set_trace()
+    # raise e
+
     return [
         self.get_actions_taken_mask(model_actions[i], self.mms[i])
         for i, player in enumerate([PLAYER0, PLAYER1])
@@ -1116,17 +1127,17 @@ class LuxS3Env(gym.Env):
     return (game_step >= MAX_GAME_STEPS)
 
   def step(self, model_action):
-    if SINGLE_PLAER:
+    if self.use_single_player:
       model_action = [
           model_action,
           {
-              UNITS_ACTION: np.zeros(
-                  (MAX_UNIT_NUM, 1), np.int32
-              )  # use dummy action for the other player is not optimal
+              UNITS_ACTION:
+              np.zeros((MAX_UNIT_NUM, 1),
+                       np.int32)  # use dummy action for the other player
           }
       ]
-    self._actions_taken_mask = self.compute_actions_taken(model_action)
 
+    self._actions_taken_mask = self.compute_actions_taken(model_action)
     action = {
         PLAYER0:
         self._encode_action(model_action[0], self.mms[0],
@@ -1348,7 +1359,7 @@ class LuxS3Env(gym.Env):
     assert len(
         raw_obs
     ) == 2, f"len(raw_obs)={len(raw_obs)}, self.total_agent_controls={self.total_agent_controls}"
-    if SINGLE_PLAER:
+    if self.use_single_player:
       return [
           self._convert_observation(raw_obs[PLAYER0], self.mms[0], final_state)
       ]  # single player
@@ -1571,7 +1582,7 @@ class LuxS3Env(gym.Env):
     if self.reward_schema == 'shaping_v2':
       reward = self._convert_shaping_reward_v2(raw_obs, env_state)
 
-    if SINGLE_PLAER:
+    if self.use_single_player:
       return [reward[0]]  # single player
     else:
       return reward
@@ -1799,10 +1810,11 @@ class LuxS3Env(gym.Env):
     if model_action is None:
       model_action = [None, None]
 
-    if SINGLE_PLAER:
+    if self.use_single_player:
       return [
           _get_info(model_action[0], raw_obs[PLAYER0],
-                    self.prev_raw_obs[PLAYER0], self.mms[0])
+                    self.prev_raw_obs[PLAYER0], reward[0], self.mms[0],
+                    env_state)
       ]  # single player
     else:
       return [
