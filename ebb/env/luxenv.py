@@ -1632,8 +1632,8 @@ class LuxS3Env(gym.Env):
 
           # force it to stay there
           # if team_point_prob > 0.5 and mm.game_step > MAX_MATCH_STEPS:
-          if team_point_prob > 0.5:
-            actions_mask[i][:MOVE_ACTION_NUM] = 0
+          # if team_point_prob > 0.5:
+          # actions_mask[i][:MOVE_ACTION_NUM] = 0
 
           actions_mask[i][ACTION_CENTER] = 1
           action_centered_positions.add(pos)
