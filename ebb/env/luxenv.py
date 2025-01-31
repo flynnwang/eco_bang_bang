@@ -38,7 +38,7 @@ OB = OrderedDict([
 
     # Time & Match
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -959,13 +959,14 @@ class MapManager:
     # Two types of position should call for dist cost map:
     # 1. unvisited relic neighbour
     # 2. un-occupied hidden relic nodes
-    unvisited_relic_nbs = (~self.game_visited) & (self.is_relic_neighbour > 0)
+    # unvisited_relic_nbs = (~self.game_visited) & (self.is_relic_neighbour > 0)
+    # seed_mask = unvisited_relic_nbs
 
-    seed_mask = unvisited_relic_nbs
-    if self.game_step > MAX_MATCH_STEPS:
-      unocc_relic_nodes = (~self.unit_positions) & (self.team_point_mass
-                                                    > MIN_TP_VAL)
-      seed_mask |= unocc_relic_nodes
+    # unocc_relic_nodes = (~self.unit_positions) & (self.team_point_mass
+    # > MIN_TP_VAL)
+    # seed_mask |= unocc_relic_nodes
+
+    seed_mask = (self.is_relic_node > 0)
     energy_cost[seed_mask] = 0
 
     energy_cost = min_cost_bellman_ford(cost_map,
@@ -1294,7 +1295,7 @@ class LuxS3Env(gym.Env):
 
     # Time & Match
     o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
-    o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
+    # o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
 
     team_points = ob['team_points']
     units_points = team_points[mm.player_id]
@@ -1685,18 +1686,20 @@ class LuxS3Env(gym.Env):
 
           # force it to stay there
           # if team_point_prob > 0.5 and mm.game_step > MAX_MATCH_STEPS:
-          # if team_point_prob > 0.5:
-          # actions_mask[i][:MOVE_ACTION_NUM] = 0
+          if team_point_prob > 0.6:
+            actions_mask[i][:MOVE_ACTION_NUM] = 0
 
           actions_mask[i][ACTION_CENTER] = 1
           action_centered_positions.add(pos)
 
       # Can only stay on green cell (not relic node) for more energy
       # if unit energy < 100
-      if (energy < 150
-          and (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL)
-          and mm.cell_energy[pos[0]][pos[1]] >= 6):
-        actions_mask[i][ACTION_CENTER] = 1
+      if (not mm.team_point_mass[pos[0]][pos[1]] >= MIN_TP_VAL):
+        if (100 < energy < 300 and mm.cell_energy[pos[0]][pos[1]] >= 5):
+          actions_mask[i][ACTION_CENTER] = 1
+
+        if (energy < 50 and mm.cell_energy[pos[0]][pos[1]] >= 1):
+          actions_mask[i][ACTION_CENTER] = 1
 
     def update_sap_action_mask(i, pos, energy):
       if energy < mm.unit_sap_cost:

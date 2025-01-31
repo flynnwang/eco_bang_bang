@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250129_shaping_reward_v2_r3
+name: run_20250130_single_player_env_r0
 
 ## WANDB params
 # The wandb project name
@@ -16,11 +16,14 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_v3_0129
+group: luxs3_single_player_0130
 
 ## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
+  use_single_player: True
+
+
 reward_space_kwargs: {}
 #reward_schema: game_win_loss2
 #reward_schema: match_explore_win_loss
@@ -69,11 +72,12 @@ optimizer_kwargs:
 min_lr_mod: 0.01
 
 ## LOSS params
-entropy_cost: 3e-4
+#entropy_cost: 3e-4
 #entropy_cost: 6e-4
-#entropy_cost: 1e-3
+entropy_cost: 1e-3
 baseline_cost: 1.
-teacher_kl_cost: 1e-3
+teacher_kl_cost: 0
+#teacher_kl_cost: 1e-3
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -83,8 +87,8 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: False
-teacher_load_dir: /home/flynnwang/runs/ebb/01-26/23-37-59
-teacher_checkpoint_file: 157622720.pt
+teacher_load_dir:
+teacher_checkpoint_file:
 
 # MISCELLANEOUS params
 use_mixed_precision: True
