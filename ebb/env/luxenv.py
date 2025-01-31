@@ -48,6 +48,7 @@ OB = OrderedDict([
 
     # Map info
     ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
+    ('_b_cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
     ('nebula_tile_vision_reduction', spaces.Box(low=0, high=1,
                                                 shape=MAP_SHAPE)),
     ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -57,15 +58,18 @@ OB = OrderedDict([
     # ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_b_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # use this to indicate nodes of unvisited relic cells (and its neighbour)
-    ('game_unvisited_relic_nb', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
     ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_b_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # hints for where to go
     # ('energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     #
     ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_b_cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # units team map
     ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -88,6 +92,15 @@ OB = OrderedDict([
      spaces.MultiDiscrete([[(MAP_WIDTH, MAP_HEIGHT, MAX_UNIT_ENERGY)] *
                            MAX_UNIT_NUM])),  # shape: (1, 16, 3)
 ])
+
+
+def relic_score_nodes_map(state):
+  return ((state.relic_nodes_map_weights <= state.relic_nodes_mask.sum() // 2)
+          & (state.relic_nodes_map_weights > 0))
+
+
+def count_relic_score_nodes_num(state):
+  return relic_score_nodes_map(state).sum()
 
 
 def get_ob_sapce(obs_space_kwargs):
@@ -338,7 +351,8 @@ class MapManager:
                sap_indexer=None,
                use_mirror=False,
                use_hidden_relic_estimator=False,
-               enable_anti_sym=False):
+               enable_anti_sym=False,
+               full_params=None):
     self.player_id = int(player[-1])
     self.player = player
     self.env_cfg = env_cfg
@@ -393,6 +407,7 @@ class MapManager:
     self.units_energy_cost_change = 0
 
     self.enable_anti_sym = enable_anti_sym
+    self.full_params = full_params
 
     self.match_wins = 0
 
@@ -498,6 +513,11 @@ class MapManager:
     mf['energy'] = mat_trans(mf['energy'])
     mf['tile_type'] = mat_trans(mf['tile_type'])
 
+    self.true_team_point_map = mat_trans(self.true_team_point_map)
+    self.true_relic_map = mat_trans(self.true_relic_map)
+    self.true_cell_type = mat_trans(self.true_cell_type)
+    self.true_cell_energy = mat_trans(self.true_cell_energy)
+
   def infer_nebula_energy_reduction(self, ob, model_action):
     if (model_action is None
         or len(self.past_obs) == 0) or ob['match_steps'] <= 1:
@@ -553,7 +573,7 @@ class MapManager:
   def step_units_on_relic_num(self):
     return self.units_on_relic_num - self.prev_units_on_relic_num
 
-  def update_frozen_or_dead_units(self, env_state):
+  def update_frozen_or_dead_units(self):
     self.prev_units_on_relic_num = self.units_on_relic_num
     self.prev_units_frozen_count = self.units_frozen_count
     self.prev_units_dead_count = self.units_dead_count
@@ -621,8 +641,30 @@ class MapManager:
     if len(self.past_obs) > self.MAX_PAST_OB_NUM:
       self.past_obs.pop()
 
-  def update(self, ob, model_action=None, env_state=None):
+  def record_ground_truth_features(self, env_state=None):
+    from luxai_s3.utils import to_numpy
+
     # Mirror should go first before everything else.
+    self.true_team_point_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.true_relic_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.true_cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.true_cell_energy = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+
+    if env_state is not None:
+      self.true_team_point_map = to_numpy(
+          relic_score_nodes_map(env_state)).astype(np.int32)
+
+      relic_nodes_mask = env_state.relic_nodes_mask
+      relic_nodes_positions = env_state.relic_nodes[relic_nodes_mask]
+      self.true_relic_map[relic_nodes_positions[:, 0],
+                          relic_nodes_positions[:, 1]] = 1
+
+      self.true_cell_type = to_numpy(env_state.map_features.tile_type) + 1
+      self.true_cell_energy = to_numpy(env_state.map_features.energy)
+
+  def update(self, ob, model_action=None, env_state=None):
+    self.record_ground_truth_features(env_state)
+
     if self.use_mirror:
       self.mirror(ob)
 
@@ -672,7 +714,7 @@ class MapManager:
 
     self.append_ob(ob)
 
-    self.update_frozen_or_dead_units(env_state)
+    self.update_frozen_or_dead_units()
     self.update_vision_map()
     self.update_sap_position_by_enemy_position()
 
@@ -1010,6 +1052,7 @@ class LuxS3Env(gym.Env):
     final_state = info['state']
 
     env_cfg = info['params']
+    full_params = info['full_params']
     # t1, t2 = seed_to_transpose(self._seed)
 
     sap_indexer = SapIndexer()
@@ -1029,13 +1072,15 @@ class LuxS3Env(gym.Env):
                    transpose=tr1,
                    sap_indexer=sap_indexer,
                    use_mirror=mirror1,
-                   use_hidden_relic_estimator=use_hidden_relic_estimator),
+                   use_hidden_relic_estimator=use_hidden_relic_estimator,
+                   full_params=full_params),
         MapManager(PLAYER1,
                    env_cfg,
                    transpose=tr2,
                    sap_indexer=sap_indexer,
                    use_mirror=mirror2,
-                   use_hidden_relic_estimator=use_hidden_relic_estimator),
+                   use_hidden_relic_estimator=use_hidden_relic_estimator,
+                   full_params=full_params),
     ]
     self._update_mms(raw_obs, model_actions=None, env_state=final_state)
     self.sap_indexer = sap_indexer
@@ -1185,7 +1230,7 @@ class LuxS3Env(gym.Env):
       extras[3] = team_win / TEAM_WIN_NORM
       extras[4] = (team_win - enemy_win) / TEAM_WIN_NORM
 
-      hidden_relics_num = (env_state.relic_nodes_map_weights > 0).sum()
+      hidden_relics_num = count_relic_score_nodes_num(env_state)
       if hidden_relics_num == 0:
         hidden_relics_num = 1
       team_points = env_state.team_points[mm.player_id]
@@ -1200,14 +1245,14 @@ class LuxS3Env(gym.Env):
       extras[7] = team_energy / 2000
       extras[8] = np.clip((team_energy - enemy_energy) / 500, -1, 1)
 
-      extras[9] = hidden_relics_num / MAX_HIDDEN_RELICS_NUM
+      # extras[9] = hidden_relics_num / MAX_HIDDEN_RELICS_NUM
 
-      relic_num = env_state.relic_nodes_mask.sum()
-      extras[10] = relic_num / MAX_RELIC_NODE_NUM
+      # relic_num = env_state.relic_nodes_mask.sum()
+      # extras[10] = relic_num / MAX_RELIC_NODE_NUM
 
-      nodes = env_state.relic_nodes[env_state.relic_nodes_mask]
-      if len(nodes) > 0:
-        extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
+      # nodes = env_state.relic_nodes[env_state.relic_nodes_mask]
+      # if len(nodes) > 0:
+      # extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
 
       extras[12] = mm.units_dead_count / MAX_UNIT_NUM
       extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
@@ -1273,6 +1318,7 @@ class LuxS3Env(gym.Env):
 
     # Map info
     o['cell_type'] = mm.cell_type.copy()
+    o['_b_cell_type'] = mm.true_cell_type.copy()
 
     v = np.zeros(MAP_SHAPE2)
     v[mm.cell_type == CELL_NEBULA] = -(mm.nebula_vision_reduction /
@@ -1288,13 +1334,14 @@ class LuxS3Env(gym.Env):
     o['match_visited'] = mm.match_visited.astype(np.float32)
     # o['game_visited'] = mm.game_visited.astype(np.float32)
     o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
+    o['_b_is_relic_node'] = mm.true_relic_map.astype(np.float32)
 
     # cells need a visit
-    # o['game_unvisited_relic_nb'] = mm.get_relic_nb_nodes_to_visit()
-    o['game_unvisited_relic_nb'] = mm.is_relic_neighbour.astype(np.float32)
+    o['is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
 
     # places need unit stay
     o['team_point_prob'] = mm.get_must_be_relic_nodes()
+    o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
 
     if self.obs_space_kwargs.get('use_energy_cost_map'):
       o['energy_cost_map'] = mm.get_erengy_cost_map_feature()
@@ -1303,6 +1350,12 @@ class LuxS3Env(gym.Env):
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
     o['cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
+
+    true_energy_map = mm.true_cell_energy.copy()
+    if mm.full_params:
+      true_energy_map[mm.true_cell_type == CELL_NEBULA] -= mm.full_params[
+          'nebula_tile_energy_reduction']
+    o['_b_cell_energy'] = true_energy_map / MAX_ENERTY_PER_TILE
 
     # print(
     # f"nebula_energy_reduction={mm.nebula_energy_reduction}, vision_reduction={mm.nebula_vision_reduction}"
@@ -1517,7 +1570,7 @@ class LuxS3Env(gym.Env):
       r_match = 0
       r = 0
       if mm.match_step == MAX_MATCH_STEPS:
-        relic_num = ((env_state.relic_nodes_map_weights > 0).sum() / 2 + 0.1)
+        relic_num = (count_relic_score_nodes_num(env_state) / 2 + 0.1)
 
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
         r_match = team_points / MAX_MATCH_STEPS / relic_num * 3
@@ -1711,9 +1764,6 @@ class LuxS3Env(gym.Env):
 
     def _get_info(agent_action, raw_obs1, prev_obs1, agent_reward, mm,
                   env_state):
-      # prob = mm.team_point_mass[(env_state.relic_nodes_map_weights > 0)]
-      # print(f"s={mm.game_step}, m={mm.match_step}, probs={prob}")
-
       info = {}
 
       info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
@@ -1795,8 +1845,8 @@ class LuxS3Env(gym.Env):
         info['_game_observed_node_num'] = mm.game_observed.sum()
         info['_game_visited_node_num'] = mm.game_visited.sum()
 
-      info['_game_total_hidden_relic_nodes_num'] = (
-          env_state.relic_nodes_map_weights > 0).sum()
+      info['_game_total_hidden_relic_nodes_num'] = count_relic_score_nodes_num(
+          env_state)
       info['_game_total_found_relic_nodes_num'] = (mm.team_point_mass
                                                    >= 0.5).sum()
 
