@@ -1538,22 +1538,22 @@ class LuxS3Env(gym.Env):
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
         enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
         net_win_points = team_points - enemy_points
-        r_match = max(min(net_win_points / 100, 1), -1)
-        # if team_points > enemy_points:
-        # r_match = wt['match_win']
-        # elif team_points < enemy_points:
-        # r_match = -wt['match_win']
+        # r_match = max(min(net_win_points / 100, 1), -1)
+        if team_points > enemy_points:
+          r_match = wt['match_win']
+        elif team_points < enemy_points:
+          r_match = -wt['match_win']
 
         r = r_match
       elif mm.match_step == HALF_MATCH_STEPS and mm.game_step <= 300:
         team_observed_num = mm.match_observed_num
         enemy_observed_num = mm2.match_observed_num
-        net_win_ob = team_observed_num - enemy_observed_num
-        r_match_observed = max(min(net_win_ob / 100, 1), -1)
-        # if team_observed_num > enemy_observed_num:
-        # r_match_observed = wt['match_observed']
-        # elif team_observed_num < enemy_observed_num:
-        # r_match_observed = -wt['match_observed']
+        # net_win_ob = team_observed_num - enemy_observed_num
+        # r_match_observed = max(min(net_win_ob / 100, 1), -1)
+        if team_observed_num > enemy_observed_num:
+          r_match_observed = wt['match_observed']
+        elif team_observed_num < enemy_observed_num:
+          r_match_observed = -wt['match_observed']
 
         r = r_match_observed
 

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250131_baseline_split_r2_shared_trunk
+name: run_20250201_baseline_split_with_match_win_loss_r0
 
 ## WANDB params
 # The wandb project name
@@ -16,22 +16,22 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_baseline_split_0131
+group: luxs3_baseline_split_0201
 
 ## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
-  use_single_player: True
+  use_single_player: False
 
 
 reward_space_kwargs: {}
 #reward_schema: game_win_loss2
-#reward_schema: match_explore_win_loss
-reward_schema: shaping_v2
+reward_schema: match_explore_win_loss
+#reward_schema: shaping_v2
 reward_shaping_params:
   use_hidden_relic_estimator: True
   energy_cost_change: 0
-  match_observed: 1.0
+  match_observed: 0
   match_win: 1
 
 ## TRAINING params
