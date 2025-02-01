@@ -831,9 +831,9 @@ class MapManager:
     p = self.hidden_relic_estimator.priori.copy()
     self.team_point_mass = p.copy()
 
-    min_val = MIN_PROB + 1e-5
-    is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
-    self.team_point_mass[is_min_prob] = 0
+    # min_val = MIN_PROB + 1e-5
+    # is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
+    # self.team_point_mass[is_min_prob] = 0
 
     max_val = MAX_PROB - 1e-5
     is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
