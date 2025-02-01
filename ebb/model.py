@@ -106,7 +106,7 @@ class ConvEmbeddingInputLayer(nn.Module):
     self.keys_to_op = {}
     for key, val in obs_space.spaces.items():
       # Skips hidden obs from conv layer
-      if key.startswith('_'):
+      if key.startswith('_') and not key.startswith(self._prefix):
         continue
 
       assert val.shape == (1, MAP_WIDTH, MAP_HEIGHT), f"{key}={val.shape}"
@@ -163,16 +163,7 @@ class ConvEmbeddingInputLayer(nn.Module):
     continuous_outs = []
     embedding_outs = {}
     for key, op in self.keys_to_op.items():
-      in_tensor = None
-      if self._prefix:
-        key2 = f"{self._prefix}{key}"
-        if key2 in xx:
-          in_tensor = xx[key2]
-          # print(f'rewrite key to: {key2}')
-
-      if in_tensor is None:
-        in_tensor = xx[key]
-
+      in_tensor = xx[key]
       if op == "embedding":
         # out=(b, 1, x, y, n_embeddings)
         # drop 1, it's useless
@@ -477,6 +468,7 @@ class BasicActorCriticNetwork(nn.Module):
       self,
       actor_base_model: nn.Module,
       critic_base_model: nn.Module,
+      trunk_model: nn.Module,
       hidden_dim: int,
       base_out_channels: int,
       reward_space: RewardSpec,
@@ -487,6 +479,7 @@ class BasicActorCriticNetwork(nn.Module):
     self.dict_input_layer = DictInputLayer()
     self.actor_base_model = actor_base_model
     self.critic_base_model = critic_base_model
+    self.trunk_model = trunk_model
     self.hidden_dim = hidden_dim
     self.base_out_channels = base_out_channels
 
@@ -519,7 +512,7 @@ class BasicActorCriticNetwork(nn.Module):
     x, actions_mask = self.dict_input_layer(x1)
     baseline_extras = x['_baseline_extras']
 
-    actor_base_out = self.actor_base_model(x)
+    actor_base_out = self.trunk_model(self.actor_base_model(x))
     ret = self.actor(self.actor_base(actor_base_out),
                      actions_mask=actions_mask,
                      origin_input_x=x,
@@ -527,9 +520,11 @@ class BasicActorCriticNetwork(nn.Module):
                      probs_output=probs_output,
                      **actor_kwargs)
 
-    critic_base_out = self.critic_base_model(x)
-    baseline = self.baseline(self.baseline_base(critic_base_out),
-                             baseline_extras)
+    critic_base_out = self.trunk_model(self.critic_base_model(x))
+    baseline = self.baseline(
+        self.baseline_base(critic_base_out),
+        # baseline = self.baseline(self.baseline_base(actor_base_out),
+        baseline_extras)
 
     if probs_output:
       policy_logits, actions, probs = ret
@@ -601,8 +596,8 @@ def create_model(flags,
     )
   if flags.reward_schema in ('shaping_v2', ):
     reward_spec = RewardSpec(
-        reward_min=-5,
-        reward_max=+5,
+        reward_min=-10,
+        reward_max=+10,
         zero_sum=False,
     )
   assert reward_spec is not None
@@ -628,30 +623,21 @@ def _create_model(observation_space,
                   device: torch.device = torch.device('cpu'),
                   reward_spec: RewardSpec = None,
                   reset=None):
-  actor_base_model = nn.Sequential(
-      ConvEmbeddingInputLayer(observation_space,
-                              embedding_dim,
-                              hidden_dim,
-                              prefix=None), *[
-                                  ResidualBlock(in_channels=hidden_dim,
-                                                out_channels=hidden_dim,
-                                                height=MAP_HEIGHT,
-                                                width=MAP_WIDTH,
-                                                kernel_size=kernel_size)
-                                  for _ in range(n_blocks)
-                              ])
-  critic_base_model = nn.Sequential(
-      ConvEmbeddingInputLayer(observation_space,
-                              embedding_dim,
-                              hidden_dim,
-                              prefix='_b_'), *[
-                                  ResidualBlock(in_channels=hidden_dim,
-                                                out_channels=hidden_dim,
-                                                height=MAP_HEIGHT,
-                                                width=MAP_WIDTH,
-                                                kernel_size=kernel_size)
-                                  for _ in range(n_blocks)
-                              ])
-  model = BasicActorCriticNetwork(actor_base_model, critic_base_model,
+  actor_base_model = ConvEmbeddingInputLayer(observation_space,
+                                             embedding_dim,
+                                             hidden_dim,
+                                             prefix='_a_')
+  critic_base_model = ConvEmbeddingInputLayer(observation_space,
+                                              embedding_dim,
+                                              hidden_dim,
+                                              prefix='_b_')
+  trunk = nn.Sequential(*[
+      ResidualBlock(in_channels=hidden_dim,
+                    out_channels=hidden_dim,
+                    height=MAP_HEIGHT,
+                    width=MAP_WIDTH,
+                    kernel_size=kernel_size) for _ in range(n_blocks)
+  ])
+  model = BasicActorCriticNetwork(actor_base_model, critic_base_model, trunk,
                                   hidden_dim, base_out_channels, reward_spec)
   return model.to(device=device)

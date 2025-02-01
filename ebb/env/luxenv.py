@@ -38,7 +38,7 @@ OB = OrderedDict([
 
     # Time & Match
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    # ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -47,7 +47,7 @@ OB = OrderedDict([
     ('enemy_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Map info
-    ('cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
+    ('_a_cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
     ('_b_cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
     ('nebula_tile_vision_reduction', spaces.Box(low=0, high=1,
                                                 shape=MAP_SHAPE)),
@@ -57,18 +57,18 @@ OB = OrderedDict([
     ('match_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_a_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # use this to indicate nodes of unvisited relic cells (and its neighbour)
     ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
-    ('team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_a_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # hints for where to go
     # ('energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     #
-    ('cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_a_cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # units team map
@@ -1295,7 +1295,7 @@ class LuxS3Env(gym.Env):
 
     # Time & Match
     o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
-    # o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
+    o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
 
     team_points = ob['team_points']
     units_points = team_points[mm.player_id]
@@ -1318,8 +1318,9 @@ class LuxS3Env(gym.Env):
     o['enemy_wins'] = scalar(units_wins - enemy_wins, TEAM_WIN_NORM)
 
     # Map info
-    o['cell_type'] = mm.cell_type.copy()
+    o['_a_cell_type'] = mm.cell_type.copy()
     o['_b_cell_type'] = mm.true_cell_type.copy()
+    # o['_b_cell_type'] = mm.cell_type.copy()
 
     v = np.zeros(MAP_SHAPE2)
     v[mm.cell_type == CELL_NEBULA] = -(mm.nebula_vision_reduction /
@@ -1334,14 +1335,16 @@ class LuxS3Env(gym.Env):
     # o['game_observed'] = mm.game_observed.astype(np.float32)
     o['match_visited'] = mm.match_visited.astype(np.float32)
     # o['game_visited'] = mm.game_visited.astype(np.float32)
-    o['is_relic_node'] = mm.is_relic_node.astype(np.float32)
+    o['_a_is_relic_node'] = mm.is_relic_node.astype(np.float32)
+    # o['_b_is_relic_node'] = mm.is_relic_node.astype(np.float32)
     o['_b_is_relic_node'] = mm.true_relic_map.astype(np.float32)
 
     # cells need a visit
     o['is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
 
     # places need unit stay
-    o['team_point_prob'] = mm.get_must_be_relic_nodes()
+    o['_a_team_point_prob'] = mm.get_must_be_relic_nodes()
+    # o['_b_team_point_prob'] = mm.get_must_be_relic_nodes()
     o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
 
     if self.obs_space_kwargs.get('use_energy_cost_map'):
@@ -1350,7 +1353,8 @@ class LuxS3Env(gym.Env):
     # energy_map = np.zeros(MAP_SHAPE2)
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
-    o['cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
+    o['_a_cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
+    # o['_b_cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
 
     true_energy_map = mm.true_cell_energy.copy()
     if mm.full_params:
@@ -1574,11 +1578,12 @@ class LuxS3Env(gym.Env):
         relic_num = (count_relic_score_nodes_num(env_state) / 2 + 0.1)
 
         team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        r_match = team_points / MAX_MATCH_STEPS / relic_num * 3
+        r_match = team_points / MAX_MATCH_STEPS / relic_num * 5
         r = r_match
 
-      # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, r_match={r_match}')
+        # print(
+        # f'step={mm.game_step} match-step={mm.match_step}, r_match={r_match}'
+        # )
       return r
 
     return [
