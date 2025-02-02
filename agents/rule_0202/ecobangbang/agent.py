@@ -104,14 +104,12 @@ class Agent:
 
     def get_explore_weight(upos, energy, cpos):
       # TODO: opt explore with last observed time and limit to first match 50 steps
-      if mm.game_step > 303:
-        return 0
+      is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
-      # if mm.match_visited[cpos[0]][cpos[1]]:
       if mm.match_observed[cpos[0]][cpos[1]]:
         return 0
 
-      wt = 1
+      wt = 2
       target_pos = (23, 23)
       if self.mm.player_id == 0:
         target_pos = (0, 0)
@@ -119,7 +117,10 @@ class Agent:
       if manhatten_distance(cpos, target_pos) > 24:
         wt = 0.5
 
-      return 1
+      if not is_explore_step:
+        wt /= 5
+
+      return wt
 
     energy_map = mm.cell_energy.copy() - mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
@@ -272,9 +273,10 @@ class Agent:
             r = 5 - k
           a = (cost, r, DIRECTIONS_TO_ACTION[k])
           actions.append(a)
-          print(
-              f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, cost={cost}",
-              file=sys.stderr)
+          if not SUBMIT_AGENT:
+            print(
+                f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, cost={cost}",
+                file=sys.stderr)
 
       if len(actions):
         actions.sort()
@@ -292,9 +294,10 @@ class Agent:
         unit_actions[i][0] = ACTION_CENTER
         continue
 
-      print(
-          f"game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-          file=sys.stderr)
+      if not SUBMIT_AGENT:
+        print(
+            f"game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+            file=sys.stderr)
 
       energy_cost = self.compute_energy_cost_map(unit_pos, cell_pos)
       unit_actions[i][0] = select_move_action(i, unit_pos, energy_cost)
@@ -345,9 +348,10 @@ class Agent:
       unit_actions[unit_id][0] = ACTION_SAP
       unit_actions[unit_id][1] = cpos[0] - unit_pos[0]
       unit_actions[unit_id][2] = cpos[1] - unit_pos[1]
-      print(
-          f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
-          file=sys.stderr)
+      if not SUBMIT_AGENT:
+        print(
+            f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
+            file=sys.stderr)
 
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
