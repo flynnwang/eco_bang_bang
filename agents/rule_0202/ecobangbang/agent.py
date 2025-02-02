@@ -19,6 +19,7 @@ from .env.luxenv import (
     min_cost_bellman_ford,
     is_pos_on_map,
     minimum_filter,
+    generate_manhattan_mask,
 )
 from .model import create_model
 
@@ -42,6 +43,10 @@ def cell_idx_to_pos(idx):
 
 def pos_equal(x, y):
   return x[0] == y[0] and x[1] == y[1]
+
+
+def can_attack(energy, mm, margin=3):
+  return energy >= mm.unit_sap_cost + mm.unit_move_cost * margin
 
 
 class Agent:
@@ -69,10 +74,31 @@ class Agent:
 
     self.prev_model_action = None
 
+  def get_sap_hit_map(self):
+    hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
+
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
+      if not mask:
+        continue
+
+      for d in [1, 0]:
+        x0 = max(0, (pos[0] - d))
+        x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+        y0 = max(0, (pos[1] - d))
+        y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+
+        h = self.mm.unit_sap_cost
+        if d == 1:
+          h *= self.mm.unit_sap_dropoff_factor
+        hit_map[x0:x1, y0:y1] += h
+    return hit_map
+
   def compute_unit_to_cell(self):
     mm = self.mm
 
     def get_explore_weight(upos, energy, cpos):
+      # TODO: opt explore with last observed time and limit to first match 50 steps
       if mm.game_step > 303:
         return 0
 
@@ -110,6 +136,7 @@ class Agent:
       return cell_energy
 
     def get_open_relic_nb(upos, energy, cpos):
+      """First visit on relic neighbour"""
       if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
         return 0
 
@@ -126,7 +153,25 @@ class Agent:
         return 0
 
       p = mm.team_point_mass[cpos[0]][cpos[1]]
-      return p * 50
+      if p > 0.8:
+        return p * 50
+
+      return 30 * p
+
+    enemy_hit_map = self.get_sap_hit_map()
+    self.enemy_hit_map = enemy_hit_map
+
+    def get_sap_enemy_score(upos, energy, cpos):
+      """Max sap damage that could be hit from the `cpos`."""
+      if not can_attack(energy, mm):
+        return 0
+
+      sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+      sap_range = generate_manhattan_mask(sap_range, cpos,
+                                          self.mm.unit_sap_range)
+
+      h = enemy_hit_map[sap_range].max()
+      return h / 10
 
     def get_unit_cell_wt(upos, energy, cpos):
       mdist = manhatten_distance(upos, cpos) + 7
@@ -140,6 +185,8 @@ class Agent:
       wt += get_open_relic_nb(upos, energy, cpos) / mdist
 
       wt += stay_on_relic(upos, energy, cpos) / mdist
+
+      wt += get_sap_enemy_score(upos, energy, cpos) / mdist
       return wt
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
@@ -163,7 +210,7 @@ class Agent:
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
     for unit_id, target_id in zip(rows, cols):
       wt = weights[unit_id, target_id]
-      if wt < 1e-5:
+      if wt < 1e-6:  # TODO: use 0?
         continue
       unit_to_cell[unit_id] = cell_idx_to_pos(target_id)
 
@@ -258,6 +305,54 @@ class Agent:
 
     return unit_actions
 
+  def attack(self, unit_actions, unit_to_cell):
+    mm = self.mm
+
+    attackers = []
+    for unit_id, cpos in unit_to_cell.items():
+      mask, unit_pos, unit_energy = mm.get_unit_info(mm.player_id,
+                                                     unit_id,
+                                                     t=0)
+      if not mask or not can_attack(unit_energy, mm):
+        continue
+
+      if pos_equal(unit_pos, cpos):
+        attackers.append((unit_id, unit_pos))
+
+    if not attackers:
+      return
+
+    attack_positions = np.argwhere(self.enemy_hit_map)
+    if len(attack_positions) == 0:
+      return
+
+    def get_sap_damage(upos, cpos):
+      if manhatten_distance(upos, cpos) > self.mm.unit_sap_range:
+        return -1
+
+      return self.enemy_hit_map[cpos[0]][cpos[1]]
+
+    weights = np.ones((len(attackers), len(attack_positions))) * -9999
+    for i, (unit_id, unit_pos) in enumerate(attackers):
+      for j, cpos in enumerate(attack_positions):
+        weights[i, j] = get_sap_damage(unit_pos, cpos)
+
+    rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
+    for i, j in zip(rows, cols):
+      wt = weights[i, j]
+      if wt <= 0:
+        continue
+
+      unit_id, unit_pos = attackers[i]
+      cpos = attack_positions[j]
+
+      unit_actions[unit_id][0] = ACTION_SAP
+      unit_actions[unit_id][1] = cpos[0] - unit_pos[0]
+      unit_actions[unit_id][2] = cpos[1] - unit_pos[1]
+      print(
+          f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
+          file=sys.stderr)
+
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
 
@@ -268,5 +363,6 @@ class Agent:
       self.env.prev_raw_obs = {self.mm.player: raw_obs}
 
     unit_to_cell = self.compute_unit_to_cell()
-    action = self.encode_unit_actions(unit_to_cell)
-    return action
+    unit_actions = self.encode_unit_actions(unit_to_cell)
+    self.attack(unit_actions, unit_to_cell)
+    return unit_actions

@@ -432,6 +432,11 @@ class MapManager:
     return self.env_cfg['unit_sap_cost']
 
   @property
+  def unit_sap_dropoff_factor(self):
+    # TODO: inference
+    return 0.5
+
+  @property
   def unit_sap_range(self):
     return self.env_cfg['unit_sap_range']
 
