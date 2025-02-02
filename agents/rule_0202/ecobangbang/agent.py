@@ -109,6 +109,25 @@ class Agent:
 
       return cell_energy
 
+    def get_open_relic_nb(upos, energy, cpos):
+      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
+        return 0
+
+      if not mm.is_relic_neighbour[cpos[0]][cpos[1]]:
+        return 0
+
+      if mm.match_visited[cpos[0]][cpos[1]]:
+        return 0
+
+      return 5
+
+    def stay_on_relic(upos, energy, cpos):
+      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
+        return 0
+
+      p = mm.team_point_mass[cpos[0]][cpos[1]]
+      return p * 50
+
     def get_unit_cell_wt(upos, energy, cpos):
       mdist = manhatten_distance(upos, cpos) + 7
       wt = 0
@@ -118,6 +137,9 @@ class Agent:
 
       wt += get_fuel_energy(upos, energy, cpos) / mdist
 
+      wt += get_open_relic_nb(upos, energy, cpos) / mdist
+
+      wt += stay_on_relic(upos, energy, cpos) / mdist
       return wt
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
@@ -126,12 +148,16 @@ class Agent:
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
-      if not mask or energy < mm.unit_move_cost:
+      if not mask:
         continue
 
       for j in cell_index:
         r, c = cell_idx_to_pos(j)
-        weights[i, j] = get_unit_cell_wt(pos, energy, (r, c))
+        if energy < mm.unit_move_cost:
+          if pos_equal(pos, (r, c)):
+            weights[i, j] = 100
+        else:
+          weights[i, j] = get_unit_cell_wt(pos, energy, (r, c))
 
     unit_to_cell = {}
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
