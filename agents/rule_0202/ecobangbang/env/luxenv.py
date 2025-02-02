@@ -360,6 +360,8 @@ class MapManager:
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.match_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.last_observed_step = np.ones(
+        (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -30
     self.game_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.match_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.game_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
@@ -460,6 +462,10 @@ class MapManager:
     self.prev_game_observed = self.game_observed.copy()
     self.match_observed |= self.visible
     self.game_observed |= self.visible
+
+    # set last observed time
+    self.last_observed_step[self.visible] = self.game_step
+    self.last_observed_step[anti_diag_sym(self.visible)] = self.game_step
 
   @cached_property
   def anti_main_diag_area(self):

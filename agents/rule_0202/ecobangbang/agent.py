@@ -23,7 +23,7 @@ from .env.luxenv import (
 )
 from .model import create_model
 
-SUBMIT_AGENT = False
+SUBMIT_AGENT = True
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
@@ -35,6 +35,8 @@ if not SUBMIT_AGENT:
   DEVICE = 'cuda:0'
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
+
+LOGX = np.log(5)
 
 
 def cell_idx_to_pos(idx):
@@ -103,24 +105,20 @@ class Agent:
     mm = self.mm
 
     def get_explore_weight(upos, energy, cpos):
-      # TODO: opt explore with last observed time and limit to first match 50 steps
       is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
+      last_ob_time = mm.last_observed_step[cpos[0]][cpos[1]]
 
-      if mm.match_observed[cpos[0]][cpos[1]]:
-        return 0
+      t = mm.game_step - last_ob_time
+      alpha = np.log(t + 1) / LOGX
+
+      # if mm.match_observed[cpos[0]][cpos[1]]:
+      # return 0
 
       wt = 2
-      target_pos = (23, 23)
-      if self.mm.player_id == 0:
-        target_pos = (0, 0)
-
-      if manhatten_distance(cpos, target_pos) > 24:
-        wt = 0.5
-
       if not is_explore_step:
-        wt /= 5
+        wt /= 3
 
-      return wt
+      return wt * alpha
 
     energy_map = mm.cell_energy.copy() - mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
@@ -165,7 +163,7 @@ class Agent:
                                           self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
-      return h / 10
+      return min(h / 20, 4.9)
 
     def get_unit_cell_wt(upos, energy, cpos):
       if cant_move_to(upos, cpos, mm):
