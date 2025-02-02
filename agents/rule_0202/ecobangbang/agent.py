@@ -5,6 +5,7 @@ import sys
 
 import numpy as np
 import torch
+import scipy.optimize
 
 from .env.const import *
 from .env.luxenv import (
@@ -14,12 +15,14 @@ from .env.luxenv import (
     anti_diag_sym,
     anti_diag_sym_i,
     EXT_ACTION_SHAPE,
+    manhatten_distance,
+    min_cost_bellman_ford,
+    is_pos_on_map,
+    minimum_filter,
 )
 from .model import create_model
 
 SUBMIT_AGENT = False
-
-MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
@@ -30,109 +33,15 @@ if not SUBMIT_AGENT:
   # DEVICE = random.sample(['cuda:0', 'cuda:1'], k=1)[0]
   DEVICE = 'cuda:0'
 
-
-def _to_tensor(x: Union[Dict, np.ndarray],
-               device) -> Dict[str, Union[Dict, torch.Tensor]]:
-  if isinstance(x, dict):
-    return {key: _to_tensor(val, device) for key, val in x.items()}
-  else:
-    dtype = torch.float32
-    if x.dtype == np.int32:
-      dtype = torch.int32
-    return torch.from_numpy(x).to(device, non_blocking=True).to(dtype)
+N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
 
-def _stack_dict(x: List[Union[Dict, np.ndarray]],
-                is_observation=False) -> Union[Dict, np.ndarray]:
-  if isinstance(x[0], dict):
-    return {
-        key: _stack_dict([i[key] for i in x], is_observation)
-        for key in x[0].keys()
-    }
-  else:
-    if is_observation:
-      return np.concatenate([arr for arr in x], axis=0)
-    # for i in range(4):
-    # print(i, x[i].shape, file=sys.stderr)
-    return np.stack([arr for arr in x], axis=0)
+def cell_idx_to_pos(idx):
+  return int(idx % MAP_WIDTH), int(idx // MAP_WIDTH)
 
 
-def mirror_transpose_obs(x, mirror, transpose):
-  if isinstance(x, dict):
-    return {
-        key: mirror_transpose_obs(val, mirror, transpose)
-        for key, val in x.items()
-    }
-  else:
-
-    if x.shape == (1, MAP_WIDTH, MAP_HEIGHT):
-      assert x.shape[0] == 1
-
-      # print(f'orig shape: {x.shape}', file=sys.stderr)
-      if mirror:
-        x = np.expand_dims(anti_diag_sym(x[0]), axis=0)
-
-      # print(f'pos1 shape: {x.shape}', file=sys.stderr)
-      if transpose:
-        x = np.expand_dims(x[0].T, axis=0)
-      # print(f'pos2 shape: {x.shape}', file=sys.stderr)
-    return x
-
-
-def mirror_transpose_action_masks(a, mirror, transpose, sap_indexer):
-  a = a[UNITS_ACTION]
-  actions_mask = np.zeros(EXT_ACTION_SHAPE, dtype=bool)
-  for i in range(MAX_UNIT_NUM):
-    actions_mask[i][ACTION_CENTER] = a[i][ACTION_CENTER]
-    for j in range(1, MAX_MOVE_ACTION_IDX + 1):
-      j2 = j
-      if mirror:
-        j2 = MIRRORED_ACTION[j2]
-
-      if transpose:
-        j2 = TRANSPOSED_ACTION[j2]
-
-      actions_mask[i][j2] = a[i][j]
-
-    for j in range(SAP_ACTION_NUM):
-      x, y = sap_indexer.idx_to_position[j]
-      if mirror:
-        x, y = y, x
-
-      if transpose:
-        x, y = -y, -x
-
-      j2 = sap_indexer.position_to_idx[(x, y)]
-      actions_mask[i][j2 + MOVE_ACTION_NUM] = a[i][j + MOVE_ACTION_NUM]
-  return {UNITS_ACTION: actions_mask}
-
-
-def restore_action_probs(action_probs, mirror, transpose, sap_indexer):
-  restored_probs = torch.zeros_like(action_probs)
-  for i in range(MAX_UNIT_NUM):
-    restored_probs[i][ACTION_CENTER] = action_probs[i][ACTION_CENTER]
-    for j in range(1, MAX_MOVE_ACTION_IDX + 1):
-      j2 = j
-      if transpose:
-        j2 = TRANSPOSED_ACTION[j2]
-
-      if mirror:
-        j2 = MIRRORED_ACTION[j2]
-
-      restored_probs[i][j2] = action_probs[i][j]
-
-    for j in range(SAP_ACTION_NUM):
-      x, y = sap_indexer.idx_to_position[j]
-      if transpose:
-        x, y = -y, -x
-
-      if mirror:
-        x, y = y, x
-
-      j2 = sap_indexer.position_to_idx[(x, y)]
-      restored_probs[i][j2 +
-                        MOVE_ACTION_NUM] = action_probs[i][j + MOVE_ACTION_NUM]
-  return restored_probs
+def pos_equal(x, y):
+  return x[0] == y[0] and x[1] == y[1]
 
 
 class Agent:
@@ -142,7 +51,10 @@ class Agent:
     self.env_cfg = env_cfg
     # np.random.seed(0)
 
-    obs_space_kwargs = {'use_energy_cost_map': True}
+    obs_space_kwargs = {
+        'use_energy_cost_map': True,
+        'use_single_player': False
+    }
 
     self.mm = MapManager(player,
                          env_cfg,
@@ -156,95 +68,169 @@ class Agent:
     assert self.env.sap_indexer is not None
 
     self.prev_model_action = None
-    self.md = self.load_model()
 
-  def load_model(self):
-    flags = dict(n_blocks=12,
-                 hidden_dim=128,
-                 base_out_channels=128,
-                 embedding_dim=32,
-                 kernel_size=5,
-                 reward_schema="match_explore_win_loss")
-    flags = Namespace(**flags)
-    model = create_model(flags, self.env.observation_space, device=DEVICE)
-    # print(f"Model created", file=sys.stderr)
+  def compute_unit_to_cell(self):
+    mm = self.mm
 
-    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              MODEL_FILE_NAME)
-    if not os.path.exists(model_path):
-      print(f"Model file not found: {model_path}", file=sys.stderr)
-      raise RuntimeError("model not found")
+    def get_explore_weight(upos, energy, cpos):
+      if mm.game_step > 303:
+        return 0
 
-    # print(f"Loading model...", file=sys.stderr)
-    checkpoint_state = torch.load(model_path,
-                                  map_location=DEVICE,
-                                  weights_only=True)
-    model.load_state_dict(checkpoint_state["model_state_dict"])
-    print(f"Model loaded", file=sys.stderr)
-    return model
+      # if mm.match_visited[cpos[0]][cpos[1]]:
+      if mm.match_observed[cpos[0]][cpos[1]]:
+        return 0
 
-  def convert_observation(self, raw_obs):
-    if not self.env.prev_raw_obs:
-      self.env.prev_raw_obs = {self.mm.player: raw_obs}
+      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
+        return 0
 
-    obs = self.env._convert_observation(raw_obs, self.mm, skip_check=True)
-    action_mask = self.env._get_available_action_mask(self.mm)
+      wt = 1
+      target_pos = (23, 23)
+      if self.mm.player_id == 0:
+        target_pos = (0, 0)
 
-    if USE_MIRROR_TRANS:
-      ob3 = mirror_transpose_obs(obs, mirror=True, transpose=True)
-      am3 = mirror_transpose_action_masks(action_mask,
-                                          mirror=True,
-                                          transpose=True,
-                                          sap_indexer=self.mm.sap_indexer)
-      ob2 = mirror_transpose_obs(obs, mirror=True, transpose=False)
-      am2 = mirror_transpose_action_masks(action_mask,
-                                          mirror=True,
-                                          transpose=False,
-                                          sap_indexer=self.mm.sap_indexer)
-      ob1 = mirror_transpose_obs(obs, mirror=False, transpose=True)
-      am1 = mirror_transpose_action_masks(action_mask,
-                                          mirror=False,
-                                          transpose=True,
-                                          sap_indexer=self.mm.sap_indexer)
+      if manhatten_distance(cpos, target_pos) > 24:
+        wt = 0.5
 
-      obs_list = [obs, ob1, ob2, ob3]
-      am_list = [action_mask, am1, am2, am2]
-    else:
-      obs_list = [obs]
-      am_list = [action_mask]
+      return 1
 
-    o = _stack_dict(obs_list, is_observation=True)
-    a = _stack_dict(am_list)
+    energy_map = mm.cell_energy.copy() - mm.unit_move_cost
+    energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
 
-    dev = torch.device(DEVICE)
-    model_input = {
-        "obs": _to_tensor(o, dev),
-        "info": {
-            "available_action_mask": _to_tensor(a, dev),
-        }
-    }
-    return model_input
+    def get_fuel_energy(upos, energy, cpos):
+      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
+        return 0
 
-  def get_avg_model_action(self, action_probs):
-    """model_probs=torch.Size([64, 118])"""
-    if USE_MIRROR_TRANS:
-      action_probs = action_probs.reshape(4, MAX_UNIT_NUM, -1)
-      action_probs[1] = restore_action_probs(action_probs[1],
-                                             mirror=False,
-                                             transpose=True,
-                                             sap_indexer=self.mm.sap_indexer)
-      action_probs[2] = restore_action_probs(action_probs[2],
-                                             mirror=True,
-                                             transpose=False,
-                                             sap_indexer=self.mm.sap_indexer)
-      action_probs[3] = restore_action_probs(action_probs[3],
-                                             mirror=True,
-                                             transpose=True,
-                                             sap_indexer=self.mm.sap_indexer)
-      action_probs = action_probs.mean(dim=0)
+      cell_energy = energy_map[cpos[0]][cpos[1]]
+      if energy >= 75:
+        v = 20
+        m = 60
+        alpha = np.exp(-(cell_energy - m)**2 / (v**2 * 2.0))
+        cell_energy *= alpha
 
-    actions = torch.multinomial(action_probs, num_samples=1, replacement=False)
-    return actions
+      return cell_energy
+
+    def get_unit_cell_wt(upos, energy, cpos):
+      mdist = manhatten_distance(upos, cpos) + 7
+      wt = 0
+
+      if energy >= 50:
+        wt += get_explore_weight(upos, energy, cpos) / mdist
+
+      wt += get_fuel_energy(upos, energy, cpos) / mdist
+
+      return wt
+
+    weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
+    cell_index = list(range(N_CELLS))
+    np.random.shuffle(cell_index)
+
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+      if not mask or energy < mm.unit_move_cost:
+        continue
+
+      for j in cell_index:
+        r, c = cell_idx_to_pos(j)
+        weights[i, j] = get_unit_cell_wt(pos, energy, (r, c))
+
+    unit_to_cell = {}
+    rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
+    for unit_id, target_id in zip(rows, cols):
+      wt = weights[unit_id, target_id]
+      if wt < 1e-5:
+        continue
+      unit_to_cell[unit_id] = cell_idx_to_pos(target_id)
+
+    return unit_to_cell
+
+  def compute_energy_cost_map(self, unit_pos, target_pos):
+    mm = self.mm
+    cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(mm.unit_move_cost))
+
+    # nebula energy reduction adds extra cost
+    cost_map[mm.cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
+
+    # cell energy cost change the cost map but max at 0 to prevent from loop
+    cost_map -= mm.cell_energy
+    cost_map = np.maximum(cost_map, 1)
+
+    # use a big value for asteriod
+    cost_map[mm.cell_type == CELL_ASTERIOD] = 100
+
+    energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
+    energy_cost[target_pos[0]][target_pos[1]] = 0
+
+    kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float64)
+    N = MAP_WIDTH * 2
+    for _ in range(N):
+      min_neighbors = minimum_filter(energy_cost,
+                                     footprint=kernel,
+                                     mode='constant',
+                                     cval=np.inf)
+      with np.errstate(invalid='ignore'):
+        energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
+
+      # print(f"energy_cost.shape={energy_cost.shape}, unit_pos={unit_pos}",
+      # file=sys.stderr)
+      # if not np.isinf(energy_cost[unit_pos[0]][unit_pos[1]]):
+      # break
+
+    return energy_cost
+
+  def encode_unit_actions(self, unit_to_cell):
+    mm = self.mm
+    unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
+
+    def select_move_action(unit_id, unit_pos, energy_cost):
+      action = ACTION_CENTER
+      if not np.isinf(energy_cost[unit_pos[0]][unit_pos[1]]):
+        actions = []
+        for k in range(1, MAX_MOVE_ACTION_IDX + 1):
+          nx, ny = (unit_pos[0] + DIRECTIONS[k][0],
+                    unit_pos[1] + DIRECTIONS[k][1])
+          if not is_pos_on_map((nx, ny)):
+            continue
+          if mm.cell_type[nx][ny] == CELL_ASTERIOD:
+            continue
+
+          cost = energy_cost[nx][ny]
+          if np.isinf(cost):
+            continue
+
+          if unit_id % 2 == 0:
+            r = k
+          else:
+            r = 5 - k
+          a = (cost, r, DIRECTIONS_TO_ACTION[k])
+          actions.append(a)
+          print(
+              f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, cost={cost}",
+              file=sys.stderr)
+
+      if len(actions):
+        actions.sort()
+        action = actions[0][-1]
+      return action
+
+    for i in range(MAX_UNIT_NUM):
+      if i not in unit_to_cell:
+        unit_actions[i][0] = ACTION_CENTER
+        continue
+
+      cell_pos = unit_to_cell[i]
+      mask, unit_pos, unit_energy = mm.get_unit_info(mm.player_id, i, t=0)
+      if pos_equal(unit_pos, cell_pos):
+        unit_actions[i][0] = ACTION_CENTER
+        continue
+
+      print(
+          f"game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+          file=sys.stderr)
+
+      energy_cost = self.compute_energy_cost_map(unit_pos, cell_pos)
+      unit_actions[i][0] = select_move_action(i, unit_pos, energy_cost)
+
+    return unit_actions
 
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
@@ -252,21 +238,9 @@ class Agent:
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
     self.mm.update(raw_obs, self.prev_model_action)
+    if not self.env.prev_raw_obs:
+      self.env.prev_raw_obs = {self.mm.player: raw_obs}
 
-    model_input = self.convert_observation(raw_obs)
-    # print(model_input, file=sys.stderr)
-
-    model_output = self.md(model_input, sample=DO_SAMPLE, probs_output=True)
-    action_probs = self.get_avg_model_action(model_output["probs"])
-
-    model_action = {UNITS_ACTION: action_probs}
-    self.prev_model_action = model_action
-
-    # print(
-    # f'model_action.shape={model_action[UNITS_ACTION].shape}, model_probs={action_probs.shape}',
-    # file=sys.stderr)
-
-    # model_action[UNITS_ACTION] = model_action[UNITS_ACTION].squeeze(0)
-    action_taken_mask = self.env.get_actions_taken_mask(model_action, self.mm)
-    action = self.env._encode_action(model_action, self.mm, action_taken_mask)
+    unit_to_cell = self.compute_unit_to_cell()
+    action = self.encode_unit_actions(unit_to_cell)
     return action

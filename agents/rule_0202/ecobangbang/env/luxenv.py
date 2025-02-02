@@ -1064,7 +1064,8 @@ class LuxS3Env(gym.Env):
     mirror2 = ((self._seed // 8) % 2 == 0)
     # print(f'tr1={tr1}, mirror1={mirror1}')
     # print(f'tr2={tr2}, mirror2={mirror2}')
-    # tr1 = tr2 = mirror1 = mirror2 = False
+    # TODO: fix it
+    tr1 = tr2 = mirror1 = mirror2 = False
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -1380,9 +1381,7 @@ class LuxS3Env(gym.Env):
           # Why energy is negative
           unit_energy[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
                                           MAX_UNIT_NUM)
-
-        # Assume position is always present
-        unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
+          unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
 
       o[f'{prefix}_loc_t{t}'] = unit_pos
       o[f'{prefix}_energy_t{t}'] = unit_energy
