@@ -49,6 +49,11 @@ def can_attack(energy, mm, margin=3):
   return energy >= mm.unit_sap_cost + mm.unit_move_cost * margin
 
 
+def cant_move_to(upos, cpos, mm):
+  return (mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD
+          and not pos_equal(cpos, upos))
+
+
 class Agent:
 
   def __init__(self, player: str, env_cfg) -> None:
@@ -106,9 +111,6 @@ class Agent:
       if mm.match_observed[cpos[0]][cpos[1]]:
         return 0
 
-      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
-        return 0
-
       wt = 1
       target_pos = (23, 23)
       if self.mm.player_id == 0:
@@ -123,9 +125,6 @@ class Agent:
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
 
     def get_fuel_energy(upos, energy, cpos):
-      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
-        return 0
-
       cell_energy = energy_map[cpos[0]][cpos[1]]
       if energy >= 75:
         v = 20
@@ -137,9 +136,6 @@ class Agent:
 
     def get_open_relic_nb(upos, energy, cpos):
       """First visit on relic neighbour"""
-      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
-        return 0
-
       if not mm.is_relic_neighbour[cpos[0]][cpos[1]]:
         return 0
 
@@ -149,9 +145,6 @@ class Agent:
       return 5
 
     def stay_on_relic(upos, energy, cpos):
-      if mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD:
-        return 0
-
       p = mm.team_point_mass[cpos[0]][cpos[1]]
       if p > 0.8:
         return p * 50
@@ -174,6 +167,9 @@ class Agent:
       return h / 10
 
     def get_unit_cell_wt(upos, energy, cpos):
+      if cant_move_to(upos, cpos, mm):
+        return -1
+
       mdist = manhatten_distance(upos, cpos) + 7
       wt = 0
 
