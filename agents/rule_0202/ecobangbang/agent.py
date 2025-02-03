@@ -19,7 +19,7 @@ from .env.luxenv import (
     min_cost_bellman_ford,
     is_pos_on_map,
     minimum_filter,
-    generate_manhattan_mask,
+    # generate_manhattan_mask,
 )
 from .model import create_model
 
@@ -55,6 +55,21 @@ def can_attack(energy, mm, margin=3):
 def cant_move_to(upos, cpos, mm):
   return (mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD
           and not pos_equal(cpos, upos))
+
+
+def is_within_sap_range(upos, cpos, unit_sap_range):
+  return ((abs(upos[0] - cpos[0]) <= unit_sap_range)
+          and (abs(upos[1] - cpos[1]) < unit_sap_range))
+
+
+def gen_sap_range(pos, d):
+  sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+  x0 = max(0, (pos[0] - d))
+  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+  y0 = max(0, (pos[1] - d))
+  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+  sap_range[x0:x1, y0:y1] = True
+  return sap_range
 
 
 class Agent:
@@ -173,9 +188,10 @@ class Agent:
       if not can_attack(energy, mm):
         return 0
 
-      sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
-      sap_range = generate_manhattan_mask(sap_range, cpos,
-                                          self.mm.unit_sap_range)
+      # sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+      # sap_range = generate_manhattan_mask(sap_range, cpos,
+      # self.mm.unit_sap_range)
+      sap_range = gen_sap_range(cpos, self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
       h /= hit_factor
@@ -344,7 +360,7 @@ class Agent:
       return
 
     def get_sap_damage(upos, cpos):
-      if manhatten_distance(upos, cpos) > self.mm.unit_sap_range:
+      if not is_within_sap_range(upos, cpos, self.mm.unit_sap_range):
         return -1
 
       return self.enemy_hit_map[cpos[0]][cpos[1]]
