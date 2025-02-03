@@ -23,8 +23,8 @@ from .env.luxenv import (
 )
 from .model import create_model
 
-# SUBMIT_AGENT = False
-SUBMIT_AGENT = True
+SUBMIT_AGENT = False
+# SUBMIT_AGENT = True
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
@@ -82,13 +82,16 @@ class Agent:
 
     self.prev_model_action = None
 
-  def get_sap_hit_map(self):
+  def get_sap_hit_map(self, factor, stay_on_relic):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask:
         continue
+
+      if self.mm.enemy_positions[pos[0]][pos[1]]:
+        hit_map[pos[0]][pos[1]] += stay_on_relic(None, energy, pos) * factor
 
       for d in [1, 0]:
         x0 = max(0, (pos[0] - d))
@@ -134,7 +137,6 @@ class Agent:
         m = 60
         alpha = np.exp(-(cell_energy - m)**2 / (v**2 * 2.0))
         cell_energy *= alpha
-
       return cell_energy
 
     def get_open_relic_nb(upos, energy, cpos):
@@ -149,12 +151,21 @@ class Agent:
 
     def stay_on_relic(upos, energy, cpos):
       p = mm.team_point_mass[cpos[0]][cpos[1]]
-      if p > 0.8:
-        return p * 50
 
-      return 30 * p
+      w = 50 * p
+      if p < 0.8:
+        w = 30 * p
 
-    enemy_hit_map = self.get_sap_hit_map()
+      # has_enemy = False
+      # if mm.enemy_positions[cpos[0]][cpos[1]]:
+      # has_enemy = True
+      # if has_enemy:
+      # w *= 0.1
+
+      return w
+
+    hit_factor = 10
+    enemy_hit_map = self.get_sap_hit_map(hit_factor, stay_on_relic)
     self.enemy_hit_map = enemy_hit_map
 
     def get_sap_enemy_score(upos, energy, cpos):
@@ -167,7 +178,7 @@ class Agent:
                                           self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
-      h /= 10
+      h /= hit_factor
       return h
 
     def get_unit_cell_wt(upos, energy, cpos, unit_cost_map):
@@ -175,9 +186,9 @@ class Agent:
         return -9999
 
       if energy < unit_cost_map[cpos[0]][cpos[1]]:
-        if not SUBMIT_AGENT:
-          print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
-                file=sys.stderr)
+        # if not SUBMIT_AGENT:
+        # print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
+        # file=sys.stderr)
         return -9999
 
       mdist = manhatten_distance(upos, cpos) + 7
@@ -259,6 +270,8 @@ class Agent:
     mm = self.mm
     unit_actions = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
 
+    energy_map = mm.cell_energy_with_nebula_energy_reduction
+
     def select_move_action(unit_id, unit_pos, energy_cost):
       action = ACTION_CENTER
       if not np.isinf(energy_cost[unit_pos[0]][unit_pos[1]]):
@@ -275,10 +288,7 @@ class Agent:
           if np.isinf(cost):
             continue
 
-          if unit_id % 2 == 0:
-            r = k
-          else:
-            r = 5 - k
+          r = -energy_map[nx][ny]  # try to move with more energy
           a = (cost, r, DIRECTIONS_TO_ACTION[k])
           actions.append(a)
           if not SUBMIT_AGENT:

@@ -795,11 +795,22 @@ class MapManager:
     return (self.get_game_visited_relic_nb_num() -
             self.last_game_visited_relic_nb_num)
 
+  @property
+  def cell_energy_with_nebula_energy_reduction(self):
+    energy_map = self.cell_energy.copy()
+    energy_map[self.cell_type == CELL_NEBULA] -= self.nebula_energy_reduction
+    return energy_map
+
   def update_visited_node(self, unit_positions, ob):
     self.unit_positions = np.zeros((MAP_SHAPE2), dtype=bool)
     self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
     self.match_visited[self.unit_positions] = 1
     self.game_visited |= self.match_visited
+
+    enemy_masks = ob['units_mask'][self.enemy_id]
+    enemy_positions = ob['units']['position'][self.enemy_id][enemy_masks]
+    self.enemy_positions = np.zeros((MAP_SHAPE2), dtype=bool)
+    self.enemy_positions[enemy_positions[:, 0], enemy_positions[:, 1]] = True
 
   def count_on_relic_nodes_units(self):
     return ((self.team_point_mass > MIN_TP_VAL) & (self.unit_positions)).sum()
