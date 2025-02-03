@@ -405,6 +405,8 @@ class MapManager:
     self.match_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.last_observed_step = np.ones(
         (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -30
+    self.last_visited_step = np.ones(
+        (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -30
     self.game_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.match_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.game_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
@@ -849,6 +851,8 @@ class MapManager:
     self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
     self.match_visited[self.unit_positions] = 1
     self.game_visited |= self.match_visited
+
+    self.last_visited_step[self.unit_positions] = self.game_step
 
     enemy_masks = ob['units_mask'][self.enemy_id]
     enemy_positions = ob['units']['position'][self.enemy_id][enemy_masks]

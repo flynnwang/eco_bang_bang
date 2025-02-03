@@ -37,7 +37,7 @@ if not SUBMIT_AGENT:
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
-LOGX = np.log(5)
+LOG3 = np.log(3)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
@@ -64,7 +64,7 @@ def cant_move_to(upos, cpos, mm):
 
 
 def gen_sap_range(pos, d):
-  sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
   x0 = max(0, (pos[0] - d))
   x1 = min(MAP_WIDTH, (pos[0] + d + 1))
   y0 = max(0, (pos[1] - d))
@@ -169,19 +169,18 @@ class Agent:
       if not mm.is_relic_neighbour[cpos[0]][cpos[1]]:
         return 0
 
+      RELIC_NB_SCORE = 5
+      if not mm.match_visited[cpos[0]][cpos[1]]:
+        return RELIC_NB_SCORE
+
       p = mm.team_point_mass[cpos[0]][cpos[1]]
       if p < 0.1:
         return 0
 
-
-      if is_explore_step:
-      # last_ob_time = mm.last_observed_step[cpos[0]][cpos[1]]
-      # t = mm.game_step - last_ob_time
-      # alpha = np.log(t + 1) / LOGX
-      if mm.match_visited[cpos[0]][cpos[1]]:
-        return 0
-
-      return 5
+      last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
+      t = mm.game_step - last_visited_step
+      alpha = np.log(t + 1) / LOG3
+      return min(alpha, 1) * RELIC_NB_SCORE
 
     def stay_on_relic(upos, energy, cpos):
       p = mm.team_point_mass[cpos[0]][cpos[1]]
@@ -225,7 +224,7 @@ class Agent:
         return -9999
 
       # mdist = manhatten_distance(upos, cpos) + 7
-      mdist = dd(manhatten_distance(upos, cpos))
+      mdist = dd(manhatten_distance(upos, cpos) + 1)
       wt = 0.0001
 
       expore_wt = 0
@@ -255,7 +254,7 @@ class Agent:
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
     cell_index = list(range(N_CELLS))
-    np.random.shuffle(cell_index)
+    # np.random.shuffle(cell_index)
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
