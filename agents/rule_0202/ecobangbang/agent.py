@@ -2,6 +2,7 @@ from typing import Callable, Dict, Optional, Tuple, Union, NamedTuple, Any, List
 from argparse import Namespace
 import os
 import sys
+import functools
 
 import numpy as np
 import torch
@@ -19,7 +20,6 @@ from .env.luxenv import (
     min_cost_bellman_ford,
     is_pos_on_map,
     minimum_filter,
-    generate_manhattan_mask,
 )
 from .model import create_model
 
@@ -40,6 +40,12 @@ N_CELLS = MAP_WIDTH * MAP_HEIGHT
 LOGX = np.log(5)
 
 
+@functools.lru_cache(maxsize=1024, typed=False)
+def dd(dist, r=1.1):
+  dist = min(dist, MAP_WIDTH * 2)
+  return r**dist
+
+
 def cell_idx_to_pos(idx):
   return int(idx % MAP_WIDTH), int(idx // MAP_WIDTH)
 
@@ -55,6 +61,24 @@ def can_attack(energy, mm, margin=3):
 def cant_move_to(upos, cpos, mm):
   return (mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD
           and not pos_equal(cpos, upos))
+
+
+def gen_sap_range(pos, d):
+  sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+  x0 = max(0, (pos[0] - d))
+  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+  y0 = max(0, (pos[1] - d))
+  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+  sap_range[x0:x1, y0:y1] = True
+  return sap_range
+
+
+def is_within_sap_range(upos, cpos, unit_sap_range):
+  return ((abs(upos[0] - cpos[0]) <= unit_sap_range)
+          and (abs(upos[1] - cpos[1]) < unit_sap_range))
+
+
+RELIC_SCORE = 40
 
 
 class Agent:
@@ -82,7 +106,7 @@ class Agent:
 
     self.prev_model_action = None
 
-  def get_sap_hit_map(self, factor, stay_on_relic):
+  def get_sap_hit_map(self, factor):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
 
     for i in range(MAX_UNIT_NUM):
@@ -91,7 +115,8 @@ class Agent:
         continue
 
       if self.mm.enemy_positions[pos[0]][pos[1]]:
-        hit_map[pos[0]][pos[1]] += stay_on_relic(None, energy, pos) * factor
+        p = self.mm.team_point_mass[pos[0]][pos[1]]
+        hit_map[pos[0]][pos[1]] += (RELIC_SCORE * (p**2))
 
       for d in [1, 0]:
         x0 = max(0, (pos[0] - d))
@@ -144,6 +169,15 @@ class Agent:
       if not mm.is_relic_neighbour[cpos[0]][cpos[1]]:
         return 0
 
+      p = mm.team_point_mass[cpos[0]][cpos[1]]
+      if p < 0.1:
+        return 0
+
+
+      if is_explore_step:
+      # last_ob_time = mm.last_observed_step[cpos[0]][cpos[1]]
+      # t = mm.game_step - last_ob_time
+      # alpha = np.log(t + 1) / LOGX
       if mm.match_visited[cpos[0]][cpos[1]]:
         return 0
 
@@ -151,21 +185,17 @@ class Agent:
 
     def stay_on_relic(upos, energy, cpos):
       p = mm.team_point_mass[cpos[0]][cpos[1]]
+      w = 0
+      if p > 0.8:
+        w += RELIC_SCORE * p
 
-      w = 50 * p
-      if p < 0.8:
-        w = 30 * p
-
-      # has_enemy = False
-      # if mm.enemy_positions[cpos[0]][cpos[1]]:
-      # has_enemy = True
-      # if has_enemy:
-      # w *= 0.1
+      if enemy_hit_map[cpos[0]][cpos[1]] > 0:
+        w *= 0.3
 
       return w
 
     hit_factor = 10
-    enemy_hit_map = self.get_sap_hit_map(hit_factor, stay_on_relic)
+    enemy_hit_map = self.get_sap_hit_map(hit_factor)
     self.enemy_hit_map = enemy_hit_map
 
     def get_sap_enemy_score(upos, energy, cpos):
@@ -173,13 +203,16 @@ class Agent:
       if not can_attack(energy, mm):
         return 0
 
-      sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
-      sap_range = generate_manhattan_mask(sap_range, cpos,
-                                          self.mm.unit_sap_range)
+      # sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+      # sap_range = generate_manhattan_mask(sap_range, cpos,
+      # self.mm.unit_sap_range)
+      sap_range = gen_sap_range(cpos, self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
       h /= hit_factor
       return h
+
+    score_debug = {}
 
     def get_unit_cell_wt(upos, energy, cpos, unit_cost_map):
       if cant_move_to(upos, cpos, mm):
@@ -191,19 +224,33 @@ class Agent:
         # file=sys.stderr)
         return -9999
 
-      mdist = manhatten_distance(upos, cpos) + 7
+      # mdist = manhatten_distance(upos, cpos) + 7
+      mdist = dd(manhatten_distance(upos, cpos))
       wt = 0.0001
 
+      expore_wt = 0
       if energy >= 50:
-        wt += get_explore_weight(upos, energy, cpos) / mdist
+        expore_wt = get_explore_weight(upos, energy, cpos)
 
-      wt += get_fuel_energy(upos, energy, cpos) / mdist
+      fuel_wt = get_fuel_energy(upos, energy, cpos)
 
-      wt += get_open_relic_nb(upos, energy, cpos) / mdist
+      relic_nb_wt = get_open_relic_nb(upos, energy, cpos)
 
-      wt += stay_on_relic(upos, energy, cpos) / mdist
+      on_relic_wt = stay_on_relic(upos, energy, cpos)
 
-      wt += get_sap_enemy_score(upos, energy, cpos) / mdist
+      sap_wt = get_sap_enemy_score(upos, energy, cpos)
+
+      wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
+
+      score_debug[(tuple(upos), tuple(cpos))] = {
+          'explore_wt': expore_wt,
+          'fuel_wt': fuel_wt,
+          'relic_nb_wt': relic_nb_wt,
+          'on_relic_wt': on_relic_wt,
+          'sap_wt': sap_wt,
+          'wt': wt,
+          'mdist': mdist,
+      }
       return wt
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
@@ -231,7 +278,13 @@ class Agent:
       wt = weights[unit_id, target_id]
       if wt < 1e-6:  # TODO: use 0?
         continue
-      unit_to_cell[unit_id] = cell_idx_to_pos(target_id)
+      cpos = cell_idx_to_pos(target_id)
+      unit_to_cell[unit_id] = cpos
+      if not SUBMIT_AGENT:
+        _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
+        wts = score_debug[(tuple(upos), tuple(cpos))]
+        print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
+              file=sys.stderr)
 
     return unit_to_cell
 
@@ -344,7 +397,7 @@ class Agent:
       return
 
     def get_sap_damage(upos, cpos):
-      if manhatten_distance(upos, cpos) > self.mm.unit_sap_range:
+      if not is_within_sap_range(upos, cpos, self.mm.unit_sap_range):
         return -1
 
       return self.enemy_hit_map[cpos[0]][cpos[1]]

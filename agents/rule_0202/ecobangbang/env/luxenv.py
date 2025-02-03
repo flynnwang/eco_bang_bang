@@ -172,6 +172,49 @@ def min_cost_bellman_ford(cost_map, energy_cost, N):
   return energy_cost
 
 
+class UnitSapDropoffFactorEstimator:
+
+  VALID_VALUES = [0.25, 0.5, 1]
+
+  def __init__(self, mm):
+    self._counter = Counter()
+
+  def estimate(self, sap_locations, mm):
+    dropoff = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+    full_sap = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+    for pos in sap_locations:
+      d = 1
+      x0 = max(0, (pos[0] - d))
+      x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+      y0 = max(0, (pos[1] - d))
+      y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+      dropoff[x0:x1, y0:y1] += h
+
+      full_sap[pos[0]][pos[1]] += 1
+
+    for i in range(MAX_UNIT_NUM):
+      m0, p0, e0 = self.get_unit_info(self.mm.enemy_id, i, t=0)
+      if not m0:
+        continue
+      m1, p1, e1 = self.get_unit_info(self.mm.enemy_id, i, t=1)
+      if not m1:
+        continue
+
+      dropoff_num = dropoff[p0[0]][p0[1]]
+      if dropoff_num > 0:
+        sap_energy = full_sap[p0[0]][p0[1]]
+        cell_energy = mm.cell_energy[p0[0]][p0[1]]
+
+        nebula_energy = 0
+        if mm.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
+          nebula_energy = mm.nebula_energy_reduction
+
+        energy_delta = e0 - e1
+        energy_delta -= (sap_energy - cell_energy - nebula_energy)
+
+        dropoff_factor = energy_delta / dropoff_num
+
+
 class HiddenRelicNodeEstimator:
 
   def __init__(self, enable_anti_sym):
