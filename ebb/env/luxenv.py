@@ -1381,8 +1381,8 @@ class LuxS3Env(gym.Env):
           unit_energy[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
                                           MAX_UNIT_NUM)
 
-        # Assume position is always present
-        unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
+          # Assume position is always present
+          unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
 
       o[f'{prefix}_loc_t{t}'] = unit_pos
       o[f'{prefix}_energy_t{t}'] = unit_energy

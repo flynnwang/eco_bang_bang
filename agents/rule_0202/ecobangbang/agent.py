@@ -23,6 +23,7 @@ from .env.luxenv import (
 )
 from .model import create_model
 
+# SUBMIT_AGENT = False
 SUBMIT_AGENT = True
 
 DO_SAMPLE = True
@@ -103,20 +104,23 @@ class Agent:
 
   def compute_unit_to_cell(self):
     mm = self.mm
+    is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
+
+    match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
 
     def get_explore_weight(upos, energy, cpos):
-      is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
-      last_ob_time = mm.last_observed_step[cpos[0]][cpos[1]]
+      alpha = 1
 
-      t = mm.game_step - last_ob_time
-      alpha = np.log(t + 1) / LOGX
+      # last_ob_time = mm.last_observed_step[cpos[0]][cpos[1]]
+      # t = mm.game_step - last_ob_time
+      # alpha = np.log(t + 1) / LOGX
 
-      # if mm.match_observed[cpos[0]][cpos[1]]:
-      # return 0
+      if match_observed[cpos[0]][cpos[1]]:
+        return 0
 
-      wt = 2
+      wt = 1
       if not is_explore_step:
-        wt /= 3
+        wt /= 5
 
       return wt * alpha
 
@@ -163,14 +167,21 @@ class Agent:
                                           self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
-      return min(h / 20, 4.9)
+      h /= 10
+      return h
 
-    def get_unit_cell_wt(upos, energy, cpos):
+    def get_unit_cell_wt(upos, energy, cpos, unit_cost_map):
       if cant_move_to(upos, cpos, mm):
-        return -1
+        return -9999
+
+      if energy < unit_cost_map[cpos[0]][cpos[1]]:
+        if not SUBMIT_AGENT:
+          print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
+                file=sys.stderr)
+        return -9999
 
       mdist = manhatten_distance(upos, cpos) + 7
-      wt = 0
+      wt = 0.0001
 
       if energy >= 50:
         wt += get_explore_weight(upos, energy, cpos) / mdist
@@ -193,13 +204,15 @@ class Agent:
       if not mask:
         continue
 
+      unit_cost_map = self.compute_energy_cost_map(pos, asteriod_cost=75)
       for j in cell_index:
         r, c = cell_idx_to_pos(j)
-        if energy < mm.unit_move_cost:
-          if pos_equal(pos, (r, c)):
-            weights[i, j] = 100
-        else:
-          weights[i, j] = get_unit_cell_wt(pos, energy, (r, c))
+        # if energy < mm.unit_move_cost:
+        # if pos_equal(pos, (r, c)):
+        # weights[i, j] = 100
+        # # TODO: This will block attack position
+        # else:
+        weights[i, j] = get_unit_cell_wt(pos, energy, (r, c), unit_cost_map)
 
     unit_to_cell = {}
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
@@ -211,7 +224,10 @@ class Agent:
 
     return unit_to_cell
 
-  def compute_energy_cost_map(self, unit_pos, target_pos):
+  def compute_energy_cost_map(self,
+                              target_pos,
+                              asteriod_cost=100,
+                              N=MAP_WIDTH * 2):
     mm = self.mm
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(mm.unit_move_cost))
 
@@ -223,13 +239,12 @@ class Agent:
     cost_map = np.maximum(cost_map, 1)
 
     # use a big value for asteriod
-    cost_map[mm.cell_type == CELL_ASTERIOD] = 100
+    cost_map[mm.cell_type == CELL_ASTERIOD] = asteriod_cost
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
     energy_cost[target_pos[0]][target_pos[1]] = 0
 
     kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float64)
-    N = MAP_WIDTH * 2
     for _ in range(N):
       min_neighbors = minimum_filter(energy_cost,
                                      footprint=kernel,
@@ -237,11 +252,6 @@ class Agent:
                                      cval=np.inf)
       with np.errstate(invalid='ignore'):
         energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
-
-      # print(f"energy_cost.shape={energy_cost.shape}, unit_pos={unit_pos}",
-      # file=sys.stderr)
-      # if not np.isinf(energy_cost[unit_pos[0]][unit_pos[1]]):
-      # break
 
     return energy_cost
 
@@ -297,7 +307,7 @@ class Agent:
             f"game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
             file=sys.stderr)
 
-      energy_cost = self.compute_energy_cost_map(unit_pos, cell_pos)
+      energy_cost = self.compute_energy_cost_map(cell_pos)
       unit_actions[i][0] = select_move_action(i, unit_pos, energy_cost)
 
     return unit_actions
