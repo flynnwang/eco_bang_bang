@@ -24,8 +24,8 @@ from .env.luxenv import (
 )
 from .model import create_model
 
-SUBMIT_AGENT = False
-# SUBMIT_AGENT = True
+# SUBMIT_AGENT = False
+SUBMIT_AGENT = True
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
@@ -181,7 +181,9 @@ class Agent:
 
       return wt * alpha
 
-    energy_map = mm.cell_energy.copy() - mm.unit_move_cost
+    # energy_map = mm.cell_energy.copy() - mm.unit_move_cost
+    energy_map = mm.cell_energy.copy()
+    energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
 
     def get_fuel_energy(upos, energy, cpos):
