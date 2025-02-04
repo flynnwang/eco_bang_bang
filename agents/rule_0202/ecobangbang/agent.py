@@ -162,7 +162,8 @@ class Agent:
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-    energy_threshold = 60 + mm.match_step
+    # energy_threshold = 60 + mm.match_step
+    energy_threshold = 60
 
     def get_explore_weight(upos, energy, cpos):
       alpha = 1
@@ -174,9 +175,9 @@ class Agent:
       if match_observed[cpos[0]][cpos[1]]:
         return 0
 
-      wt = 1
+      wt = 3
       if not is_explore_step:
-        wt /= 5
+        wt = 2
 
       return wt * alpha
 
@@ -185,7 +186,7 @@ class Agent:
 
     def get_fuel_energy(upos, energy, cpos):
       fuel = energy_map[cpos[0]][cpos[1]]
-      fuel = right_tailed_exp(energy, fuel, energy_threshold)
+      fuel = right_tailed_exp(energy, fuel, energy_threshold, v=15)
       return fuel
 
     def get_open_relic_nb(upos, energy, cpos):
@@ -246,9 +247,9 @@ class Agent:
         return -9999
 
       if energy < unit_cost_map[cpos[0]][cpos[1]]:
-        # if not SUBMIT_AGENT:
-        # print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
-        # file=sys.stderr)
+        if not SUBMIT_AGENT:
+          print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
+                file=sys.stderr)
         return -9999
 
       # Do not target cell with enemy energy > unit energy
@@ -275,7 +276,7 @@ class Agent:
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
 
-      score_debug[(tuple(upos), tuple(cpos))] = {
+      dbg = {
           'explore_wt': expore_wt,
           'fuel_wt': fuel_wt,
           'relic_nb_wt': relic_nb_wt,
@@ -285,6 +286,11 @@ class Agent:
           'wt': wt,
           'mdist': mdist,
       }
+
+      score_debug[(tuple(upos), tuple(cpos))] = dbg
+
+      if not SUBMIT_AGENT:
+        print(f"unit[{upos}] and cell ({cpos}) wt={dbg}", file=sys.stderr)
       return wt
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
@@ -310,7 +316,11 @@ class Agent:
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
     for unit_id, target_id in zip(rows, cols):
       wt = weights[unit_id, target_id]
-      if wt < 1e-6:  # TODO: use 0?
+      # due to fuel energy might be negative
+      if wt < -100:
+        if not SUBMIT_AGENT:
+          print(f"unit[{unit_id}] skip matching due to min weights: wt={wt}",
+                file=sys.stderr)
         continue
       cpos = cell_idx_to_pos(target_id)
       unit_to_cell[unit_id] = cpos
