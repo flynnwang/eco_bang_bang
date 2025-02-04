@@ -20,6 +20,7 @@ from .env.luxenv import (
     min_cost_bellman_ford,
     is_pos_on_map,
     minimum_filter,
+    pos_equal,
 )
 from .model import create_model
 
@@ -48,10 +49,6 @@ def dd(dist, r=1.1):
 
 def cell_idx_to_pos(idx):
   return int(idx % MAP_WIDTH), int(idx // MAP_WIDTH)
-
-
-def pos_equal(x, y):
-  return x[0] == y[0] and x[1] == y[1]
 
 
 def can_attack(energy, mm, margin=3):
@@ -129,6 +126,7 @@ class Agent:
     assert self.env.sap_indexer is not None
 
     self.prev_model_action = None
+    self.last_sap_locations = []
 
   def get_sap_hit_map(self, factor):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
@@ -461,6 +459,7 @@ class Agent:
     attack_actions.sort(key=lambda a:
                         (-a[0][-1], a[0][0]))  # (unit_energy, unit_id)
     enemy_energy = mm.enemy_max_energy.copy()
+    self.last_sap_locations.clear()
     for (unit_id, unit_pos, unit_energy), cpos in attack_actions:
       sap_mask = gen_sap_range(cpos, d=1)
       if enemy_energy[sap_mask & (enemy_energy > 0)].sum() <= 0:
@@ -477,6 +476,7 @@ class Agent:
       unit_actions[unit_id][0] = ACTION_SAP
       unit_actions[unit_id][1] = cpos[0] - unit_pos[0]
       unit_actions[unit_id][2] = cpos[1] - unit_pos[1]
+      self.last_sap_locations.append(cpos)
       if not SUBMIT_AGENT:
         print(
             f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
@@ -487,7 +487,11 @@ class Agent:
 
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
+    print(f"============ game step {self.mm.game_step + 1} ========== ",
+          file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
+    self.mm.add_sap_locations(self.last_sap_locations)
+
     if not self.env.prev_raw_obs:
       self.env.prev_raw_obs = {self.mm.player: raw_obs}
 

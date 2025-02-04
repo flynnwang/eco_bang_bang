@@ -156,6 +156,10 @@ def is_pos_on_map(tmp):
   return 0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
 
 
+def pos_equal(x, y):
+  return x[0] == y[0] and x[1] == y[1]
+
+
 def min_cost_bellman_ford(cost_map, energy_cost, N):
   # assert (cost_map > 0).all()
 
@@ -177,9 +181,23 @@ class UnitSapDropoffFactorEstimator:
   VALID_VALUES = [0.25, 0.5, 1]
 
   def __init__(self, mm):
+    self.mm = mm
     self._counter = Counter()
 
-  def estimate(self, sap_locations, mm):
+  def _add_dropoff_factor(self, factor):
+    for v in self.VALID_VALUES:
+      if abs(factor - v) < 1e-5:
+        self._counter[v] += 1
+
+    # print(f"add dropoff={factor},  counter: {self._counter}", file=sys.stderr)
+    # print(f" -- dropoff best_guess: {self.best_guess()}", file=sys.stderr)
+
+  def best_guess(self):
+    if len(self._counter) <= 0:
+      return self.VALID_VALUES[1]  # default 0.5
+    return self._counter.most_common(1)[0][0]
+
+  def estimate(self, sap_locations):
     dropoff = np.zeros((MAP_WIDTH, MAP_HEIGHT))
     full_sap = np.zeros((MAP_WIDTH, MAP_HEIGHT))
     for pos in sap_locations:
@@ -188,31 +206,43 @@ class UnitSapDropoffFactorEstimator:
       x1 = min(MAP_WIDTH, (pos[0] + d + 1))
       y0 = max(0, (pos[1] - d))
       y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
-      dropoff[x0:x1, y0:y1] += h
+      dropoff[x0:x1, y0:y1] += 1
+      dropoff[pos[0]][pos[1]] -= 1  # exclude the center
 
       full_sap[pos[0]][pos[1]] += 1
 
     for i in range(MAX_UNIT_NUM):
-      m0, p0, e0 = self.get_unit_info(self.mm.enemy_id, i, t=0)
+      m0, p0, e0 = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not m0:
         continue
-      m1, p1, e1 = self.get_unit_info(self.mm.enemy_id, i, t=1)
+      m1, p1, e1 = self.mm.get_unit_info(self.mm.enemy_id, i, t=1)
       if not m1:
         continue
 
       dropoff_num = dropoff[p0[0]][p0[1]]
       if dropoff_num > 0:
-        sap_energy = full_sap[p0[0]][p0[1]]
-        cell_energy = mm.cell_energy[p0[0]][p0[1]]
+        # TODO: consider energy void field?
+        full_sap_cost = full_sap[p0[0]][p0[1]] * self.mm.unit_sap_cost
+        cell_energy = self.mm.cell_energy[p0[0]][p0[1]]
 
         nebula_energy = 0
-        if mm.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
-          nebula_energy = mm.nebula_energy_reduction
+        if self.mm.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
+          nebula_energy = self.mm.nebula_energy_reduction
 
-        energy_delta = e0 - e1
-        energy_delta -= (sap_energy - cell_energy - nebula_energy)
+        move_cost = 0
+        if not pos_equal(p0, p1):
+          move_cost = self.mm.unit_move_cost
 
-        dropoff_factor = energy_delta / dropoff_num
+        energy_delta = e1 - e0
+        # print(
+        # f"enemy={p1} to {p0} id=[{i}] energy delta={energy_delta}, full_sap={full_sap_cost}, cell_energy={cell_energy}, nebula_energy={nebula_energy}, move_cost={move_cost}",
+        # file=sys.stderr)
+
+        energy_delta -= (full_sap_cost - cell_energy + nebula_energy +
+                         move_cost)
+
+        dropoff_factor = (energy_delta / dropoff_num) / self.mm.unit_sap_cost
+        self._add_dropoff_factor(dropoff_factor)
 
 
 class HiddenRelicNodeEstimator:
@@ -458,6 +488,11 @@ class MapManager:
 
     self.match_wins = 0
 
+    self.sap_dropoff_factor_estimator = UnitSapDropoffFactorEstimator(self)
+
+  def add_sap_locations(self, sap_locations):
+    self.sap_dropoff_factor_estimator.estimate(sap_locations)
+
   @property
   def nebula_energy_reduction(self):
     return self._nebula_energy_reduction.best_guess()
@@ -480,8 +515,7 @@ class MapManager:
 
   @property
   def unit_sap_dropoff_factor(self):
-    # TODO: inference
-    return 0.5
+    return self.sap_dropoff_factor_estimator.best_guess()
 
   @property
   def unit_sap_range(self):
