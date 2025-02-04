@@ -63,7 +63,7 @@ def is_within_sap_range(upos, cpos, unit_sap_range):
 
 
 def gen_sap_range(pos, d):
-  sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
   x0 = max(0, (pos[0] - d))
   x1 = min(MAP_WIDTH, (pos[0] + d + 1))
   y0 = max(0, (pos[1] - d))
