@@ -793,6 +793,13 @@ class MapManager:
 
     self.enemy_position_mask = maximum_filter(self.enemy_position_mask, size=3)
 
+    self.enemy_max_energy = np.zeros((MAP_SHAPE2), dtype=int)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
+      if mask:
+        self.enemy_max_energy[pos[0]][pos[1]] = max(
+            self.enemy_max_energy[pos[0]][pos[1]], energy)
+
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
 

@@ -253,6 +253,10 @@ class Agent:
         # file=sys.stderr)
         return -9999
 
+      # Do not target cell with enemy energy > unit energy
+      if energy < mm.enemy_max_energy[cpos[0]][cpos[1]]:
+        return -9999
+
       # mdist = manhatten_distance(upos, cpos) + 7
       mdist = dd(manhatten_distance(upos, cpos) + 1)
       wt = 0.0001
