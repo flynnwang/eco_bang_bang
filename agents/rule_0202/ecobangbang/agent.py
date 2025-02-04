@@ -78,7 +78,31 @@ def is_within_sap_range(upos, cpos, unit_sap_range):
           and (abs(upos[1] - cpos[1]) < unit_sap_range))
 
 
-RELIC_SCORE = 40
+def on_enemy_side(cpos, player_id):
+  target_pos = (0, 0)
+  if player_id == 1:
+    target_pos = (23, 23)
+
+  mdist = manhatten_distance(target_pos, cpos)
+  return mdist > MAP_WIDTH
+
+
+def right_tailed_exp(energy, val, m, v=20):
+  if energy >= m:
+    alpha = np.exp(-(energy - m)**2 / (v**2 * 2.0))
+    val *= alpha
+  return val
+
+
+def left_tailed_exp(energy, val, m, v=20):
+  if energy < m:
+    alpha = np.exp(-(energy - m)**2 / (v**2 * 2.0))
+    val *= alpha
+  return val
+
+
+RELIC_SCORE = 25
+RELIC_NB_SCORE = 5
 
 
 class Agent:
@@ -114,6 +138,11 @@ class Agent:
       if not mask:
         continue
 
+      if energy < 0:
+        # print(f'Enemy unit [{i}] at {pos} with energy={energy}',
+        # file=sys.stderr)
+        continue
+
       if self.mm.enemy_positions[pos[0]][pos[1]]:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
         hit_map[pos[0]][pos[1]] += (RELIC_SCORE * (p**2))
@@ -135,6 +164,7 @@ class Agent:
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
+    energy_threshold = 60 + mm.match_step
 
     def get_explore_weight(upos, energy, cpos):
       alpha = 1
@@ -156,22 +186,17 @@ class Agent:
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
 
     def get_fuel_energy(upos, energy, cpos):
-      cell_energy = energy_map[cpos[0]][cpos[1]]
-      if energy >= 75:
-        v = 20
-        m = 60
-        alpha = np.exp(-(cell_energy - m)**2 / (v**2 * 2.0))
-        cell_energy *= alpha
-      return cell_energy
+      fuel = energy_map[cpos[0]][cpos[1]]
+      fuel = right_tailed_exp(energy, fuel, energy_threshold)
+      return fuel
 
     def get_open_relic_nb(upos, energy, cpos):
       """First visit on relic neighbour"""
       if not mm.is_relic_neighbour[cpos[0]][cpos[1]]:
         return 0
 
-      RELIC_NB_SCORE = 5
-      if not mm.match_visited[cpos[0]][cpos[1]]:
-        return RELIC_NB_SCORE
+      # if not mm.match_visited[cpos[0]][cpos[1]]:
+      # return RELIC_NB_SCORE
 
       p = mm.team_point_mass[cpos[0]][cpos[1]]
       if p < 0.1:
@@ -180,7 +205,11 @@ class Agent:
       last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
       t = mm.game_step - last_visited_step
       alpha = np.log(t + 1) / LOG3
-      return min(alpha, 1) * RELIC_NB_SCORE
+      w = min(alpha, 1) * RELIC_NB_SCORE
+
+      if on_enemy_side(cpos, mm.player_id):
+        w = left_tailed_exp(energy, w, energy_threshold)
+      return w
 
     def stay_on_relic(upos, energy, cpos):
       p = mm.team_point_mass[cpos[0]][cpos[1]]
@@ -188,9 +217,8 @@ class Agent:
       if p > 0.8:
         w += RELIC_SCORE * p
 
-      if enemy_hit_map[cpos[0]][cpos[1]] > 0:
-        w *= 0.3
-
+      if on_enemy_side(cpos, mm.player_id):
+        w = left_tailed_exp(energy, w, energy_threshold)
       return w
 
     hit_factor = 10
@@ -209,6 +237,8 @@ class Agent:
 
       h = enemy_hit_map[sap_range].max()
       h /= hit_factor
+
+      h = left_tailed_exp(energy, h, energy_threshold)
       return h
 
     score_debug = {}
@@ -226,6 +256,8 @@ class Agent:
       # mdist = manhatten_distance(upos, cpos) + 7
       mdist = dd(manhatten_distance(upos, cpos) + 1)
       wt = 0.0001
+
+      energy_ratio = energy / energy_threshold
 
       expore_wt = 0
       if energy >= 50:
@@ -247,6 +279,7 @@ class Agent:
           'relic_nb_wt': relic_nb_wt,
           'on_relic_wt': on_relic_wt,
           'sap_wt': sap_wt,
+          'energy_ratio': energy_ratio,
           'wt': wt,
           'mdist': mdist,
       }
