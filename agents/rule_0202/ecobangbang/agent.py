@@ -63,13 +63,13 @@ def cant_move_to(upos, cpos, mm):
           and not pos_equal(cpos, upos))
 
 
-def gen_sap_range(pos, d):
-  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+def gen_sap_range(pos, d, dtype=bool, val=True):
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
   x0 = max(0, (pos[0] - d))
   x1 = min(MAP_WIDTH, (pos[0] + d + 1))
   y0 = max(0, (pos[1] - d))
   y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
-  sap_range[x0:x1, y0:y1] = True
+  sap_range[x0:x1, y0:y1] = val
   return sap_range
 
 
@@ -361,7 +361,7 @@ class Agent:
 
     energy_map = mm.cell_energy_with_nebula_energy_reduction
 
-    def select_move_action(unit_id, unit_pos, energy_cost):
+    def select_move_action(unit_id, unit_pos, unit_energy, energy_cost):
       action = ACTION_CENTER
       if not np.isinf(energy_cost[unit_pos[0]][unit_pos[1]]):
         actions = []
@@ -370,7 +370,12 @@ class Agent:
                     unit_pos[1] + DIRECTIONS[k][1])
           if not is_pos_on_map((nx, ny)):
             continue
+
           if mm.cell_type[nx][ny] == CELL_ASTERIOD:
+            continue
+
+          # Do not move to cell with enemy energy > unit energy
+          if unit_energy < mm.enemy_max_energy[nx][ny]:
             continue
 
           cost = energy_cost[nx][ny]
@@ -407,7 +412,8 @@ class Agent:
             file=sys.stderr)
 
       energy_cost = self.compute_energy_cost_map(cell_pos)
-      unit_actions[i][0] = select_move_action(i, unit_pos, energy_cost)
+      unit_actions[i][0] = select_move_action(i, unit_pos, unit_energy,
+                                              energy_cost)
 
     return unit_actions
 
@@ -423,7 +429,7 @@ class Agent:
         continue
 
       if pos_equal(unit_pos, cpos):
-        attackers.append((unit_id, unit_pos))
+        attackers.append((unit_id, unit_pos, unit_energy))
 
     if not attackers:
       return
@@ -439,18 +445,34 @@ class Agent:
       return self.enemy_hit_map[cpos[0]][cpos[1]]
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
-    for i, (unit_id, unit_pos) in enumerate(attackers):
+    for i, (unit_id, unit_pos, _) in enumerate(attackers):
       for j, cpos in enumerate(attack_positions):
         weights[i, j] = get_sap_damage(unit_pos, cpos)
 
+    attack_actions = []
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
     for i, j in zip(rows, cols):
       wt = weights[i, j]
       if wt <= 0:
         continue
+      attack_actions.append((attackers[i], attack_positions[j]))
 
-      unit_id, unit_pos = attackers[i]
-      cpos = attack_positions[j]
+    # use attack with larger energy
+    attack_actions.sort(key=lambda a:
+                        (-a[0][-1], a[0][0]))  # (unit_energy, unit_id)
+    enemy_energy = mm.enemy_max_energy.copy()
+    for (unit_id, unit_pos, unit_energy), cpos in attack_actions:
+      sap_mask = gen_sap_range(cpos, d=1)
+      if enemy_energy[sap_mask & (enemy_energy > 0)].sum() <= 0:
+        if not SUBMIT_AGENT:
+          print(f'step={mm.game_step}, unit[{unit_pos}] sap saved',
+                file=sys.stderr)
+        continue
+
+      dropoff_sap_cost = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+      sap_cost = gen_sap_range(cpos, d=1, dtype=int, val=dropoff_sap_cost)
+      sap_cost[cpos[0]][cpos[1]] = mm.unit_sap_cost
+      enemy_energy -= sap_cost
 
       unit_actions[unit_id][0] = ACTION_SAP
       unit_actions[unit_id][1] = cpos[0] - unit_pos[0]
