@@ -38,7 +38,7 @@ if not SUBMIT_AGENT:
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
-LOG3 = np.log(2)
+LOG3 = np.log(3)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
@@ -72,7 +72,7 @@ def gen_sap_range(pos, d, dtype=bool, val=True):
 
 def is_within_sap_range(upos, cpos, unit_sap_range):
   return ((abs(upos[0] - cpos[0]) <= unit_sap_range)
-          and (abs(upos[1] - cpos[1]) < unit_sap_range))
+          and (abs(upos[1] - cpos[1]) <= unit_sap_range))
 
 
 def on_enemy_side(cpos, player_id):
@@ -162,9 +162,9 @@ class Agent:
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-    energy_threshold = 60 + mm.match_step
-    if mm.match_step >= 70:
-      energy_threshold = 60
+    energy_threshold = 60 + (100 - self.mm.match_step) * 2
+    if mm.match_step >= 40:
+      energy_threshold = self.mm.unit_sap_cost * 2
 
     def get_explore_weight(upos, energy, cpos):
       alpha = 1
@@ -182,7 +182,8 @@ class Agent:
 
       return wt * alpha
 
-    energy_map = mm.cell_energy.copy() - mm.unit_move_cost
+    energy_map = mm.cell_energy.copy()
+    energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
 
     def get_fuel_energy(upos, energy, cpos):
@@ -207,8 +208,14 @@ class Agent:
       alpha = np.log(t + 1) / LOG3
       w = min(alpha, 1) * RELIC_NB_SCORE
 
-      if on_enemy_side(cpos, mm.player_id):
+      # if on_enemy_side(cpos, mm.player_id):
+      # w = left_tailed_exp(energy, w, energy_threshold)
+
+      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
+      if (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0:
         w = left_tailed_exp(energy, w, energy_threshold)
+        # w /= 2
+
       return w
 
     def stay_on_relic(upos, energy, cpos):
@@ -217,11 +224,14 @@ class Agent:
       if p > 0.8:
         w += RELIC_SCORE * p
 
-      if on_enemy_side(cpos, mm.player_id):
+      # if on_enemy_side(cpos, mm.player_id):
+
+      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
+      if (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0:
         w = left_tailed_exp(energy, w, energy_threshold)
       return w
 
-    hit_factor = 5
+    hit_factor = 10
     enemy_hit_map = self.get_sap_hit_map(hit_factor)
     self.enemy_hit_map = enemy_hit_map
 
@@ -238,7 +248,11 @@ class Agent:
       h = enemy_hit_map[sap_range].max()
       h /= hit_factor
 
-      h = left_tailed_exp(energy, h, energy_threshold)
+      # h = left_tailed_exp(energy, h, energy_threshold)
+      # h *= (energy / 200)
+
+      # sap if energy is large
+      h *= max((energy / energy_threshold), 1)
       return h
 
     score_debug = {}
@@ -434,11 +448,18 @@ class Agent:
 
       attackers.append((unit_id, unit_pos, unit_energy))
 
+      if not SUBMIT_AGENT:
+        print(
+            f"attack candidates unit={unit_id} pos={unit_pos} e={unit_energy}",
+            file=sys.stderr)
+
     if not attackers:
       return
 
     attack_positions = np.argwhere(self.enemy_hit_map)
     if len(attack_positions) == 0:
+      if not SUBMIT_AGENT:
+        print(f"no attack_positions found, return", file=sys.stderr)
       return
 
     def get_sap_damage(upos, cpos):
@@ -458,7 +479,13 @@ class Agent:
       wt = weights[i, j]
       if wt <= 0:
         continue
+
       attack_actions.append((attackers[i], attack_positions[j], wt))
+
+      if not SUBMIT_AGENT:
+        unit_id, unit_pos, unit_energy = attackers[i]
+        print(f"found attacker unit={unit_id} pos={unit_pos} e={unit_energy}",
+              file=sys.stderr)
 
     # use attack with larger energy
     attack_actions.sort(key=lambda a:
