@@ -99,7 +99,7 @@ def left_tailed_exp(energy, val, m, v=20):
 
 
 RELIC_SCORE = 25
-RELIC_NB_SCORE = 5
+RELIC_NB_SCORE = 10
 
 
 class Agent:
@@ -164,7 +164,7 @@ class Agent:
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + (100 - self.mm.match_step) * 2
     if mm.match_step >= 40:
-      energy_threshold = self.mm.unit_sap_cost * 2
+      energy_threshold = 60
 
     def get_explore_weight(upos, energy, cpos):
       alpha = 1
