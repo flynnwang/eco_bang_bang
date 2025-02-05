@@ -53,10 +53,8 @@ OB = OrderedDict([
                                                 shape=MAP_SHAPE)),
     ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    # ('game_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('match_observed', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    # ('game_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('match_visited', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('last_observed_age', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('last_visited_age', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_a_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
@@ -156,6 +154,10 @@ def is_pos_on_map(tmp):
   return 0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
 
 
+def pos_equal(x, y):
+  return x[0] == y[0] and x[1] == y[1]
+
+
 def min_cost_bellman_ford(cost_map, energy_cost, N):
   # assert (cost_map > 0).all()
 
@@ -170,6 +172,75 @@ def min_cost_bellman_ford(cost_map, energy_cost, N):
       energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
 
   return energy_cost
+
+
+class UnitSapDropoffFactorEstimator:
+
+  VALID_VALUES = [0.25, 0.5, 1]
+
+  def __init__(self, mm):
+    self.mm = mm
+    self._counter = Counter()
+
+  def _add_dropoff_factor(self, factor):
+    for v in self.VALID_VALUES:
+      if abs(factor - v) < 1e-5:
+        self._counter[v] += 1
+
+    # print(f"add dropoff={factor},  counter: {self._counter}", file=sys.stderr)
+    # print(f" -- dropoff best_guess: {self.best_guess()}", file=sys.stderr)
+
+  def best_guess(self):
+    if len(self._counter) <= 0:
+      return self.VALID_VALUES[1]  # default 0.5
+    return self._counter.most_common(1)[0][0]
+
+  def estimate(self, sap_locations):
+    dropoff = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+    full_sap = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+    for pos in sap_locations:
+      d = 1
+      x0 = max(0, (pos[0] - d))
+      x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+      y0 = max(0, (pos[1] - d))
+      y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+      dropoff[x0:x1, y0:y1] += 1
+      dropoff[pos[0]][pos[1]] -= 1  # exclude the center
+
+      full_sap[pos[0]][pos[1]] += 1
+
+    for i in range(MAX_UNIT_NUM):
+      m0, p0, e0 = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
+      if not m0:
+        continue
+      m1, p1, e1 = self.mm.get_unit_info(self.mm.enemy_id, i, t=1)
+      if not m1:
+        continue
+
+      dropoff_num = dropoff[p0[0]][p0[1]]
+      if dropoff_num > 0:
+        # TODO: consider energy void field?
+        full_sap_cost = full_sap[p0[0]][p0[1]] * self.mm.unit_sap_cost
+        cell_energy = self.mm.cell_energy[p0[0]][p0[1]]
+
+        nebula_energy = 0
+        if self.mm.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
+          nebula_energy = self.mm.nebula_energy_reduction
+
+        move_cost = 0
+        if not pos_equal(p0, p1):
+          move_cost = self.mm.unit_move_cost
+
+        energy_delta = e1 - e0
+        # print(
+        # f"enemy={p1} to {p0} id=[{i}] energy delta={energy_delta}, full_sap={full_sap_cost}, cell_energy={cell_energy}, nebula_energy={nebula_energy}, move_cost={move_cost}",
+        # file=sys.stderr)
+
+        energy_delta -= (full_sap_cost - cell_energy + nebula_energy +
+                         move_cost)
+
+        dropoff_factor = (energy_delta / dropoff_num) / self.mm.unit_sap_cost
+        self._add_dropoff_factor(dropoff_factor)
 
 
 class HiddenRelicNodeEstimator:
@@ -323,6 +394,16 @@ def seed_to_transpose(s):
   return bool(s & 1), bool((s // 2) & 1)
 
 
+def gen_sap_range(pos, d, dtype=bool, val=True):
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
+  x0 = max(0, (pos[0] - d))
+  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+  y0 = max(0, (pos[1] - d))
+  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+  sap_range[x0:x1, y0:y1] = val
+  return sap_range
+
+
 class SapIndexer:
 
   def __init__(self):
@@ -331,7 +412,7 @@ class SapIndexer:
 
     mat = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     center = (12, 12)
-    self.mask = generate_manhattan_mask(mat, center, MAX_SAP_RANGE)
+    self.mask = gen_sap_range(center, MAX_SAP_RANGE)
 
     delta_positions = np.argwhere(self.mask > 0) - np.array(center,
                                                             dtype=np.int32)
@@ -360,6 +441,10 @@ class MapManager:
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.match_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.last_observed_step = np.ones(
+        (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -100
+    self.last_visited_step = np.ones(
+        (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -100
     self.game_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.match_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.game_visited = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
@@ -411,6 +496,11 @@ class MapManager:
 
     self.match_wins = 0
 
+    self.sap_dropoff_factor_estimator = UnitSapDropoffFactorEstimator(self)
+
+  def add_sap_locations(self, sap_locations):
+    self.sap_dropoff_factor_estimator.estimate(sap_locations)
+
   @property
   def nebula_energy_reduction(self):
     return self._nebula_energy_reduction.best_guess()
@@ -430,6 +520,10 @@ class MapManager:
   @property
   def unit_sap_cost(self):
     return self.env_cfg['unit_sap_cost']
+
+  @property
+  def unit_sap_dropoff_factor(self):
+    return self.sap_dropoff_factor_estimator.best_guess()
 
   @property
   def unit_sap_range(self):
@@ -455,6 +549,10 @@ class MapManager:
     self.prev_game_observed = self.game_observed.copy()
     self.match_observed |= self.visible
     self.game_observed |= self.visible
+
+    # set last observed time
+    self.last_observed_step[self.visible] = self.game_step
+    self.last_observed_step[anti_diag_sym(self.visible)] = self.game_step
 
   @cached_property
   def anti_main_diag_area(self):
@@ -737,6 +835,13 @@ class MapManager:
 
     self.enemy_position_mask = maximum_filter(self.enemy_position_mask, size=3)
 
+    self.enemy_max_energy = np.zeros((MAP_SHAPE2), dtype=int)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
+      if mask:
+        self.enemy_max_energy[pos[0]][pos[1]] = max(
+            self.enemy_max_energy[pos[0]][pos[1]], energy)
+
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
 
@@ -784,11 +889,24 @@ class MapManager:
     return (self.get_game_visited_relic_nb_num() -
             self.last_game_visited_relic_nb_num)
 
+  @property
+  def cell_energy_with_nebula_energy_reduction(self):
+    energy_map = self.cell_energy.copy()
+    energy_map[self.cell_type == CELL_NEBULA] -= self.nebula_energy_reduction
+    return energy_map
+
   def update_visited_node(self, unit_positions, ob):
     self.unit_positions = np.zeros((MAP_SHAPE2), dtype=bool)
     self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
     self.match_visited[self.unit_positions] = 1
     self.game_visited |= self.match_visited
+
+    self.last_visited_step[self.unit_positions] = self.game_step
+
+    enemy_masks = ob['units_mask'][self.enemy_id]
+    enemy_positions = ob['units']['position'][self.enemy_id][enemy_masks]
+    self.enemy_positions = np.zeros((MAP_SHAPE2), dtype=bool)
+    self.enemy_positions[enemy_positions[:, 0], enemy_positions[:, 1]] = True
 
   def count_on_relic_nodes_units(self):
     return ((self.team_point_mass > MIN_TP_VAL) & (self.unit_positions)).sum()
@@ -1064,7 +1182,8 @@ class LuxS3Env(gym.Env):
     mirror2 = ((self._seed // 8) % 2 == 0)
     # print(f'tr1={tr1}, mirror1={mirror1}')
     # print(f'tr2={tr2}, mirror2={mirror2}')
-    # tr1 = tr2 = mirror1 = mirror2 = False
+    # TODO: fix it
+    tr1 = tr2 = mirror1 = mirror2 = False
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -1331,10 +1450,10 @@ class LuxS3Env(gym.Env):
     o['vision_map'] = (mm.vision_map.vision).astype(np.float32) / norm
 
     o['visible'] = mm.visible.astype(np.float32)
-    o['match_observed'] = mm.match_observed.astype(np.float32)
-    # o['game_observed'] = mm.game_observed.astype(np.float32)
-    o['match_visited'] = mm.match_visited.astype(np.float32)
-    # o['game_visited'] = mm.game_visited.astype(np.float32)
+    o['last_observed_age'] = (mm.game_step -
+                              mm.last_observed_step) / MAX_MATCH_STEPS
+    o['last_visited_age'] = (mm.game_step -
+                             mm.last_observed_step) / MAX_MATCH_STEPS
     o['_a_is_relic_node'] = mm.is_relic_node.astype(np.float32)
     # o['_b_is_relic_node'] = mm.is_relic_node.astype(np.float32)
     o['_b_is_relic_node'] = mm.true_relic_map.astype(np.float32)
@@ -1380,8 +1499,6 @@ class LuxS3Env(gym.Env):
           # Why energy is negative
           unit_energy[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
                                           MAX_UNIT_NUM)
-
-          # Assume position is always present
           unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
 
       o[f'{prefix}_loc_t{t}'] = unit_pos
