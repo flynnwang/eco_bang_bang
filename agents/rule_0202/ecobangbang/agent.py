@@ -42,7 +42,7 @@ LOG3 = np.log(2)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
-def dd(dist, r=1.5):
+def dd(dist, r=1.2):
   dist = min(dist, MAP_WIDTH * 2)
   return r**dist
 
@@ -162,8 +162,8 @@ class Agent:
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-    energy_threshold = 60 + (100 - self.mm.match_step)
-    if mm.match_step >= 50:
+    energy_threshold = 60 + self.mm.match_step
+    if mm.match_step >= 70:
       energy_threshold = 60
 
     def get_explore_weight(upos, energy, cpos):
