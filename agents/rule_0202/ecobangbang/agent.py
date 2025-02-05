@@ -38,7 +38,7 @@ if not SUBMIT_AGENT:
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
-LOG3 = np.log(3)
+LOG3 = np.log(2)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
@@ -221,7 +221,7 @@ class Agent:
         w = left_tailed_exp(energy, w, energy_threshold)
       return w
 
-    hit_factor = 10
+    hit_factor = 5
     enemy_hit_map = self.get_sap_hit_map(hit_factor)
     self.enemy_hit_map = enemy_hit_map
 
@@ -422,15 +422,17 @@ class Agent:
     mm = self.mm
 
     attackers = []
-    for unit_id, cpos in unit_to_cell.items():
+    for unit_id in range(MAX_UNIT_NUM):
       mask, unit_pos, unit_energy = mm.get_unit_info(mm.player_id,
                                                      unit_id,
                                                      t=0)
       if not mask or not can_attack(unit_energy, mm):
         continue
 
-      if pos_equal(unit_pos, cpos):
-        attackers.append((unit_id, unit_pos, unit_energy))
+      if unit_actions[unit_id][0] != ACTION_CENTER:
+        continue
+
+      attackers.append((unit_id, unit_pos, unit_energy))
 
     if not attackers:
       return
@@ -456,14 +458,14 @@ class Agent:
       wt = weights[i, j]
       if wt <= 0:
         continue
-      attack_actions.append((attackers[i], attack_positions[j]))
+      attack_actions.append((attackers[i], attack_positions[j], wt))
 
     # use attack with larger energy
     attack_actions.sort(key=lambda a:
-                        (-a[0][-1], a[0][0]))  # (unit_energy, unit_id)
+                        (-a[2], -a[0][-1], a[0][0]))  # (unit_energy, unit_id)
     enemy_energy = mm.enemy_max_energy.copy()
     self.last_sap_locations.clear()
-    for (unit_id, unit_pos, unit_energy), cpos in attack_actions:
+    for (unit_id, unit_pos, unit_energy), cpos, _ in attack_actions:
       sap_mask = gen_sap_range(cpos, d=1)
       if enemy_energy[sap_mask & (enemy_energy > 0)].sum() <= 0:
         if not SUBMIT_AGENT:
