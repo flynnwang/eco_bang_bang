@@ -653,11 +653,12 @@ class MapManager:
       p1, e1 = make_action(p0, e0, a)
       if (m0 and mask and e0 > 0 and energy > 0 and e1 > 0
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
-        reduction = e1 - energy
+        cell_energy = self.cell_energy[position[0]][position[1]]
+        reduction = e1 - (energy - cell_energy)
         self._nebula_energy_reduction.add(reduction)
         # print(
-        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}'
-        # )
+        # f'>>>>>>>>>> gstep={ob["steps"]}, mstep={ob["match_steps"]}, unit[{i}]={p0} guess={reduction}',
+        # file=sys.stderr)
 
   @property
   def step_units_on_relic_num(self):

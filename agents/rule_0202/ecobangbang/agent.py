@@ -38,11 +38,11 @@ if not SUBMIT_AGENT:
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
-LOG3 = np.log(2)
+LOG3 = np.log(3)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
-def dd(dist, r=1.2):
+def dd(dist, r=1.1):
   dist = min(dist, MAP_WIDTH * 2)
   return r**dist
 
@@ -75,11 +75,15 @@ def is_within_sap_range(upos, cpos, unit_sap_range):
           and (abs(upos[1] - cpos[1]) <= unit_sap_range))
 
 
-def on_enemy_side(cpos, player_id):
+def get_player_init_pos(player_id):
   target_pos = (0, 0)
   if player_id == 1:
     target_pos = (23, 23)
+  return target_pos
 
+
+def on_enemy_side(cpos, player_id):
+  target_pos = get_player_init_pos(player_id)
   mdist = manhatten_distance(target_pos, cpos)
   return mdist > MAP_WIDTH
 
@@ -155,6 +159,16 @@ class Agent:
         if d == 1:
           h *= self.mm.unit_sap_dropoff_factor
         hit_map[x0:x1, y0:y1] += h
+
+      # slightly favour cell for enemy next move
+      x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
+      enemy_dist = np.abs(x - pos[0]) + np.abs(y - pos[1])
+      init_pos = get_player_init_pos(self.mm.player_id)
+      enemy_init_pos_dist = manhatten_distance(pos, init_pos)
+      init_pos_dist = np.abs(x - init_pos[0]) + np.abs(y - init_pos[0])
+      mask = (enemy_dist == 1) & (init_pos_dist < enemy_init_pos_dist)
+      hit_map[mask] += 1
+
     return hit_map
 
   def compute_unit_to_cell(self):
@@ -162,7 +176,7 @@ class Agent:
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-    energy_threshold = 60 + self.mm.match_step
+    energy_threshold = 60 + mm.match_step
     if mm.match_step >= 70:
       energy_threshold = 60
 
@@ -185,6 +199,9 @@ class Agent:
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
+    print(
+        f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
+        file=sys.stderr)
 
     def get_fuel_energy(upos, energy, cpos):
       fuel = energy_map[cpos[0]][cpos[1]]
@@ -208,13 +225,10 @@ class Agent:
       alpha = np.log(t + 1) / LOG3
       w = min(alpha, 1) * RELIC_NB_SCORE
 
-      # if on_enemy_side(cpos, mm.player_id):
-      # w = left_tailed_exp(energy, w, energy_threshold)
-
       cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
-      if (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0:
+      if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
+          or on_enemy_side(cpos, mm.player_id)):
         w = left_tailed_exp(energy, w, energy_threshold)
-        # w /= 2
 
       return w
 
@@ -224,10 +238,9 @@ class Agent:
       if p > 0.8:
         w += RELIC_SCORE * p
 
-      # if on_enemy_side(cpos, mm.player_id):
-
       cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
-      if (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0:
+      if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
+          or on_enemy_side(cpos, mm.player_id)):
         w = left_tailed_exp(energy, w, energy_threshold)
       return w
 
@@ -240,9 +253,6 @@ class Agent:
       if not can_attack(energy, mm):
         return 0
 
-      # sap_range = np.ones((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
-      # sap_range = generate_manhattan_mask(sap_range, cpos,
-      # self.mm.unit_sap_range)
       sap_range = gen_sap_range(cpos, self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
@@ -252,8 +262,8 @@ class Agent:
       # h *= (energy / 200)
 
       # sap if energy is large (and unit not on relic)
-      if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
-        h *= max((energy / energy_threshold), 1)
+      # if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
+      # h *= max((energy / energy_threshold), 1)
       return h
 
     score_debug = {}
@@ -531,4 +541,6 @@ class Agent:
     unit_to_cell = self.compute_unit_to_cell()
     unit_actions = self.encode_unit_actions(unit_to_cell)
     self.attack(unit_actions, unit_to_cell)
+
+    self.prev_model_action = {UNITS_ACTION: unit_actions}
     return unit_actions
