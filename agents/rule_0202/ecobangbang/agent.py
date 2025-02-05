@@ -163,6 +163,8 @@ class Agent:
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + mm.match_step
+    if mm.match_step >= 70:
+      energy_threshold = 60
 
     def get_explore_weight(upos, energy, cpos):
       alpha = 1
@@ -174,7 +176,7 @@ class Agent:
       if match_observed[cpos[0]][cpos[1]]:
         return 0
 
-      wt = 1
+      wt = 3
       if not is_explore_step:
         wt /= 5
 
@@ -310,7 +312,8 @@ class Agent:
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
     for unit_id, target_id in zip(rows, cols):
       wt = weights[unit_id, target_id]
-      if wt < 1e-6:  # TODO: use 0?
+      # if wt < 1e-6:  # TODO: use 0?
+      if wt < -1:  # TODO: use 0?
         continue
       cpos = cell_idx_to_pos(target_id)
       unit_to_cell[unit_id] = cpos
