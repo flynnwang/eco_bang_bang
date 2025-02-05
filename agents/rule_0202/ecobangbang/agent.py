@@ -38,11 +38,11 @@ if not SUBMIT_AGENT:
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
-LOG3 = np.log(3)
+LOG3 = np.log(2)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
-def dd(dist, r=1.1):
+def dd(dist, r=1.5):
   dist = min(dist, MAP_WIDTH * 2)
   return r**dist
 
@@ -98,8 +98,8 @@ def left_tailed_exp(energy, val, m, v=20):
   return val
 
 
-RELIC_SCORE = 25
-RELIC_NB_SCORE = 10
+RELIC_SCORE = 30
+RELIC_NB_SCORE = 15
 
 
 class Agent:
@@ -251,8 +251,9 @@ class Agent:
       # h = left_tailed_exp(energy, h, energy_threshold)
       # h *= (energy / 200)
 
-      # sap if energy is large
-      h *= max((energy / energy_threshold), 1)
+      # sap if energy is large (and unit not on relic)
+      if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
+        h *= max((energy / energy_threshold), 1)
       return h
 
     score_debug = {}
