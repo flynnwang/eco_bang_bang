@@ -162,8 +162,8 @@ class Agent:
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-    energy_threshold = 60 + (100 - self.mm.match_step) * 2
-    if mm.match_step >= 40:
+    energy_threshold = 60 + (100 - self.mm.match_step)
+    if mm.match_step >= 50:
       energy_threshold = 60
 
     def get_explore_weight(upos, energy, cpos):
