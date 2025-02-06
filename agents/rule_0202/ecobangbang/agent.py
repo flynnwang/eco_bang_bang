@@ -337,8 +337,8 @@ class Agent:
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
     for unit_id, target_id in zip(rows, cols):
       wt = weights[unit_id, target_id]
-      # if wt < 1e-6:  # TODO: use 0?
-      if wt < -1:  # TODO: use 0?
+      if wt < 1e-6:  # TODO: use 0?
+        # if wt < -1:  # TODO: use 0?
         continue
       cpos = cell_idx_to_pos(target_id)
       unit_to_cell[unit_id] = cpos
