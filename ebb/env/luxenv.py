@@ -122,13 +122,23 @@ def manhatten_distance(p1, p2):
   return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
 
 
-def generate_manhattan_mask(mat, center, range_limit):
-  rows, cols = mat.shape
+def generate_manhattan_mask(shape, center, range_limit):
+  rows, cols = shape
   x_center, y_center = center
   x, y = np.ogrid[:rows, :cols]
   manhattan_distance = np.abs(x - x_center) + np.abs(y - y_center)
   mask = manhattan_distance <= range_limit
   return mask
+
+
+def gen_sap_range(pos, d, dtype=bool, val=True):
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
+  x0 = max(0, (pos[0] - d))
+  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+  y0 = max(0, (pos[1] - d))
+  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+  sap_range[x0:x1, y0:y1] = val
+  return sap_range
 
 
 def anti_diag_sym(A):
@@ -1041,10 +1051,27 @@ class MapManager:
     # relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
     # return relic_nodes
 
-  def get_sap_mask(self, pos, sap_range_limit):
-    mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
-    mask = generate_manhattan_mask(mask, pos, sap_range_limit)
+  def get_unit_sap_hit_map(self, pos, sap_range_limit):
+    mask = 
     return mask & self.enemy_position_mask
+
+  def get_global_sap_hit_map(self):
+    hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
+      if not mask or energy < 0:
+        continue
+
+      d = 1
+      x0 = max(0, (pos[0] - d))
+      x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+      y0 = max(0, (pos[1] - d))
+      y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+      hit_map[x0:x1, y0:y1] += True
+
+    # Add unvisible team point positions
+    hit_map[(self.visible > 0) & (self.team_point_mass > 0.8)] = True
+    return hit_map
 
   @property
   def game_observed_num(self):
@@ -1823,12 +1850,16 @@ class LuxS3Env(gym.Env):
         if (energy < 50 and mm.cell_energy[pos[0]][pos[1]] >= 1):
           actions_mask[i][ACTION_CENTER] = 1
 
+    sap_hit_map = self.get_global_sap_hit_map()
+
     def update_sap_action_mask(i, pos, energy):
       if energy < mm.unit_sap_cost:
         return
 
       # TODO: how to coodinate sap to not sap on same cell
-      unit_sap_mask = mm.get_sap_mask(pos, mm.unit_sap_range)
+      unit_sap_mask = gen_sap_range(pos, sap_range_limit)
+      unit_sap_mask = (unit_sap_mask & sap_hit_map)
+
       sap_dxdy = np.argwhere(unit_sap_mask) - np.array(pos, dtype=np.int32)
       for dx, dy in sap_dxdy:
         sap_id = mm.sap_indexer.position_to_idx[(dx, dy)]
