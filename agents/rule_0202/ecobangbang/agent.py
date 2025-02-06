@@ -30,6 +30,8 @@ SUBMIT_AGENT = False
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
 
+USE_RANDOM = True
+
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
   # import random
@@ -312,11 +314,15 @@ class Agent:
           'wt': wt,
           'mdist': mdist,
       }
+
+      if USE_RANDOM:
+        wt += np.random.rand() / 1000
       return wt
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
     cell_index = list(range(N_CELLS))
-    np.random.shuffle(cell_index)
+    if USE_RANDOM:
+      np.random.shuffle(cell_index)
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
