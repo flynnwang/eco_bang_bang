@@ -279,6 +279,7 @@ def act(
         else:
           actions = env_agent_output[0][1]['actions']
 
+
         env_output = env.step(actions)
         # env_output = env.step(agent_output["actions"])
         if env_output["done"].any():

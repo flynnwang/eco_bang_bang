@@ -58,7 +58,10 @@ class RewardSpec(NamedTuple):
 
 def _index_select(embedding_layer: nn.Embedding,
                   x: torch.Tensor) -> torch.Tensor:
-  out = embedding_layer.weight.index_select(0, x.reshape(-1))
+  try:
+    out = embedding_layer.weight.index_select(0, x.reshape(-1))
+  except Exception as e:
+    __import__('ipdb').set_trace()
   # out = embedding_layer.weight.index_select(0, x.view(-1))
   return out.view(*x.shape, -1)
 

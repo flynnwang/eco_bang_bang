@@ -20,7 +20,8 @@ group: lux_s3_debug_run
 ## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
-  use_single_player: True
+  use_single_player: False
+  use_agent: True
 
 
 reward_space_kwargs: {}

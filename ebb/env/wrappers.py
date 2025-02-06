@@ -201,6 +201,8 @@ class PytorchEnv(gym.Wrapper):
       dtype = torch.float32
       if x.dtype == np.int32:
         dtype = torch.int32
+      if x.dtype == np.int64:
+        dtype = torch.int64
 
       return torch.from_numpy(x).to(self.device, non_blocking=True).to(dtype)
       # return torch.from_numpy(x).to(self.device).to(dtype)
