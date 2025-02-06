@@ -7,27 +7,24 @@ import functools
 import numpy as np
 import torch
 import scipy.optimize
+from scipy.ndimage import minimum_filter
 
 # hello
 
 from .env.const import *
-from .env.luxenv import (
+from .env.mapmanager import (
     MapManager,
-    LuxS3Env,
     SapIndexer,
     anti_diag_sym,
     anti_diag_sym_i,
     EXT_ACTION_SHAPE,
     manhatten_distance,
-    min_cost_bellman_ford,
     is_pos_on_map,
-    minimum_filter,
     pos_equal,
 )
-from .model import create_model
 
-SUBMIT_AGENT = False
-# SUBMIT_AGENT = True
+# SUBMIT_AGENT = False
+SUBMIT_AGENT = True
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
@@ -128,11 +125,6 @@ class Agent:
                          sap_indexer=SapIndexer(),
                          use_mirror=False,
                          use_hidden_relic_estimator=True)
-    self.env = LuxS3Env("", obs_space_kwargs=obs_space_kwargs,
-                        game_env=1)  # for calling _convert_observation
-    self.env.sap_indexer = self.mm.sap_indexer
-    assert self.env.sap_indexer is not None
-
     self.prev_model_action = None
     self.last_sap_locations = []
 
@@ -255,6 +247,11 @@ class Agent:
     def get_sap_enemy_score(upos, energy, cpos):
       """Max sap damage that could be hit from the `cpos`."""
       if not can_attack(energy, mm):
+        return 0
+
+      # Do not attack from negtive energy position
+      fuel = energy_map[cpos[0]][cpos[1]]
+      if fuel <= 0:
         return 0
 
       sap_range = gen_sap_range(cpos, self.mm.unit_sap_range)
@@ -542,9 +539,6 @@ class Agent:
           file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
     self.mm.add_sap_locations(self.last_sap_locations)
-
-    if not self.env.prev_raw_obs:
-      self.env.prev_raw_obs = {self.mm.player: raw_obs}
 
     unit_to_cell = self.compute_unit_to_cell()
     unit_actions = self.encode_unit_actions(unit_to_cell)
