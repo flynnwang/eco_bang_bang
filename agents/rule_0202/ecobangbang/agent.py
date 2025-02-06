@@ -316,7 +316,7 @@ class Agent:
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
     cell_index = list(range(N_CELLS))
-    # np.random.shuffle(cell_index)
+    np.random.shuffle(cell_index)
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
