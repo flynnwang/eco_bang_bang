@@ -30,28 +30,36 @@ MAP_SHAPE2 = (MAP_WIDTH, MAP_HEIGHT)
 
 OB = OrderedDict([
     # Game params
-    ('unit_move_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('unit_sensor_range', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('unit_sap_cost', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('unit_sap_range', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('nebula_energy_reduction', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-
     # Time & Match
     ('game_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('match_step', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    #  Game params
+    ('unit_move_cost',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + (MAX_MOVE_COST + 1))),
+    ('unit_sensor_range',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + (MAX_SENSOR_RANGE + 1))),
+    ('unit_sap_cost',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + (MAX_SAP_COST + 1))),
+    ('unit_sap_range',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + (MAX_SAP_RANGE + 1))),
+    ('nebula_vision_reduction',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_NEBULA_VISION_REDUCTION)),
+    ('nebula_energy_reduction',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_NEBULA_ENERGY_REDUCTION)),
+    ('unit_sap_dropoff_factor',
+     spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_SAP_DROPOFF_FACTOR)),
+    # Scores
     ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('units_team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_team_points_growth', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('team_points_growth_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('enemy_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('enemy_team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('enemy_wins', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('match_wins_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_total_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Map info
     ('_a_cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
     ('_b_cell_type', spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_CELL_TYPES)),
-    ('nebula_tile_vision_reduction', spaces.Box(low=0, high=1,
-                                                shape=MAP_SHAPE)),
-    ('vision_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('last_observed_age', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('last_visited_age', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -59,12 +67,14 @@ OB = OrderedDict([
     ('_b_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # use this to indicate nodes of unvisited relic cells (and its neighbour)
-    ('is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_a_is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_b_is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
     ('_a_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # hints for where to go
-    # ('energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_a_energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('_b_energy_cost_map', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     #
     ('_a_cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_cell_energy', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -104,7 +114,8 @@ def count_relic_score_nodes_num(state):
 def get_ob_sapce(obs_space_kwargs):
   ob = copy.copy(OB)
   if obs_space_kwargs.get('use_energy_cost_map'):
-    ob['energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['_a_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['_b_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
   return spaces.Dict(ob)
 
 
@@ -200,6 +211,10 @@ class UnitSapDropoffFactorEstimator:
     # print(f"add dropoff={factor},  counter: {self._counter}", file=sys.stderr)
     # print(f" -- dropoff best_guess: {self.best_guess()}", file=sys.stderr)
 
+  def index(self):
+    v = self.best_guess()
+    return self.VALID_VALUES.index(v)
+
   def best_guess(self):
     if len(self._counter) <= 0:
       return self.VALID_VALUES[1]  # default 0.5
@@ -283,9 +298,9 @@ class HiddenRelicNodeEstimator:
     if new_relic_node_positions.size > 0:
       new_relic_nb_mask[new_relic_node_positions[:, 0],
                         new_relic_node_positions[:, 1]] = True
-    if self.enable_anti_sym:
-      new_relic_nb_mask = new_relic_nb_mask | (
-          anti_diag_sym(new_relic_nb_mask))
+    # if self.enable_anti_sym:
+    # new_relic_nb_mask = new_relic_nb_mask | (
+    # anti_diag_sym(new_relic_nb_mask))
 
     new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
     # if new_relic_nb_mask.sum() > 0:
@@ -346,7 +361,7 @@ class HiddenRelicNodeEstimator:
 
 class NebulaEnergyReduction:
 
-  VALID_VALUES = set([0, 1, 2, 3, 5, 25])
+  VALID_VALUES = [0, 1, 2, 3, 5, 25]
 
   def __init__(self):
     self.counter = Counter()
@@ -362,6 +377,10 @@ class NebulaEnergyReduction:
     if len(self.counter) <= 0:
       return 0
     return self.counter.most_common(1)[0][0]
+
+  def index(self):
+    v = self.best_guess()
+    return self.VALID_VALUES.index(v)
 
 
 class VisionMap:
@@ -442,7 +461,7 @@ class MapManager:
                sap_indexer=None,
                use_mirror=False,
                use_hidden_relic_estimator=False,
-               enable_anti_sym=False,
+               enable_anti_sym=True,
                full_params=None):
     self.player_id = int(player[-1])
     self.player = player
@@ -507,6 +526,7 @@ class MapManager:
     self.match_wins = 0
 
     self.sap_dropoff_factor_estimator = UnitSapDropoffFactorEstimator(self)
+    self.last_sap_locations = [[], []]
 
   def add_sap_locations(self, sap_locations):
     self.sap_dropoff_factor_estimator.estimate(sap_locations)
@@ -829,8 +849,9 @@ class MapManager:
     if self.use_hidden_relic_estimator and ob['match_steps'] > 0:
       self.update_hidden_relic_estimator(ob)
 
-    self.energy_cost_map = self.compute_energy_cost_map()
-    # print(self.energy_cost_map)
+    self.energy_cost_map = self.compute_energy_cost_map(
+        self.cell_type, self.cell_energy, self.is_relic_node,
+        self.nebula_energy_reduction)
     self.prev_team_point = ob['team_points'][self.player_id]
     # print(
     # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
@@ -1045,16 +1066,6 @@ class MapManager:
     to_visit[(~self.game_visited) & (self.is_relic_neighbour > 0)] = 1
     return to_visit
 
-  def get_must_be_relic_nodes(self):
-    return self.team_point_mass
-    # relic_nodes = -np.ones((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    # relic_nodes[(self.team_point_mass >= MIN_TP_VAL)] = 1
-    # return relic_nodes
-
-  def get_unit_sap_hit_map(self, pos, sap_range_limit):
-    mask = 
-    return mask & self.enemy_position_mask
-
   def get_global_sap_hit_map(self):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     for i in range(MAX_UNIT_NUM):
@@ -1083,46 +1094,38 @@ class MapManager:
     # return (self.visible > 0).sum()
     return (self.match_visited > 0).sum()
 
-  def compute_energy_cost_map(self):
+  def compute_energy_cost_map(self, cell_type, cell_energy, is_relic_node,
+                              nebula_energy_reduction):
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(self.unit_move_cost))
 
     # nebula energy reduction adds extra cost
-    cost_map[self.cell_type == CELL_NEBULA] += self.nebula_energy_reduction
+    cost_map[cell_type == CELL_NEBULA] += nebula_energy_reduction
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
-    cost_map -= self.cell_energy
+    cost_map -= cell_energy
     cost_map = np.maximum(cost_map, 1)
 
-    # asteriod is not passable
-    # cost_map[self.cell_type == CELL_ASTERIOD] = np.inf
-
     # use a big value for asteriod
-    cost_map[self.cell_type == CELL_ASTERIOD] = 50
+    cost_map[cell_type == CELL_ASTERIOD] = 100
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
-
-    # Two types of position should call for dist cost map:
-    # 1. unvisited relic neighbour
-    # 2. un-occupied hidden relic nodes
-    # unvisited_relic_nbs = (~self.game_visited) & (self.is_relic_neighbour > 0)
-    # seed_mask = unvisited_relic_nbs
-
-    # unocc_relic_nodes = (~self.unit_positions) & (self.team_point_mass
-    # > MIN_TP_VAL)
-    # seed_mask |= unocc_relic_nodes
 
     seed_mask = (self.is_relic_node > 0)
     energy_cost[seed_mask] = 0
 
-    energy_cost = min_cost_bellman_ford(cost_map,
-                                        energy_cost,
-                                        N=MAX_MATCH_STEPS)
+    N = MAP_WIDTH * 2
+    kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float64)
+    for _ in range(N):
+      min_neighbors = minimum_filter(energy_cost,
+                                     footprint=kernel,
+                                     mode='constant',
+                                     cval=np.inf)
+      with np.errstate(invalid='ignore'):
+        energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
+
     return energy_cost
 
-  def get_erengy_cost_map_feature(self):
-    # energy_cost = self.compute_energy_cost_map()
-    energy_cost = self.energy_cost_map.copy()
-
+  def get_erengy_cost_map_feature(self, energy_cost):
     # Normalize the cost values
     not_inf = ~np.isinf(energy_cost)
     non_inf_cost = energy_cost[not_inf]
@@ -1130,8 +1133,22 @@ class MapManager:
       mx = non_inf_cost.max()
       energy_cost[not_inf] /= mx
 
-    energy_cost[np.isinf(energy_cost)] = 1
+    energy_cost[np.isinf(energy_cost)] = 1.1
     return energy_cost
+
+  def to_last_sap_actions(self, model_action):
+    sap_locations = []
+
+    actions = model_action[UNITS_ACTION]
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(player_id, i, t)
+      if not mask or energy <= 0:
+        continue
+
+      a = actions[i][0] - MOVE_ACTION_NUM
+      x, y = self.sap_indexer.idx_to_position[a]
+      sap_locations.append((x, y))
+    return sap_locations
 
 
 class LuxS3Env(gym.Env):
@@ -1172,11 +1189,19 @@ class LuxS3Env(gym.Env):
     self._seed = seed
 
   def _update_mms(self, obs, model_actions, env_state=None):
+    self.last_sap_locations[0] = self.mms[0].to_last_sap_actions(
+        model_actions[0])
+    self.last_sap_locations[1] = self.mms[1].to_last_sap_actions(
+        model_actions[1])
+
     a0, a1 = None, None
     if model_actions is not None:
       a0, a1 = model_actions
     self.mms[0].update(obs[PLAYER0], a0, env_state)
     self.mms[1].update(obs[PLAYER1], a1, env_state)
+
+    self.mms[0].add_sap_locations(self.last_sap_locations[0])
+    self.mms[1].add_sap_locations(self.last_sap_locations[1])
 
   def reset(self, seed=None):
     if seed is None:
@@ -1338,6 +1363,7 @@ class LuxS3Env(gym.Env):
         self._encode_action(model_action[1], self.mms[1],
                             self._actions_taken_mask[1]),
     }
+
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
     self._update_mms(raw_obs,
@@ -1360,6 +1386,15 @@ class LuxS3Env(gym.Env):
     def scalar(v, maxv):
       return np.zeros(MAP_SHAPE2) + (v / maxv)
 
+    def nebula_params(v):
+      param = np.zeros(MAP_SHAPE2, dtype=np.float32)
+      param[mm.cell_type == CELL_NEBULA] = v
+      return param
+
+    def game_params(v):
+      param = np.zeros(MAP_SHAPE2, dtype=float32)
+      return param + v
+
     def get_units_total_energy(env_state, pid):
       return env_state.units.energy[pid].sum()
 
@@ -1367,51 +1402,35 @@ class LuxS3Env(gym.Env):
       extras = np.zeros(N_BASELINE_EXTRA_DIM)
       if env_state is None:
         return extras
-      extras[0] = mm.game_step / MAX_GAME_STEPS  # step
-      extras[1] = (mm.game_step //
-                   (MAX_MATCH_STEPS + 1)) / TEAM_WIN_NORM  # match
-      extras[2] = mm.match_step / MAX_MATCH_STEPS  # match step
-
-      team_win = env_state.team_wins[mm.player_id]
-      enemy_win = env_state.team_wins[mm.enemy_id]
-      extras[3] = team_win / TEAM_WIN_NORM
-      extras[4] = (team_win - enemy_win) / TEAM_WIN_NORM
 
       hidden_relics_num = count_relic_score_nodes_num(env_state)
+      extras[0] = hidden_relics_num / (6 * 25 * 0.25)
       if hidden_relics_num == 0:
         hidden_relics_num = 1
       team_points = env_state.team_points[mm.player_id]
       enemy_points = env_state.team_points[mm.enemy_id]
-      extras[5] = team_points / 100 / hidden_relics_num
-
-      extras[6] = (team_points - enemy_points) / TEAM_POINTS_NORM
-      extras[6] = max(min(extras[6], 1), -1)
+      extras[1] = team_points / 100 / hidden_relics_num
 
       team_energy = get_units_total_energy(env_state, mm.player_id)
       enemy_energy = get_units_total_energy(env_state, mm.enemy_id)
-      extras[7] = team_energy / 2000
-      extras[8] = np.clip((team_energy - enemy_energy) / 500, -1, 1)
+      extras[2] = team_energy / 4000
+      extras[3] = np.clip((team_energy - enemy_energy) / 1000, -1, 1)
 
-      # extras[9] = hidden_relics_num / MAX_HIDDEN_RELICS_NUM
+      relic_num = env_state.relic_nodes_mask.sum()
+      extras[4] = relic_num / MAX_RELIC_NODE_NUM
 
-      # relic_num = env_state.relic_nodes_mask.sum()
-      # extras[10] = relic_num / MAX_RELIC_NODE_NUM
-
-      # nodes = env_state.relic_nodes[env_state.relic_nodes_mask]
-      # if len(nodes) > 0:
-      # extras[11] = nodes.sum(axis=-1).min() / MAP_WIDTH
-
-      extras[12] = mm.units_dead_count / MAX_UNIT_NUM
-      extras[13] = mm.step_units_frozen_count / MAX_UNIT_NUM
-      # extras[14] = mm.units_frozen_count / MAX_UNIT_NUM
-      extras[14] = mm.count_on_relic_nodes_units() / MAX_UNIT_NUM
-
-      extras[15] = mm.unit_sensor_range / MAX_SENSOR_RANGE
-      extras[16] = mm.unit_move_cost / MAX_MOVE_COST
-      extras[17] = mm.unit_sap_cost / MAX_SAP_COST
-      extras[18] = mm.unit_sap_range / MAX_SAP_RANGE
-      extras[19] = mm.nebula_vision_reduction / MAX_VISION_REDUCTION
-      extras[20] = mm.nebula_energy_reduction / MAX_ENERGY_REDUCTION
+      params = mm.full_params
+      extras[10] = params['unit_sensor_range'] / MAX_SENSOR_RANGE
+      extras[11] = params['unit_move_cost'] / MAX_MOVE_COST
+      extras[12] = params['unit_sap_cost'] / MAX_SAP_COST
+      extras[13] = params['unit_sap_range'] / MAX_SAP_RANGE
+      extras[14] = params['nebula_vision_reduction'] / MAX_VISION_REDUCTION
+      extras[15] = params['nebula_energy_reduction'] / MAX_ENERGY_REDUCTION
+      extras[16] = params['unit_sap_dropoff_factor']
+      extras[17] = params['unit_energy_void_factor']
+      extras[18] = params['nebula_tile_drift_speed']
+      extras[19] = params['energy_node_drift_speed']
+      extras[20] = params['energy_node_drift_magnitude'] / 6
 
       mm2 = self.mms[mm.enemy_id]
       extras[21] = (mm.is_relic_node.sum() -
@@ -1421,91 +1440,92 @@ class LuxS3Env(gym.Env):
       extras[23] = ((mm.game_observed_num - mm2.game_observed_num) /
                     (24 * 24 / 2))
 
-      # print(nodes)
-      # print(mm.game_step, self._seed, nodes.sum(axis=-1).min())
-      # print(
-      # f"step={mm.game_step}, match={mm.game_step // (MAX_MATCH_STEPS + 1)}, "
-      # f"match_step={mm.match_step}, team_win={team_win}, diff_win={(team_win - enemy_win)}, "
-      # f"tp={team_points}, diff_p={team_points - enemy_points}, hidden_relics_num={hidden_relics_num}, relic_num={relic_num}, "
-      # f"energy={team_energy}, diff_e={(team_energy - enemy_energy)}")
-      # print(extras)
       return extras
-
-    # Game params
-    o['unit_move_cost'] = scalar(mm.unit_move_cost, MAX_MOVE_COST)
-    o['unit_sensor_range'] = scalar(mm.unit_sensor_range, MAX_SENSOR_RANGE)
-    o['unit_sap_cost'] = scalar(mm.unit_sap_cost, MAX_SAP_COST)
-    o['unit_sap_range'] = scalar(mm.unit_sap_range, MAX_SAP_RANGE)
-    o['nebula_energy_reduction'] = scalar(mm.nebula_energy_reduction,
-                                          MAX_ENERGY_REDUCTION)
 
     # Time & Match
     o['game_step'] = scalar(mm.game_step, MAX_GAME_STEPS)
     o['match_step'] = scalar(mm.match_step, MAX_MATCH_STEPS)
 
+    # Game params
+    o['unit_move_cost'] = game_params(mm.unit_move_cost)
+    o['unit_sensor_range'] = game_params(mm.unit_sensor_range)
+
+    o['unit_sap_cost'] = game_params(mm.unit_sap_cost)
+    o['unit_sap_range'] = game_params(mm.unit_sap_range)
+
+    o['nebula_vision_reduction'] = nebula_params(mm.nebula_vision_reduction)
+    o['nebula_energy_reduction'] = nebula_params(
+        mm._nebula_energy_reduction.index())
+
+    o['unit_sap_dropoff_factor'] = game_params(
+        mm.sap_dropoff_factor_estimator.index())
+
+    # Scores
     team_points = ob['team_points']
     units_points = team_points[mm.player_id]
     enemy_points = team_points[mm.enemy_id]
-    o['units_team_points'] = scalar(units_points, TEAM_POINTS_NORM)
-    o['enemy_team_points'] = scalar(
-        max(min(units_points - enemy_points, TEAM_POINTS_NORM),
-            -TEAM_POINTS_NORM), TEAM_POINTS_NORM)
-
+    o['units_team_points'] = scalar(units_points, MAX_TEAM_POINTS)
+    o['team_points_delta'] = scalar(units_points - enemy_points,
+                                    MAX_TEAM_POINTS)
     prev_team_points = self.prev_raw_obs[mm.player]['team_points']
-    o['units_team_points_delta'] = scalar(
-        max(units_points - prev_team_points[mm.player_id], 0), MAX_UNIT_NUM)
-    o['enemy_team_points_delta'] = scalar(
-        max(enemy_points - prev_team_points[mm.enemy_id], 0), MAX_UNIT_NUM)
-
+    units_team_points_growth = max(
+        units_points - prev_team_points[mm.player_id], 0)
+    o['units_team_points_growth'] = scalar(units_team_points_growth,
+                                           MAX_UNIT_NUM)
+    enemy_team_points_growth = max(
+        enemy_points - prev_team_points[mm.enemy_id], 0)
+    team_points_growth_delta = units_team_points_growth - enemy_team_points_growth
+    o['team_points_growth_delta'] = scalar(team_points_growth_delta,
+                                           MAX_UNIT_NUM)
     team_wins = ob['team_wins']
     units_wins = team_wins[mm.player_id]
     enemy_wins = team_wins[mm.enemy_id]
     o['units_wins'] = scalar(units_wins, TEAM_WIN_NORM)
-    o['enemy_wins'] = scalar(units_wins - enemy_wins, TEAM_WIN_NORM)
+    o['match_wins_delta'] = scalar(units_wins - enemy_wins, TEAM_WIN_NORM)
 
     # Map info
     o['_a_cell_type'] = mm.cell_type.copy()
     o['_b_cell_type'] = mm.true_cell_type.copy()
-    # o['_b_cell_type'] = mm.cell_type.copy()
-
-    v = np.zeros(MAP_SHAPE2)
-    v[mm.cell_type == CELL_NEBULA] = -(mm.nebula_vision_reduction /
-                                       MAX_VISION_REDUCTION)
-    o['nebula_tile_vision_reduction'] = v
-
-    norm = (mm.unit_sensor_range + 1) * MAX_UNIT_NUM
-    o['vision_map'] = (mm.vision_map.vision).astype(np.float32) / norm
 
     o['visible'] = mm.visible.astype(np.float32)
-    o['last_observed_age'] = (mm.game_step -
-                              mm.last_observed_step) / MAX_MATCH_STEPS
-    o['last_visited_age'] = (mm.game_step -
-                             mm.last_observed_step) / MAX_MATCH_STEPS
+    ob_age = np.minimum((mm.game_step - mm.last_observed_step),
+                        MAX_MATCH_STEPS)
+    o['last_observed_age'] = ob_age / MAX_MATCH_STEPS
+    visit_age = np.minimum((mm.game_step - mm.last_observed_step),
+                           MAX_MATCH_STEPS)
+    o['last_visited_age'] = visit_age / MAX_MATCH_STEPS
+
     o['_a_is_relic_node'] = mm.is_relic_node.astype(np.float32)
-    # o['_b_is_relic_node'] = mm.is_relic_node.astype(np.float32)
     o['_b_is_relic_node'] = mm.true_relic_map.astype(np.float32)
 
-    # cells need a visit
-    o['is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
+    o['_a_is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
+    true_relic_neighbour = maximum_filter((self.true_relic_map == 1),
+                                          size=RELIC_NB_SIZE)
+    o['_b_is_relic_neighbour'] = true_relic_neighbour.astype(np.float32)
 
     # places need unit stay
-    o['_a_team_point_prob'] = mm.get_must_be_relic_nodes()
-    # o['_b_team_point_prob'] = mm.get_must_be_relic_nodes()
+    o['_a_team_point_prob'] = mm.team_point_mass.astype(np.float32)
     o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
 
     if self.obs_space_kwargs.get('use_energy_cost_map'):
-      o['energy_cost_map'] = mm.get_erengy_cost_map_feature()
+      o['_a_energy_cost_map'] = mm.get_erengy_cost_map_feature(
+          self.energy_cost_map)
 
-    # energy_map = np.zeros(MAP_SHAPE2)
+      energy_reduction = self.nebula_energy_reduction
+      if mm.full_params:
+        energy_reduction = mm.full_params['nebula_tile_energy_reduction']
+      true_cost_map = self.compute_energy_cost_map(self.true_cell_type,
+                                                   self.true_cell_energy,
+                                                   self.true_relic_map,
+                                                   energy_reduction)
+      o['_b_energy_cost_map'] = mm.get_erengy_cost_map_feature(true_cost_map)
+
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
     o['_a_cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
-    # o['_b_cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
 
     true_energy_map = mm.true_cell_energy.copy()
-    if mm.full_params:
-      true_energy_map[mm.true_cell_type == CELL_NEBULA] -= mm.full_params[
-          'nebula_tile_energy_reduction']
+    true_energy_map[mm.true_cell_type == CELL_NEBULA] -= energy_reduction
     o['_b_cell_energy'] = true_energy_map / MAX_ENERTY_PER_TILE
 
     # print(
@@ -1515,38 +1535,36 @@ class LuxS3Env(gym.Env):
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
       unit_energy = np.zeros(MAP_SHAPE2)
+      total_energy = 0
       for i in range(MAX_UNIT_NUM):
         mask, pos, energy = mm.get_unit_info(player_id, i, t)
-        if mask:
-          # assert MAP_WIDTH > pos[
-          # 0] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
-          # assert MAP_HEIGHT > pos[
-          # 1] >= 0, f"pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
-          # assert energy >= 0, f"step={mm.game_step}, pid={player_id}, pos={pos[0]}, {pos[1]}; energy={energy}, mask={mask}"
-          # Why energy is negative
+        if mask and energy >= 0:
           unit_energy[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
                                           MAX_UNIT_NUM)
           unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
+          total_energy += energy
 
       o[f'{prefix}_loc_t{t}'] = unit_pos
       o[f'{prefix}_energy_t{t}'] = unit_energy
+      return total_energy
 
     def add_unit_info(player_id, t):
       units_info = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
       for i in range(MAX_UNIT_NUM):
         mask, pos, energy = mm.get_unit_info(player_id, i, t)
-        # add units info
         units_info[i][0] = pos[0]
         units_info[i][1] = pos[1]
         units_info[i][2] = np.int32(energy) if mask else 0
       o[f'_units_info'] = units_info
 
     # Unit info
-    add_unit_feature('units', mm.player_id, t=0)
+    units_total_energy = add_unit_feature('units', mm.player_id, t=0)
     add_unit_feature('units', mm.player_id, t=1)
-    add_unit_feature('enemy', mm.enemy_id, t=0)
     add_unit_feature('enemy', mm.enemy_id, t=1)
     add_unit_info(mm.player_id, t=0)
+
+    o['units_total_energy'] = scalar(units_total_energy,
+                                     MAX_UNIT_ENERGY * MAX_UNIT_NUM)
 
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
@@ -1856,7 +1874,7 @@ class LuxS3Env(gym.Env):
       if energy < mm.unit_sap_cost:
         return
 
-      # TODO: how to coodinate sap to not sap on same cell
+      # TODO: how to coodinate sap to not sap on same cell, maybe coodinate it post-execution?
       unit_sap_mask = gen_sap_range(pos, sap_range_limit)
       unit_sap_mask = (unit_sap_mask & sap_hit_map)
 
