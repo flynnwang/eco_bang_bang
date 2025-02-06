@@ -263,8 +263,8 @@ class Agent:
       # h *= (energy / 200)
 
       # sap if energy is large (and unit not on relic)
-      # if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
-      # h *= max((energy / energy_threshold), 1)
+      if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
+        h *= max((energy / energy_threshold), 1)
       return h
 
     score_debug = {}
