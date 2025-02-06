@@ -1228,14 +1228,14 @@ class LuxS3Env(gym.Env):
 
     sap_indexer = SapIndexer()
 
-    tr1 = (self._seed % 2 == 0)
-    tr2 = ((self._seed // 2) % 2 == 0)
-    mirror1 = ((self._seed // 4) % 2 == 0)
-    mirror2 = ((self._seed // 8) % 2 == 0)
+    # tr1 = (self._seed % 2 == 0)
+    # tr2 = ((self._seed // 2) % 2 == 0)
+    # mirror1 = ((self._seed // 4) % 2 == 0)
+    # mirror2 = ((self._seed // 8) % 2 == 0)
     # print(f'tr1={tr1}, mirror1={mirror1}')
     # print(f'tr2={tr2}, mirror2={mirror2}')
-    # TODO: fix it
-    tr1 = tr2 = mirror1 = mirror2 = False
+    tr1 = tr2 = mirror1 = False
+    mirror2 = True
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -1260,6 +1260,7 @@ class LuxS3Env(gym.Env):
     self.prev_raw_obs = raw_obs
     done = False
     reward = self._convert_reward(raw_obs, final_state)
+
     self._actions_taken_mask = [{
         UNITS_ACTION:
         np.zeros(EXT_ACTION_SHAPE, dtype=bool)
