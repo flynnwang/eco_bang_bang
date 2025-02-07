@@ -216,6 +216,8 @@ class HiddenRelicNodeEstimator:
     n = min(new_team_points, m)
 
     p_data = self.calculate_p_data(observed_cells, n, self.priori)
+    if p_data <= 0:
+      return self.priori
     assert p_data > 0
     # print(f'p_data = {p_data}')
 
@@ -1026,6 +1028,9 @@ class MapManager:
 
       a = actions[i][0]
       if a < MOVE_ACTION_NUM:
+        continue
+
+      if energy < self.unit_sap_cost:
         continue
 
       a -= MOVE_ACTION_NUM
