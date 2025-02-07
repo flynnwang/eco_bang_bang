@@ -391,22 +391,14 @@ def learn(
         learner_policy_logits = learner_policy_logits_[a]
 
         actions_taken_mask = actions_taken_mask_[a]
-        valid_indices = actions_taken_mask.any(dim=-1)
 
-        filtered_logits = learner_policy_logits[
-            valid_indices]  # Shape: [valid_B, N, M]
-        filtered_labels = agent_action[valid_indices]
-
-        if filtered_logits.shape[0] == 0:
-          print('--- nothing to compute loss')
-          return
+        action_log_probs = combine_policy_logits_to_log_probs(
+            learner_policy_logits, agent_action, actions_taken_mask)
 
         learner_policy_entropy = combine_policy_entropy(
             learner_policy_logits, actions_taken_mask=actions_taken_mask)
 
-        action_dim = filtered_logits.shape[-1]
-        total_loss = criterion(filtered_logits.view(-1, action_dim),
-                               filtered_labels.view(-1))
+        total_loss = -action_log_probs.sum()
 
       last_lr = lr_scheduler.get_last_lr()
       assert len(last_lr) == 1, 'Logging per-parameter LR still needs support'
