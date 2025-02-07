@@ -382,21 +382,20 @@ def learn(
       if flags.use_teacher:
         teacher_outputs = buffers_apply(teacher_outputs, lambda x: x[:-1])
 
-      agent_action_one_hot = batch["info"]["agent_action"]
+      agent_action = batch["info"]["agent_action"]
       actions_taken_mask_ = batch["info"]["actions_taken_mask"]
       learner_policy_logits_ = learner_outputs["policy_logits"]
 
       assert len(ACTION_SPACE) == 1
       for a in ACTION_SPACE.keys():
         learner_policy_logits = learner_policy_logits_[a]
-        true_labels = torch.argmax(agent_action_one_hot, dim=-1)
 
         actions_taken_mask = actions_taken_mask_[a]
         valid_indices = actions_taken_mask.any(dim=-1)
 
         filtered_logits = learner_policy_logits[
             valid_indices]  # Shape: [valid_B, N, M]
-        filtered_labels = true_labels[valid_indices]
+        filtered_labels = agent_action[valid_indices]
 
         if filtered_logits.shape[0] == 0:
           print('--- nothing to compute loss')

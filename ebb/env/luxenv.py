@@ -365,7 +365,7 @@ class LuxS3Env(gym.Env):
     return obs, reward, done, info
 
   def agent_action_do_model_action(self, agent_action, mm):
-    units_action = np.zeros((MAX_UNIT_NUM, ALL_ACTION_NUM), dtype=int)
+    units_action = np.zeros((MAX_UNIT_NUM, 1), dtype=int)
     for i in range(MAX_UNIT_NUM):
       a = agent_action[i][0]
       if a < MOVE_ACTION_NUM:
