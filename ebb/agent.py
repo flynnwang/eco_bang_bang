@@ -21,6 +21,7 @@ from .env.mapmanager import (
     manhatten_distance,
     is_pos_on_map,
     pos_equal,
+    generate_manhattan_mask,
 )
 
 # SUBMIT_AGENT = False
@@ -228,6 +229,14 @@ class Agent:
 
       return w
 
+    init_pos = get_player_init_pos(mm.enemy_id)
+    enemy_half = generate_manhattan_mask(MAP_SHAPE2,
+                                         init_pos,
+                                         range_limit=MAP_WIDTH - 1)
+    blind_shot_targets = ((~mm.visible) & (mm.team_point_mass > 0.8)
+                          & enemy_half)
+    self.blind_shot_targets = blind_shot_targets
+
     def stay_on_relic(upos, energy, cpos):
       p = mm.team_point_mass[cpos[0]][cpos[1]]
       w = 0
@@ -238,10 +247,12 @@ class Agent:
       if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
           or on_enemy_side(cpos, mm.player_id)):
         w = left_tailed_exp(energy, w, energy_threshold)
+
       return w
 
     hit_factor = 10
     enemy_hit_map = self.get_sap_hit_map(hit_factor)
+    enemy_hit_map[blind_shot_targets] += hit_factor * 15
     self.enemy_hit_map = enemy_hit_map
 
     def get_sap_enemy_score(upos, energy, cpos):
@@ -263,8 +274,8 @@ class Agent:
       # h *= (energy / 200)
 
       # sap if energy is large (and unit not on relic)
-      if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
-        h *= max((energy / energy_threshold), 1)
+      # if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
+      # h *= max((energy / energy_threshold), 1)
       return h
 
     score_debug = {}
@@ -482,7 +493,12 @@ class Agent:
       if not is_within_sap_range(upos, cpos, self.mm.unit_sap_range):
         return -1
 
-      return self.enemy_hit_map[cpos[0]][cpos[1]]
+      h = self.enemy_hit_map[cpos[0]][cpos[1]]
+
+      if (self.mm.team_point_mass[cpos[0]][cpos[1]] < 0.6
+          and self.blind_shot_targets[cpos[0]][cpos[1]]):
+        h += self.mm.unit_sap_cost * 3
+      return h
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
     for i, (unit_id, unit_pos, _) in enumerate(attackers):
@@ -498,9 +514,14 @@ class Agent:
 
       attack_actions.append((attackers[i], attack_positions[j], wt))
 
+      unit_id, unit_pos, unit_energy = attackers[i]
       if not SUBMIT_AGENT:
-        unit_id, unit_pos, unit_energy = attackers[i]
         print(f"found attacker unit={unit_id} pos={unit_pos} e={unit_energy}",
+              file=sys.stderr)
+
+      atk_pos = attack_positions[j]
+      if self.blind_shot_targets[atk_pos[0]][atk_pos[1]]:
+        print(f"blind shot from unit[{unit_id}]={unit_pos} at pos={atk_pos}",
               file=sys.stderr)
 
     # use attack with larger energy
@@ -510,7 +531,9 @@ class Agent:
     self.last_sap_locations.clear()
     for (unit_id, unit_pos, unit_energy), cpos, _ in attack_actions:
       sap_mask = gen_sap_range(cpos, d=1)
-      if enemy_energy[sap_mask & (enemy_energy > 0)].sum() <= 0:
+      is_blind_shot = self.blind_shot_targets[cpos[0]][cpos[1]]
+      if (enemy_energy[sap_mask & (enemy_energy > 0)].sum() <= 0
+          and not is_blind_shot):
         if not SUBMIT_AGENT:
           print(f'step={mm.game_step}, unit[{unit_pos}] sap saved',
                 file=sys.stderr)

@@ -955,7 +955,7 @@ class MapManager:
       assert self.transpose == False
       assert self.use_mirror == False
 
-    init_pos = (23, 23)
+    init_pos = get_player_init_pos(self.enemy_id)
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
