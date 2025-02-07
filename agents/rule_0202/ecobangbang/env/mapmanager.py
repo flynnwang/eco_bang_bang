@@ -778,7 +778,7 @@ class MapManager:
     # )
 
     # TODO: use last unit position, maybe not important?
-    if not mask:
+    if not mask or energy < 0:
       position = (0, 0) if self.player_id == 0 else (MAP_WIDTH - 1,
                                                      MAP_HEIGHT - 1)
 

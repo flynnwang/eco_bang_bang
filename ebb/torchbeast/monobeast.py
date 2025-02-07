@@ -279,7 +279,6 @@ def act(
         else:
           actions = env_agent_output[0][1]['actions']
 
-
         env_output = env.step(actions)
         # env_output = env.step(agent_output["actions"])
         if env_output["done"].any():
@@ -364,6 +363,7 @@ def learn(
   """Performs a learning (optimization) step."""
   warnings.filterwarnings("ignore")
 
+  criterion = nn.CrossEntropyLoss()
   learner_batch_size = flags.batch_size  # for game of 2 teams self-play
   # learner_batch_size = flags.batch_size  # for game of single player
   with lock:
@@ -375,17 +375,6 @@ def learn(
       learner_outputs = buffers_apply(
           learner_outputs, lambda x: x.view(flags.unroll_length + 1,
                                             learner_batch_size, *x.shape[1:]))
-      if flags.use_teacher:
-        with torch.no_grad():
-          teacher_outputs = teacher_model(flattened_batch)
-          teacher_outputs = buffers_apply(
-              teacher_outputs, lambda x: x.view(
-                  flags.unroll_length + 1, learner_batch_size, *x.shape[1:]))
-      else:
-        teacher_outputs = None
-
-      # Take final value function slice for bootstrapping.
-      bootstrap_value = learner_outputs["baseline"][-1].squeeze(dim=-1)
 
       # Move from obs[t] -> action[t] to action[t] -> obs[t].
       batch = buffers_apply(batch, lambda x: x[1:])
@@ -393,109 +382,29 @@ def learn(
       if flags.use_teacher:
         teacher_outputs = buffers_apply(teacher_outputs, lambda x: x[:-1])
 
-      combined_behavior_action_log_probs = torch.zeros(
-          (flags.unroll_length, learner_batch_size),
-          device=flags.learner_device)
-      combined_learner_action_log_probs = torch.zeros_like(
-          combined_behavior_action_log_probs)
-      combined_teacher_kl_loss = torch.zeros_like(
-          combined_behavior_action_log_probs)
-      combined_learner_entropy = torch.zeros_like(
-          combined_behavior_action_log_probs)
-      entropies = {}
-
-      actions_ = batch["actions"]
-      actions_taken_mask = batch["info"]["actions_taken_mask"]
-      behavior_policy_logits = batch["policy_logits"]
+      agent_action_one_hot = batch["info"]["agent_action"]
+      actions_taken_mask_ = batch["info"]["actions_taken_mask"]
       learner_policy_logits_ = learner_outputs["policy_logits"]
 
+      assert len(ACTION_SPACE) == 1
       for a in ACTION_SPACE.keys():
-        policy_logits = behavior_policy_logits[a]
-        actions = actions_[a]
-        actions_mask = actions_taken_mask[a]
-        action_log_probs = combine_policy_logits_to_log_probs(
-            policy_logits, actions, actions_mask)
-        combined_behavior_action_log_probs = combined_behavior_action_log_probs + action_log_probs
-
         learner_policy_logits = learner_policy_logits_[a]
-        learner_action_log_probs = combine_policy_logits_to_log_probs(
-            learner_policy_logits, actions, actions_mask)
-        combined_learner_action_log_probs = combined_learner_action_log_probs + learner_action_log_probs
+        true_labels = torch.argmax(agent_action_one_hot, dim=-1)
 
-        # combine teacher mode
-        if flags.use_teacher:
-          teacher_policy_logits = teacher_outputs["policy_logits"][a]
-          teacher_kl_loss = compute_teacher_kl_loss(
-              learner_policy_logits,
-              teacher_policy_logits,
-              actions_taken_mask=actions_mask)
-          # actions_taken_mask=None)
-        else:
-          teacher_kl_loss = torch.zeros_like(combined_teacher_kl_loss)
+        actions_taken_mask = actions_taken_mask_[a]
+        valid_indices = actions_taken_mask.any(dim=-1)
 
-        combined_teacher_kl_loss = combined_teacher_kl_loss + teacher_kl_loss
+        filtered_logits = learner_policy_logits[
+            valid_indices]  # Shape: [valid_B, N, M]
+        filtered_labels = true_labels[valid_indices]
 
-        learner_policy_entropy = combine_policy_entropy(
-            learner_policy_logits, actions_taken_mask=actions_mask)
-        # actions_taken_mask=None)
-        combined_learner_entropy = combined_learner_entropy + learner_policy_entropy
+        if filtered_logits.shape[0] == 0:
+          print('--- nothing to compute loss')
+          return
 
-      discounts = (~batch["done"]).float() * flags.discounting
-
-      values = learner_outputs["baseline"].squeeze(dim=-1)
-      vtrace_returns = vtrace.from_action_log_probs(
-          behavior_action_log_probs=combined_behavior_action_log_probs,
-          target_action_log_probs=combined_learner_action_log_probs,
-          discounts=discounts,
-          rewards=batch["reward"],
-          values=values,
-          bootstrap_value=bootstrap_value)
-      td_lambda_returns = td_lambda.td_lambda(rewards=batch["reward"],
-                                              values=values,
-                                              bootstrap_value=bootstrap_value,
-                                              discounts=discounts,
-                                              lmb=flags.lmb)
-      upgo_returns = upgo.upgo(rewards=batch["reward"],
-                               values=values,
-                               bootstrap_value=bootstrap_value,
-                               discounts=discounts,
-                               lmb=flags.lmb)
-
-      vtrace_pg_loss = compute_policy_gradient_loss(
-          combined_learner_action_log_probs,
-          vtrace_returns.pg_advantages,
-          reduction=flags.reduction)
-
-      upgo_clipped_importance = torch.minimum(
-          vtrace_returns.log_rhos.exp(),
-          torch.ones_like(vtrace_returns.log_rhos)).detach()
-      upgo_pg_loss = compute_policy_gradient_loss(
-          combined_learner_action_log_probs,
-          upgo_clipped_importance * upgo_returns.advantages,
-          reduction=flags.reduction)
-
-      baseline_loss = compute_baseline_loss(values,
-                                            td_lambda_returns.vs,
-                                            reduction=flags.reduction)
-      #print(f'values={values}, td_lambda_returns={td_lambda_returns.vs}')
-      teacher_kl_loss = flags.teacher_kl_cost * reduce(
-          combined_teacher_kl_loss, reduction=flags.reduction)
-      if flags.use_teacher:
-        # (unroll, batch size, 1) => (unroll, batch size)
-        teacher_baseline = teacher_outputs["baseline"][:, :, 0]
-        teacher_baseline_loss = flags.teacher_baseline_cost * compute_baseline_loss(
-            values, teacher_baseline, reduction=flags.reduction)
-      else:
-        teacher_baseline_loss = torch.zeros_like(baseline_loss)
-      entropy_loss = flags.entropy_cost * reduce(combined_learner_entropy,
-                                                 reduction=flags.reduction)
-      if baseline_only:
-        total_loss = baseline_loss + teacher_baseline_loss
-        vtrace_pg_loss, upgo_pg_loss, teacher_kl_loss, entropy_loss = torch.zeros(
-            4) + float("nan")
-      else:
-        total_loss = (vtrace_pg_loss + upgo_pg_loss + baseline_loss +
-                      teacher_kl_loss + teacher_baseline_loss + entropy_loss)
+        action_dim = filtered_logits.shape[-1]
+        total_loss = criterion(filtered_logits.view(-1, action_dim),
+                               filtered_labels.view(-1))
 
       last_lr = lr_scheduler.get_last_lr()
       assert len(last_lr) == 1, 'Logging per-parameter LR still needs support'
@@ -544,8 +453,6 @@ def learn(
       def sum_non_nan(v):
         return v[~v.isnan()].sum().detach().item()
 
-      baseline_values = values.mean().detach().item()
-      td = td_lambda_returns.vs.mean().detach().item()
       buffer_num = flags.batch_size * flags.unroll_length
       batch_sz = flags.batch_size
       stats = {
@@ -574,20 +481,7 @@ def learn(
               _action_sap.sum().detach().item(),
           },
           "Loss": {
-              "td_lambda_returns_mean": td,
-              "baseline_values_mean": baseline_values,
-              "vtrace_pg_loss": vtrace_pg_loss.detach().item(),
-              "upgo_pg_loss": upgo_pg_loss.detach().item(),
-              "baseline_loss": baseline_loss.detach().item(),
-              "teacher_kl_loss": teacher_kl_loss.detach().item(),
-              #"teacher_baseline_loss": teacher_baseline_loss.detach().item(),
-              "entropy_loss": entropy_loss.detach().item(),
               "total_loss": total_loss.detach().item(),
-          },
-          "Entropy": {
-              "learner_policy_entropy":
-              -reduce(learner_policy_entropy,
-                      reduction="sum").detach().cpu().item(),
           },
           "Misc": {
               "learning_rate": last_lr,

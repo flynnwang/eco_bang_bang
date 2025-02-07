@@ -196,9 +196,10 @@ class Agent:
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
-    print(
-        f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
-        file=sys.stderr)
+    if not SUBMIT_AGENT:
+      print(
+          f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
+          file=sys.stderr)
 
     def get_fuel_energy(upos, energy, cpos):
       fuel = energy_map[cpos[0]][cpos[1]]
@@ -233,8 +234,9 @@ class Agent:
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
-    blind_shot_targets = ((~mm.visible) & (mm.team_point_mass > 0.8)
-                          & enemy_half)
+    # blind_shot_targets = ((~mm.visible) & (mm.team_point_mass > 0.8)
+    # & enemy_half)
+    blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
@@ -529,6 +531,7 @@ class Agent:
                         (-a[2], -a[0][-1], a[0][0]))  # (unit_energy, unit_id)
     enemy_energy = mm.enemy_max_energy.copy()
     self.last_sap_locations.clear()
+    self.last_sap_units_info = []
     for (unit_id, unit_pos, unit_energy), cpos, _ in attack_actions:
       sap_mask = gen_sap_range(cpos, d=1)
       is_blind_shot = self.blind_shot_targets[cpos[0]][cpos[1]]
@@ -548,6 +551,8 @@ class Agent:
       unit_actions[unit_id][1] = cpos[0] - unit_pos[0]
       unit_actions[unit_id][2] = cpos[1] - unit_pos[1]
       self.last_sap_locations.append(cpos)
+      self.last_sap_units_info.append(
+          (unit_id, unit_pos, unit_energy, self.env._seed, self.player))
       if not SUBMIT_AGENT:
         print(
             f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
@@ -558,8 +563,9 @@ class Agent:
 
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
-    print(f"============ game step {self.mm.game_step + 1} ========== ",
-          file=sys.stderr)
+    if not SUBMIT_AGENT:
+      print(f"============ game step {self.mm.game_step + 1} ========== ",
+            file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
     self.mm.add_sap_locations(self.last_sap_locations)
 

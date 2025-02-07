@@ -124,6 +124,7 @@ class LuxS3Env(gym.Env):
     self.prev_raw_obs = None
     self._seed = None
     self.last_sap_locations = [[], []]
+    self.agent_actions = [None, None]
 
   @property
   def total_agent_controls(self):
@@ -150,9 +151,13 @@ class LuxS3Env(gym.Env):
   def _update_mms(self, obs, model_actions, env_state=None):
     a0, a1 = None, None
     if model_actions is not None:
-      a0, a1 = model_actions
-      self.last_sap_locations[0] = self.mms[0].to_last_sap_actions(a0)
-      self.last_sap_locations[1] = self.mms[1].to_last_sap_actions(a1)
+      if self.use_agent:
+        self.last_sap_locations[0] = self.agents[0].last_sap_locations
+        self.last_sap_locations[1] = self.agents[1].last_sap_locations
+      else:
+        a0, a1 = model_actions
+        self.last_sap_locations[0] = self.mms[0].to_last_sap_actions(a0)
+        self.last_sap_locations[1] = self.mms[1].to_last_sap_actions(a1)
 
     self.mms[0].update(obs[PLAYER0], a0, env_state)
     self.mms[1].update(obs[PLAYER1], a1, env_state)
@@ -209,6 +214,8 @@ class LuxS3Env(gym.Env):
     ]
     self._update_mms(raw_obs, model_actions=None, env_state=final_state)
     self.sap_indexer = sap_indexer
+    self.mms[0].env = self
+    self.mms[1].env = self
 
     self.agents = [None, None]
     if self.use_agent:
@@ -216,6 +223,8 @@ class LuxS3Env(gym.Env):
           Agent(self.mms[0].player, env_cfg),
           Agent(self.mms[1].player, env_cfg),
       ]
+      self.agents[0].env = self
+      self.agents[1].env = self
 
     self.prev_raw_obs = raw_obs
     done = False
@@ -288,12 +297,6 @@ class LuxS3Env(gym.Env):
     return unit_actions
 
   def compute_actions_taken(self, model_actions):
-    # if self.use_single_player:
-    # return [self.get_actions_taken_mask(model_actions[0], self.mms[0])]
-    # except Exception as e:
-    # __import__('ipdb').set_trace()
-    # raise e
-
     return [
         self.get_actions_taken_mask(model_actions[i], self.mms[i])
         for i, player in enumerate([PLAYER0, PLAYER1])
@@ -316,29 +319,34 @@ class LuxS3Env(gym.Env):
           }
       ]
 
+    self._actions_taken_mask = self.compute_actions_taken(model_action)
+    action = {
+        PLAYER0:
+        self._encode_action(model_action[0], self.mms[0],
+                            self._actions_taken_mask[0]),
+        PLAYER1:
+        self._encode_action(model_action[1], self.mms[1],
+                            self._actions_taken_mask[1]),
+    }
     # Use agent to generate action to overwrite the model action.
     if self.use_agent:
-      action0 = self.agents[0].act(self.mms[0].game_step,
-                                   self.raw_obs[PLAYER0])
-      action1 = self.agents[1].act(self.mms[1].game_step,
-                                   self.raw_obs[PLAYER1])
       action = {
-          PLAYER0: action0,
-          PLAYER1: action1,
+          PLAYER0: self.agent_actions[0],
+          PLAYER1: self.agent_actions[1],
       }
-      self.rewrite_action(action0, model_action[0], self.mms[0])
-      self.rewrite_action(action1, model_action[1], self.mms[1])
+      model_action = [
+          {
+              UNITS_ACTION:
+              self.agent_action_do_model_action(self.agent_actions[0],
+                                                self.mms[0])
+          },
+          {
+              UNITS_ACTION:
+              self.agent_action_do_model_action(self.agent_actions[0],
+                                                self.mms[1])
+          },
+      ]
       self._actions_taken_mask = self.compute_actions_taken(model_action)
-    else:
-      self._actions_taken_mask = self.compute_actions_taken(model_action)
-      action = {
-          PLAYER0:
-          self._encode_action(model_action[0], self.mms[0],
-                              self._actions_taken_mask[0]),
-          PLAYER1:
-          self._encode_action(model_action[1], self.mms[1],
-                              self._actions_taken_mask[1]),
-      }
 
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
@@ -356,8 +364,8 @@ class LuxS3Env(gym.Env):
     self.raw_obs = raw_obs
     return obs, reward, done, info
 
-  def rewrite_action(self, agent_action, model_action, mm):
-    units_action = model_action[UNITS_ACTION]
+  def agent_action_do_model_action(self, agent_action, mm):
+    units_action = np.zeros((MAX_UNIT_NUM, ALL_ACTION_NUM), dtype=int)
     for i in range(MAX_UNIT_NUM):
       a = agent_action[i][0]
       if a < MOVE_ACTION_NUM:
@@ -368,8 +376,7 @@ class LuxS3Env(gym.Env):
         sap_id = mm.sap_indexer.position_to_idx[(dx, dy)]
         sap_id += MOVE_ACTION_NUM
         units_action[i] = sap_id
-
-    # print(agent_action, units_action)
+    return units_action
 
   def _convert_observation(self, ob, mm, final_state=None, skip_check=False):
     """Construct all features using MAP_SHAPE2."""
@@ -548,9 +555,11 @@ class LuxS3Env(gym.Env):
       units_info = np.zeros((MAX_UNIT_NUM, 3), dtype=np.int32)
       for i in range(MAX_UNIT_NUM):
         mask, pos, energy = mm.get_unit_info(player_id, i, t)
+        is_valid_unit = (mask and energy >= 0)
         units_info[i][0] = pos[0]
         units_info[i][1] = pos[1]
-        units_info[i][2] = np.int32(energy) if mask else 0
+        units_info[i][2] = np.int32(energy) if is_valid_unit else -1
+
       o[f'_units_info'] = units_info
 
     # Unit info
@@ -825,6 +834,10 @@ class LuxS3Env(gym.Env):
       if energy == 0:
         action_centered_positions.add(pos)
 
+      if energy >= 0:
+        # Always can stay
+        actions_mask[i][ACTION_CENTER] = 1
+
       # Unit runs out of energy
       if energy < mm.unit_move_cost:
         continue
@@ -840,9 +853,6 @@ class LuxS3Env(gym.Env):
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
         actions_mask[i][k] = 1
-
-      # Always can stay
-      actions_mask[i][ACTION_CENTER] = 1
 
     sap_hit_map = mm.get_global_sap_hit_map()
 
@@ -1005,6 +1015,13 @@ class LuxS3Env(gym.Env):
       count_actions(info, agent_action,
                     self._actions_taken_mask[mm.player_id][UNITS_ACTION])
       add_unit_total_energy(info, mm)
+
+      if self.use_agent:
+        agent_action = self.agents[mm.player_id].act(mm.game_step,
+                                                     raw_obs[mm.player])
+        units_action = self.agent_action_do_model_action(agent_action, mm)
+        info['agent_action'] = units_action
+        self.agent_actions[mm.player_id] = agent_action
       return info
 
     if model_action is None:
