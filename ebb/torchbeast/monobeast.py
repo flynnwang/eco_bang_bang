@@ -402,6 +402,9 @@ def learn(
           print('--- nothing to compute loss')
           return
 
+        learner_policy_entropy = combine_policy_entropy(
+            learner_policy_logits, actions_taken_mask=actions_taken_mask)
+
         action_dim = filtered_logits.shape[-1]
         total_loss = criterion(filtered_logits.view(-1, action_dim),
                                filtered_labels.view(-1))
@@ -482,6 +485,11 @@ def learn(
           },
           "Loss": {
               "total_loss": total_loss.detach().item(),
+          },
+          "Entropy": {
+              "learner_policy_entropy":
+              -reduce(learner_policy_entropy,
+                      reduction="sum").detach().cpu().item(),
           },
           "Misc": {
               "learning_rate": last_lr,
