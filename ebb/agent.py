@@ -9,22 +9,24 @@ import torch
 import scipy.optimize
 from scipy.ndimage import minimum_filter
 
+# hello
+
 from .env.const import *
 from .env.mapmanager import (
     MapManager,
     SapIndexer,
     anti_diag_sym,
     anti_diag_sym_i,
+    EXT_ACTION_SHAPE,
     manhatten_distance,
     is_pos_on_map,
     pos_equal,
-    gen_sap_range,
-    get_player_init_pos,
 )
 
 # SUBMIT_AGENT = False
 SUBMIT_AGENT = True
 
+DO_SAMPLE = True
 USE_MIRROR_TRANS = False
 
 USE_RANDOM = True
@@ -59,9 +61,26 @@ def cant_move_to(upos, cpos, mm):
           and not pos_equal(cpos, upos))
 
 
+def gen_sap_range(pos, d, dtype=bool, val=True):
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
+  x0 = max(0, (pos[0] - d))
+  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+  y0 = max(0, (pos[1] - d))
+  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+  sap_range[x0:x1, y0:y1] = val
+  return sap_range
+
+
 def is_within_sap_range(upos, cpos, unit_sap_range):
   return ((abs(upos[0] - cpos[0]) <= unit_sap_range)
           and (abs(upos[1] - cpos[1]) <= unit_sap_range))
+
+
+def get_player_init_pos(player_id):
+  target_pos = (0, 0)
+  if player_id == 1:
+    target_pos = (23, 23)
+  return target_pos
 
 
 def on_enemy_side(cpos, player_id):
@@ -106,7 +125,6 @@ class Agent:
                          sap_indexer=SapIndexer(),
                          use_mirror=False,
                          use_hidden_relic_estimator=True)
-
     self.prev_model_action = None
     self.last_sap_locations = []
 
@@ -177,10 +195,9 @@ class Agent:
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
-    if not SUBMIT_AGENT:
-      print(
-          f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
-          file=sys.stderr)
+    print(
+        f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
+        file=sys.stderr)
 
     def get_fuel_energy(upos, energy, cpos):
       fuel = energy_map[cpos[0]][cpos[1]]
@@ -232,6 +249,11 @@ class Agent:
       if not can_attack(energy, mm):
         return 0
 
+      # Do not attack from negtive energy position
+      # fuel = energy_map[cpos[0]][cpos[1]]
+      # if fuel <= 0:
+      # return 0
+
       sap_range = gen_sap_range(cpos, self.mm.unit_sap_range)
 
       h = enemy_hit_map[sap_range].max()
@@ -241,8 +263,8 @@ class Agent:
       # h *= (energy / 200)
 
       # sap if energy is large (and unit not on relic)
-      # if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
-      # h *= max((energy / energy_threshold), 1)
+      if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
+        h *= max((energy / energy_threshold), 1)
       return h
 
     score_debug = {}
@@ -328,10 +350,8 @@ class Agent:
       if not SUBMIT_AGENT:
         _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
         wts = score_debug[(tuple(upos), tuple(cpos))]
-
-        if not SUBMIT_AGENT:
-          print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
-                file=sys.stderr)
+        print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
+              file=sys.stderr)
 
     return unit_to_cell
 
@@ -480,9 +500,7 @@ class Agent:
 
       if not SUBMIT_AGENT:
         unit_id, unit_pos, unit_energy = attackers[i]
-        if not SUBMIT_AGENT:
-          print(
-              f"found attacker unit={unit_id} pos={unit_pos} e={unit_energy}",
+        print(f"found attacker unit={unit_id} pos={unit_pos} e={unit_energy}",
               file=sys.stderr)
 
     # use attack with larger energy
@@ -517,9 +535,8 @@ class Agent:
 
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
-    if not SUBMIT_AGENT:
-      print(f"============ game step {self.mm.game_step + 1} ========== ",
-            file=sys.stderr)
+    print(f"============ game step {self.mm.game_step + 1} ========== ",
+          file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
     self.mm.add_sap_locations(self.last_sap_locations)
 

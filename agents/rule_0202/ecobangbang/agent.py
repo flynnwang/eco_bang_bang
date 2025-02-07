@@ -250,9 +250,9 @@ class Agent:
         return 0
 
       # Do not attack from negtive energy position
-      fuel = energy_map[cpos[0]][cpos[1]]
-      if fuel <= 0:
-        return 0
+      # fuel = energy_map[cpos[0]][cpos[1]]
+      # if fuel <= 0:
+      # return 0
 
       sap_range = gen_sap_range(cpos, self.mm.unit_sap_range)
 
