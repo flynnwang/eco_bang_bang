@@ -1,5 +1,5 @@
 from collections import OrderedDict, deque, defaultdict, Counter
-from functools import cached_property
+from functools import cached_property, lru_cache
 import copy
 import random
 import sys
@@ -839,6 +839,11 @@ class MapManager:
       is_visible_tr = anti_diag_sym(is_visible)
       self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
+  @lru_cache(maxsize=None)
+  def get_player_half_mask(self, player_id):
+    init_pos = get_player_init_pos(player_id)
+    return generate_manhattan_mask(MAP_SHAPE2, init_pos, range_limit=MAP_WIDTH)
+
   def update_hidden_relic_estimator(self, ob):
     relic_nodes_mask = ob['relic_nodes_mask']
     relic_nodes_positions = ob['relic_nodes'][relic_nodes_mask]
@@ -852,16 +857,15 @@ class MapManager:
     p = self.hidden_relic_estimator.priori.copy()
     self.team_point_mass = p.copy()
 
-    # min_val = MIN_PROB + 1e-5
-    # is_min_prob = (p <= min_val) | anti_diag_sym(p <= min_val)
-    # self.team_point_mass[is_min_prob] = 0
+    units_half = self.get_player_half_mask(self.player_id)
+
+    min_val = MIN_PROB + 1e-5
+    non_relic_point = (p <= min_val) & (p > 0) & units_half
+    self.team_point_mass[non_relic_point | anti_diag_sym(non_relic_point)] = 0
 
     max_val = MAX_PROB - 1e-5
-    is_max_prob = (p >= max_val) | anti_diag_sym(p >= max_val)
-    self.team_point_mass[is_max_prob] = 1
-
-    self.team_point_mass = np.maximum(self.team_point_mass,
-                                      anti_diag_sym(self.team_point_mass))
+    is_relc_point = (p >= max_val) | anti_diag_sym(p >= max_val)
+    self.team_point_mass[is_relc_point] = 1
 
     # print(f'update_hidden_relic_estimator: {self.team_point_mass}, {tmp}')
 

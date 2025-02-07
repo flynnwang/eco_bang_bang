@@ -144,7 +144,8 @@ class Agent:
 
       if self.mm.enemy_positions[pos[0]][pos[1]]:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
-        hit_map[pos[0]][pos[1]] += (RELIC_SCORE * (p**2))
+        if p > 0.8:
+          hit_map[pos[0]][pos[1]] += RELIC_SCORE
 
       for d in [1, 0]:
         x0 = max(0, (pos[0] - d))
@@ -218,43 +219,49 @@ class Agent:
       if p < 0.1:
         return 0
 
+      v = RELIC_NB_SCORE
+      # Do not goto enemy side if energy below threshold
+      if on_enemy_side(cpos, mm.player_id):
+        v = mm.unit_sap_cost / 10 * p
+
       last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
       t = mm.game_step - last_visited_step
       alpha = np.log(t + 1) / LOG3
-      w = min(alpha, 1) * RELIC_NB_SCORE
+      w = min(alpha, 1) * v
 
-      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
-      if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
-          or on_enemy_side(cpos, mm.player_id)):
-        w = left_tailed_exp(energy, w, energy_threshold)
-
+      # has enemy nearby, dangerous, go away
+      # cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
+      # if (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0:
+      # w = -1
       return w
 
     init_pos = get_player_init_pos(mm.enemy_id)
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
-    # blind_shot_targets = ((~mm.visible) & (mm.team_point_mass > 0.8)
-    # & enemy_half)
-    blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
+    blind_shot_targets = ((~mm.visible) & (mm.team_point_mass > 0.8)
+                          & enemy_half)
+    # blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
+      v = RELIC_SCORE
       p = mm.team_point_mass[cpos[0]][cpos[1]]
+
+      # Do not goto enemy side if energy below threshold
+      if on_enemy_side(cpos, mm.player_id):
+        v = mm.unit_sap_cost / 10
+
       w = 0
       if p > 0.8:
-        w += RELIC_SCORE * p
-
-      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
-      if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
-          or on_enemy_side(cpos, mm.player_id)):
-        w = left_tailed_exp(energy, w, energy_threshold)
+        w += v * p
 
       return w
 
     hit_factor = 10
     enemy_hit_map = self.get_sap_hit_map(hit_factor)
-    enemy_hit_map[blind_shot_targets] += hit_factor * 15
+    enemy_hit_map[
+        blind_shot_targets] += mm.unit_sap_cost  # roughly adding 3 points
     self.enemy_hit_map = enemy_hit_map
 
     def get_sap_enemy_score(upos, energy, cpos):
@@ -315,6 +322,13 @@ class Agent:
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
+
+      is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
+      # has enemy nearby, dangerous, go away
+      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
+      if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
+          and (not is_relic_nb or on_enemy_side(cpos, mm.player_id))):
+        wt -= self.mm.unit_sap_cost / 10
 
       score_debug[(tuple(upos), tuple(cpos))] = {
           'explore_wt': expore_wt,
@@ -429,10 +443,10 @@ class Agent:
           r = -energy_map[nx][ny]  # try to move with more energy
           a = (cost, r, DIRECTIONS_TO_ACTION[k])
           actions.append(a)
-          if not SUBMIT_AGENT:
-            print(
-                f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, cost={cost}",
-                file=sys.stderr)
+          # if not SUBMIT_AGENT:
+          # print(
+          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, cost={cost}",
+          # file=sys.stderr)
 
       if len(actions):
         actions.sort()
@@ -499,7 +513,7 @@ class Agent:
 
       if (self.mm.team_point_mass[cpos[0]][cpos[1]] < 0.6
           and self.blind_shot_targets[cpos[0]][cpos[1]]):
-        h += self.mm.unit_sap_cost * 3
+        h += self.mm.unit_sap_cost * self.mm.unit_sap_dropoff_factor  # lower the priority of blind shot
       return h
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
@@ -551,8 +565,8 @@ class Agent:
       unit_actions[unit_id][1] = cpos[0] - unit_pos[0]
       unit_actions[unit_id][2] = cpos[1] - unit_pos[1]
       self.last_sap_locations.append(cpos)
-      self.last_sap_units_info.append(
-          (unit_id, unit_pos, unit_energy, self.env._seed, self.player))
+      # self.last_sap_units_info.append(
+      # (unit_id, unit_pos, unit_energy, self.env._seed, self.player))
       if not SUBMIT_AGENT:
         print(
             f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
