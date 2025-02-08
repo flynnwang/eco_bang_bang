@@ -237,7 +237,10 @@ class LuxS3Env(gym.Env):
         UNITS_ACTION:
         np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     }]
-
+    self.agent_actions = [
+        np.zeros((MAX_UNIT_NUM, 3), dtype=int),
+        np.zeros((MAX_UNIT_NUM, 3), dtype=int),
+    ]
     model_action = [{
         UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), dtype=int)
     }, {
@@ -342,7 +345,7 @@ class LuxS3Env(gym.Env):
           },
           {
               UNITS_ACTION:
-              self.agent_action_do_model_action(self.agent_actions[0],
+              self.agent_action_do_model_action(self.agent_actions[1],
                                                 self.mms[1])
           },
       ]
@@ -898,7 +901,7 @@ class LuxS3Env(gym.Env):
                done=False,
                env_state=None):
 
-    def count_actions(info, action, taken_masks):
+    def count_actions(info, action, taken_masks, mm):
       action_count = {a: 0 for a in ACTION_ID_TO_NAME.values()}
       action = action[UNITS_ACTION]
       for i in range(MAX_UNIT_NUM):
@@ -909,6 +912,21 @@ class LuxS3Env(gym.Env):
             aid = ACTION_SAP
           name = ACTION_ID_TO_NAME[aid]
           action_count[name] += 1
+
+      # if mm.player_id == 1:
+      # print(
+      # f"step={mm.game_step}, player-{mm.player_id}, actions={action_count}"
+      # )
+      # for i in range(MAX_UNIT_NUM):
+      # mask, pos, energy = mm.get_unit_info(mm.player_id, i, t=0)
+      # mask_, pos_, energy_ = mm.get_unit_info(mm.player_id, i, t=1)
+      # if mask and mask_:
+      # a = action[i][0]
+      # if aid >= MOVE_ACTION_NUM:
+      # continue
+      # print(
+      # f"unit[{i}], mask={mask}, pos={pos}/pos_={pos_}, energy={energy}/energy_={energy_}, aid={aid}, a={ACTION_ID_TO_NAME[aid]}, d={DIRECTIONS[aid]}"
+      # )
 
       # append '_' for each action name
       info.update([('_' + a.lower(), c) for a, c in action_count.items()])
@@ -927,6 +945,11 @@ class LuxS3Env(gym.Env):
       info = {}
 
       info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
+      if self.use_agent:
+        # match with actions mask
+        units_action = self.agent_action_do_model_action(
+            self.agent_actions[mm.player_id], mm)
+        info['agent_action'] = units_action
 
       # action mask for current state, (for sample action)
       info['available_action_mask'] = self._get_available_action_mask(mm)
@@ -1013,14 +1036,12 @@ class LuxS3Env(gym.Env):
       step = raw_obs[PLAYER0]['steps']
       # print(f"step={step} match_step={match_step}, step_reward={step_reward}")
       count_actions(info, agent_action,
-                    self._actions_taken_mask[mm.player_id][UNITS_ACTION])
+                    self._actions_taken_mask[mm.player_id][UNITS_ACTION], mm)
       add_unit_total_energy(info, mm)
 
       if self.use_agent:
         agent_action = self.agents[mm.player_id].act(mm.game_step,
                                                      raw_obs[mm.player])
-        units_action = self.agent_action_do_model_action(agent_action, mm)
-        info['agent_action'] = units_action
         self.agent_actions[mm.player_id] = agent_action
       return info
 

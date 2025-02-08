@@ -376,6 +376,7 @@ def learn(
           learner_outputs, lambda x: x.view(flags.unroll_length + 1,
                                             learner_batch_size, *x.shape[1:]))
 
+      # TODO: check
       # Move from obs[t] -> action[t] to action[t] -> obs[t].
       batch = buffers_apply(batch, lambda x: x[1:])
       learner_outputs = buffers_apply(learner_outputs, lambda x: x[:-1])

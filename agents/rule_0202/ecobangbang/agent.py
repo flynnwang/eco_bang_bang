@@ -441,16 +441,27 @@ class Agent:
             continue
 
           r = -energy_map[nx][ny]  # try to move with more energy
-          a = (cost, r, DIRECTIONS_TO_ACTION[k])
+          a = (cost, r, (nx, ny), k, DIRECTIONS_TO_ACTION[k])
           actions.append(a)
-          # if not SUBMIT_AGENT:
+          # if not SUBMIT_AGENT and self.player == PLAYER1:
+
+          # if self.player == PLAYER1:
           # print(
-          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, cost={cost}",
+          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
           # file=sys.stderr)
 
       if len(actions):
         actions.sort()
         action = actions[0][-1]
+        next_pos = actions[0][2]
+        kd = actions[0][3]
+
+        # if self.player == PLAYER1:
+        # print((
+        # f"game_step={mm.game_step}, unit={unit_id} action[{action}]={ACTION_ID_TO_NAME[action]}, from={unit_pos} to "
+        # f"{next_pos} dir={DIRECTIONS[kd]} {DIRECTIONS_TO_ACTION[kd]} cost={cost}"
+        # ),
+        # file=sys.stderr)
       return action
 
     for i in range(MAX_UNIT_NUM):
@@ -465,6 +476,7 @@ class Agent:
         continue
 
       if not SUBMIT_AGENT:
+        # if self.player == PLAYER1:
         print(
             f"game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
             file=sys.stderr)
@@ -535,10 +547,11 @@ class Agent:
         print(f"found attacker unit={unit_id} pos={unit_pos} e={unit_energy}",
               file=sys.stderr)
 
-      atk_pos = attack_positions[j]
-      if self.blind_shot_targets[atk_pos[0]][atk_pos[1]]:
-        print(f"blind shot from unit[{unit_id}]={unit_pos} at pos={atk_pos}",
-              file=sys.stderr)
+      if not SUBMIT_AGENT:
+        atk_pos = attack_positions[j]
+        if self.blind_shot_targets[atk_pos[0]][atk_pos[1]]:
+          print(f"blind shot from unit[{unit_id}]={unit_pos} at pos={atk_pos}",
+                file=sys.stderr)
 
     # use attack with larger energy
     attack_actions.sort(key=lambda a:
