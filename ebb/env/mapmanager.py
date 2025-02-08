@@ -71,6 +71,74 @@ def pos_equal(x, y):
   return x[0] == y[0] and x[1] == y[1]
 
 
+def has_tile_change(steps, nebula_tile_drift_speed):
+  return ((steps - 1) * abs(nebula_tile_drift_speed) %
+          1) > (steps * abs(nebula_tile_drift_speed) % 1)
+
+
+def shift_map(mp, n):
+  mp = np.roll(mp, shift=-n, axis=0)  # Shift Up
+  mp = np.roll(mp, shift=n, axis=1)  # Shift right
+  return mp
+
+
+class NebulaDriftEstimator:
+
+  VALID_VALUES = [-0.15, -0.1, -0.05, -0.025, 0.025, 0.05, 0.1, 0.15]
+
+  def __init__(self):
+    self.counter = Counter()
+
+  def is_map_matched(self, m1, m2):
+    comm_mask = (m1 != CELL_UNKONWN) & (m2 != CELL_UNKONWN)
+    if comm_mask.size == 0:
+      return False, 0
+
+    matched_cells = m1[comm_mask] == m2[comm_mask]
+    return matched_cells.all(), matched_cells.sum()
+
+  def update(self, step_map, last_cells, game_step):
+    MIN_MATCH_CELLS = 10
+    matched, n = self.is_map_matched(step_map, last_cells)
+
+    print(f'step={game_step}, matched={matched} n={n}', file=sys.stderr)
+    if n < MIN_MATCH_CELLS:
+      return None
+
+    if matched:
+      if n > 20:
+        for v in self.VALID_VALUES:
+          if has_tile_change(game_step, v):
+            self.counter[v] -= 1
+            # print(f'step={game_step}, ------ {v}', file=sys.stderr)
+      return False
+
+    # map changed
+    for v in self.VALID_VALUES:
+      if not has_tile_change(game_step, v):
+        # self.counter[v] -= 1
+        continue
+
+      sign = -(1 if v > 0 else -1)  # the cell is transposed from numpy
+      m1 = shift_map(last_cells, sign)
+      m2 = step_map
+
+      matched, n = self.is_map_matched(m1, m2)
+      if n < MIN_MATCH_CELLS:
+        continue
+
+      if matched:
+        self.counter[v] += 1
+      else:
+        self.counter[v] -= 1
+    return True
+
+  def best_guess(self):
+    if len(self.counter) <= 0:
+      return None
+    return self.counter.most_common(1)[0][0]
+
+
 class UnitSapDropoffFactorEstimator:
 
   VALID_VALUES = [0.25, 0.5, 1]
@@ -341,7 +409,7 @@ class MapManager:
     self.env_cfg = env_cfg
     self.transpose = transpose
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
-    self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
+    self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), bool)
     self.match_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.last_observed_step = np.ones(
         (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -100
@@ -399,6 +467,7 @@ class MapManager:
     self.match_wins = 0
 
     self.sap_dropoff_factor_estimator = UnitSapDropoffFactorEstimator(self)
+    self.nebula_drift_estimator = NebulaDriftEstimator()
 
   def add_sap_locations(self, sap_locations):
     self.sap_dropoff_factor_estimator.estimate(sap_locations)
@@ -434,6 +503,19 @@ class MapManager:
   def update_cell_type(self, ob):
     # adding 1 to start cell type from 0
     cells = ob['map_features']['tile_type'] + 1
+    if len(self.past_obs):
+      last_cells = self.past_obs[0]['map_features']['tile_type'] + 1
+      change_step = ob['steps'] - 1
+      drifted = self.nebula_drift_estimator.update(cells, last_cells,
+                                                   change_step)
+      if drifted is not None and drifted:
+        v = self.nebula_drift_estimator.best_guess()
+        print(
+            f'step={self.game_step}, nebula drift = {v}, {self.nebula_drift_estimator.counter}',
+            file=sys.stderr)
+        if v is not None:
+          sign = (1 if v > 0 else -1)
+          self.cell_type = shift_map(self.cell_type, sign)
 
     # Update map cell type
     c = cells > CELL_UNKONWN
