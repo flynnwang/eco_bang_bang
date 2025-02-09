@@ -7,7 +7,7 @@ import functools
 import numpy as np
 import torch
 import scipy.optimize
-from scipy.ndimage import minimum_filter
+from scipy.ndimage import minimum_filter, maximum_filter
 
 # hello
 
@@ -169,12 +169,22 @@ class Agent:
 
     return hit_map
 
+  def gen_fire_zone(self):
+    """Fire zone is the positive energy cells that could either attack enemy
+    relic position or protect my reilc points."""
+    mm = self.mm
+    team_point_mask = (mm.team_point_mass > 0.8)
+    fire_zone = maximum_filter(team_point_mask, mm.unit_sap_range * 2 + 1)
+    return fire_zone
+
   def compute_unit_to_cell(self):
     mm = self.mm
     is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + mm.match_step
+
+    # TODO: test drop it
     if mm.match_step >= 70:
       energy_threshold = 60
 
@@ -202,9 +212,14 @@ class Agent:
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
           file=sys.stderr)
 
+    fire_zone = self.gen_fire_zone()
+
     def get_fuel_energy(upos, energy, cpos):
       fuel = energy_map[cpos[0]][cpos[1]]
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
+
+      if fuel > 0 and fire_zone[cpos[0]][cpos[1]]:
+        fuel *= 2
       return fuel
 
     def get_open_relic_nb(upos, energy, cpos):
