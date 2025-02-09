@@ -4,6 +4,12 @@ import copy
 import random
 import sys
 
+import chex
+import jax
+import jax.numpy as jnp
+from jax import lax
+from flax import struct
+
 import numpy as np
 from scipy.ndimage import maximum_filter, minimum_filter
 
@@ -71,7 +77,7 @@ def pos_equal(x, y):
   return x[0] == y[0] and x[1] == y[1]
 
 
-def has_tile_change(steps, nebula_tile_drift_speed):
+def is_drifted_step(steps, nebula_tile_drift_speed):
   return ((steps - 1) * abs(nebula_tile_drift_speed) %
           1) > (steps * abs(nebula_tile_drift_speed) % 1)
 
@@ -82,12 +88,142 @@ def shift_map(mp, n):
   return mp
 
 
+def shift_map_by_sign(mp, drift_speed):
+  sign = -(1 if drift_speed > 0 else -1)  # the cell is transposed from numpy
+  return shift_map(mp, sign)
+
+
+ENERGY_NODE_FNS = [
+    lambda d, x, y, z: jnp.sin(d * x + y) * z, lambda d, x, y, z:
+    (x / (d + 1) + y) * z
+]
+
+energy_node_fns = jnp.array([
+    [0, 1.2, 1, 4],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    # [1, 4, 0, 2],
+    [0, 1.2, 1, 4],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    # [1, 4, 0, 0]
+])
+
+
+@struct.dataclass
+class EnvState2:
+  energy_nodes: chex.Array
+  energy_node_fns: chex.Array
+  energy_nodes_mask: chex.Array
+
+
+def compute_energy_features(state: EnvState2):
+  # first compute a array of shape (map_height, map_width, num_energy_nodes) with values equal to the distance of the tile to the energy node
+  mm = jnp.meshgrid(jnp.arange(MAP_WIDTH), jnp.arange(MAP_HEIGHT))
+  mm = jnp.stack([mm[0], mm[1]]).T.astype(jnp.int16)  # mm[x, y] gives [x, y]
+  distances_to_nodes = jax.vmap(
+      lambda pos: jnp.linalg.norm(mm - pos, axis=-1))(state.energy_nodes)
+
+  def compute_energy_field(node_fn_spec, distances_to_node, mask):
+    fn_i, x, y, z = node_fn_spec
+    return jnp.where(
+        mask,
+        lax.switch(fn_i.astype(jnp.int16), ENERGY_NODE_FNS, distances_to_node,
+                   x, y, z),
+        jnp.zeros_like(distances_to_node),
+    )
+
+  energy_field = jax.vmap(compute_energy_field)(state.energy_node_fns,
+                                                distances_to_nodes,
+                                                state.energy_nodes_mask)
+  # print(energy_field)
+  energy_field = jnp.where(
+      energy_field.mean() < 0.25,
+      energy_field + (0.25 - energy_field.mean()),
+      energy_field,
+  )
+  energy_field = jnp.round(energy_field.sum(0)).astype(jnp.int16)
+  energy_field = jnp.clip(energy_field, MIN_ENERGY_PER_TILE,
+                          MAX_ENERGY_PER_TILE)
+  return energy_field
+
+
+class EnergyNodeEstimator:
+
+  ENERGY_NODE_DRIFT_SPEED_VALUSE = [0.01, 0.02, 0.03, 0.04, 0.05]
+
+  def __init__(self):
+    self.counter = Counter()
+    self.energy_node_changed = True
+    self.current_energy_field = None
+
+  @property
+  def energy_node_found(self):
+    return not self.energy_node_changed
+
+  def find_energy_node(self, step_energy_field, step_visible):
+    filtered_energy_field = step_energy_field[step_visible]
+    if filtered_energy_field.size < 10:
+      return False, None
+
+    energy_nodes_mask_ = jnp.zeros(shape=(MAX_ENERGY_NODES), dtype=jnp.bool)
+    energy_nodes_mask_ = jnp.array([True, False, False, True, False, False],
+                                   dtype=jnp.bool)
+
+    matched_node_num = 0
+    matched_nodes = []
+
+    positions = np.argwhere(
+        generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0), MAP_WIDTH))
+    for pos in positions:
+      pos2 = anti_diag_sym_i(pos)
+      energy_nodes = jnp.array([pos, [0, 0], [0, 0], pos2, [0, 0], [0, 0]],
+                               dtype=jnp.int16)
+
+      env_state = EnvState2(energy_node_fns=energy_node_fns,
+                            energy_nodes_mask=energy_nodes_mask_,
+                            energy_nodes=energy_nodes)
+
+      test_energy_field = compute_energy_features(env_state)
+      test_energy_field2 = test_energy_field[step_visible]
+      if (test_energy_field2 == filtered_energy_field).all():
+        matched_node_num += 1
+        matched_nodes.append((pos, test_energy_field))
+        print(f"--> found energy node at {pos}", file=sys.stderr)
+        break
+
+    if len(matched_nodes) == 1:
+      self.energy_node = matched_nodes[0][0]
+      return True, matched_nodes[0][-1]
+    return False, None
+
+  def update(self, step_energy_field, step_visible, last_energy_field,
+             last_visible, game_step):
+    comm_visible = (step_visible & last_visible)
+    if comm_visible.sum() > 0:
+      if (step_energy_field[comm_visible]
+          != last_energy_field[comm_visible]).any():
+        self.energy_node_changed = True
+        print(f"energy field changed at step = {game_step}", file=sys.stderr)
+
+    step_visible_num = step_visible.sum()
+    if step_visible_num >= 10 and self.energy_node_changed:
+      found, energy_field = self.find_energy_node(step_energy_field,
+                                                  step_visible)
+      if found:
+        self.energy_node_changed = False
+        self.current_energy_field = energy_field
+
+
 class NebulaDriftEstimator:
 
   VALID_VALUES = [-0.15, -0.1, -0.05, -0.025, 0.025, 0.05, 0.1, 0.15]
 
   def __init__(self):
     self.counter = Counter()
+    for v in self.VALID_VALUES:
+      self.counter[v] = 1
+    self.drift_speed = None
 
   def is_map_matched(self, m1, m2):
     comm_mask = (m1 != CELL_UNKONWN) & (m2 != CELL_UNKONWN)
@@ -98,45 +234,34 @@ class NebulaDriftEstimator:
     return matched_cells.all(), matched_cells.sum()
 
   def update(self, step_map, last_cells, game_step):
-    MIN_MATCH_CELLS = 10
     matched, n = self.is_map_matched(step_map, last_cells)
+    drifted = not matched
+    print(f'step={game_step}, drifted={drifted} n={n}', file=sys.stderr)
+    if not drifted:
+      return
 
-    print(f'step={game_step}, matched={matched} n={n}', file=sys.stderr)
-    if n < MIN_MATCH_CELLS:
-      return None
-
-    if matched:
-      if n > 20:
-        for v in self.VALID_VALUES:
-          if has_tile_change(game_step, v):
-            self.counter[v] -= 1
-            # print(f'step={game_step}, ------ {v}', file=sys.stderr)
-      return False
-
-    # map changed
+    # map tile drifted
     for v in self.VALID_VALUES:
-      if not has_tile_change(game_step, v):
-        # self.counter[v] -= 1
+      if not is_drifted_step(game_step, v):
+        self.counter[v] -= 100
         continue
 
-      sign = -(1 if v > 0 else -1)  # the cell is transposed from numpy
-      m1 = shift_map(last_cells, sign)
+      m1 = shift_map_by_sign(last_cells, v)
       m2 = step_map
 
       matched, n = self.is_map_matched(m1, m2)
-      if n < MIN_MATCH_CELLS:
-        continue
-
       if matched:
         self.counter[v] += 1
       else:
         self.counter[v] -= 1
-    return True
 
-  def best_guess(self):
-    if len(self.counter) <= 0:
-      return None
-    return self.counter.most_common(1)[0][0]
+    valid_num = 0
+    for v in self.VALID_VALUES:
+      if self.counter[v] > 0:
+        valid_num += 1
+
+    if valid_num == 1:
+      self.drift_speed = self.counter.most_common(1)[0][0]
 
 
 class UnitSapDropoffFactorEstimator:
@@ -468,6 +593,9 @@ class MapManager:
 
     self.sap_dropoff_factor_estimator = UnitSapDropoffFactorEstimator(self)
     self.nebula_drift_estimator = NebulaDriftEstimator()
+    self.energy_node_estimator = EnergyNodeEstimator()
+
+    self.has_reset_cell_type = False
 
   def add_sap_locations(self, sap_locations):
     self.sap_dropoff_factor_estimator.estimate(sap_locations)
@@ -501,21 +629,25 @@ class MapManager:
     return self.env_cfg['unit_sap_range']
 
   def update_cell_type(self, ob):
+    # TODO: may not needed
+    # if (not self.has_reset_cell_type and ob['steps'] > 82
+    # and self.nebula_drift_estimator.drift_speed is not None):
+    # # clear map cell to clear accumuated cell type error
+    # self.cell_type[:, :] = 0
+
     # adding 1 to start cell type from 0
     cells = ob['map_features']['tile_type'] + 1
-    if len(self.past_obs):
+    change_step = ob['steps'] - 1
+    if len(self.past_obs) and self.game_step < MAX_MATCH_STEPS:
       last_cells = self.past_obs[0]['map_features']['tile_type'] + 1
-      change_step = ob['steps'] - 1
-      drifted = self.nebula_drift_estimator.update(cells, last_cells,
-                                                   change_step)
-      if drifted is not None and drifted:
-        v = self.nebula_drift_estimator.best_guess()
-        print(
-            f'step={self.game_step}, nebula drift = {v}, {self.nebula_drift_estimator.counter}',
-            file=sys.stderr)
-        if v is not None:
-          sign = (1 if v > 0 else -1)
-          self.cell_type = shift_map(self.cell_type, sign)
+      self.nebula_drift_estimator.update(cells, last_cells, change_step)
+
+    drift_speed = self.nebula_drift_estimator.drift_speed
+    if drift_speed is not None and is_drifted_step(change_step, drift_speed):
+      print(
+          f'step={self.game_step}, apply nebula drift = {drift_speed}, {self.nebula_drift_estimator.counter}',
+          file=sys.stderr)
+      self.cell_type = shift_map_by_sign(self.cell_type, drift_speed)
 
     # Update map cell type
     c = cells > CELL_UNKONWN
@@ -913,13 +1045,27 @@ class MapManager:
 
   def update_cell_energy(self, ob):
     energy = ob['map_features']['energy']
-    is_visible = (self.visible > 0)
+    is_visible = self.visible
     self.cell_energy[is_visible] = energy[is_visible]
+
+    change_step = ob['steps'] - 1
+    if len(self.past_obs) > 0:
+      last_energy = self.past_obs[0]['map_features']['energy']
+      last_visible = self.past_obs[0]['sensor_mask'].astype(bool)
+      self.energy_node_estimator.update(energy, is_visible, last_energy,
+                                        last_visible, change_step)
 
     if self.enable_anti_sym:
       energy_tr = anti_diag_sym(energy)
       is_visible_tr = anti_diag_sym(is_visible)
       self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
+
+    if self.energy_node_estimator.energy_node_found:
+      self.cell_energy = np.asarray(
+          self.energy_node_estimator.current_energy_field).copy()
+      print(
+          f"--> using energy node at {self.energy_node_estimator.energy_node}",
+          file=sys.stderr)
 
   @lru_cache(maxsize=None)
   def get_player_half_mask(self, player_id):

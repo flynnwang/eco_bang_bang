@@ -353,6 +353,10 @@ class LuxS3Env(gym.Env):
 
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
+
+    print(
+        f"step={raw_obs[PLAYER0]['steps']} final_state.energy_nodes={final_state.energy_nodes}, final_state.energy_nodes_mask={final_state.energy_nodes_mask}"
+    )
     self._update_mms(raw_obs,
                      model_actions=model_action,
                      env_state=final_state)
