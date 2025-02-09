@@ -154,65 +154,120 @@ class EnergyNodeEstimator:
 
   def __init__(self):
     self.counter = Counter()
-    self.energy_node_changed = True
+    self.energy_node = None
+    self.energy_node_found = False
     self.current_energy_field = None
 
-  @property
-  def energy_node_found(self):
-    return not self.energy_node_changed
-
-  def find_energy_node(self, step_energy_field, step_visible):
-    filtered_energy_field = step_energy_field[step_visible]
-    if filtered_energy_field.size < 10:
-      return False, None
-
-    energy_nodes_mask_ = jnp.zeros(shape=(MAX_ENERGY_NODES), dtype=jnp.bool)
-    energy_nodes_mask_ = jnp.array([True, False, False, True, False, False],
-                                   dtype=jnp.bool)
-
-    matched_node_num = 0
-    matched_nodes = []
-
     positions = np.argwhere(
-        generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0), MAP_WIDTH))
-    for pos in positions:
+        generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0),
+                                MAP_WIDTH - 1))
+    self.candidate_energy_posotions = [v for v in positions] + [None]
+
+  def is_energy_filed_match(self, pos, filtered_energy_field, step_visible):
+    if pos is not None:
+      energy_nodes_mask_ = jnp.array([True, False, False, True, False, False],
+                                     dtype=jnp.bool)
       pos2 = anti_diag_sym_i(pos)
       energy_nodes = jnp.array([pos, [0, 0], [0, 0], pos2, [0, 0], [0, 0]],
                                dtype=jnp.int16)
+    else:
+      # Case of no energy field
+      energy_nodes_mask_ = jnp.array(
+          [False, False, False, False, False, False], dtype=jnp.bool)
+      energy_nodes = jnp.array(
+          [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], dtype=jnp.int16)
 
-      env_state = EnvState2(energy_node_fns=energy_node_fns,
-                            energy_nodes_mask=energy_nodes_mask_,
-                            energy_nodes=energy_nodes)
+    env_state = EnvState2(energy_node_fns=energy_node_fns,
+                          energy_nodes_mask=energy_nodes_mask_,
+                          energy_nodes=energy_nodes)
 
-      test_energy_field = compute_energy_features(env_state)
-      test_energy_field2 = test_energy_field[step_visible]
-      if (test_energy_field2 == filtered_energy_field).all():
-        matched_node_num += 1
-        matched_nodes.append((pos, test_energy_field))
-        print(f"--> found energy node at {pos}", file=sys.stderr)
-        break
+    test_energy_field = compute_energy_features(env_state)
+    test_energy_field2 = test_energy_field[step_visible]
+    matched = (test_energy_field2 == filtered_energy_field).all()
+    return matched, test_energy_field
+
+  def find_energy_node(self, step_energy_field, step_visible):
+    filtered_energy_field = step_energy_field[step_visible]
+    if filtered_energy_field.size <= 0:
+      return False, None
+
+    # print(
+    # f" filtered_energy_field={filtered_energy_field}, {np.argwhere(step_visible)}",
+    # file=sys.stderr)
+
+    matched_nodes = []
+    for pos in self.candidate_energy_posotions:
+      matched, field = self.is_energy_filed_match(pos, filtered_energy_field,
+                                                  step_visible)
+      # print(
+      # f" check energy node at {pos}, match={matched}, field={field[step_visible]}",
+      # file=sys.stderr)
+      if matched:
+        matched_nodes.append((pos, field))
+        print(f"***** --> found energy node at {pos}", file=sys.stderr)
+
+    # Update the candidates: TODO: generate energy field generation only once
+    self.candidate_energy_posotions = [x[0] for x in matched_nodes]
 
     if len(matched_nodes) == 1:
       self.energy_node = matched_nodes[0][0]
-      return True, matched_nodes[0][-1]
-    return False, None
+      self.current_energy_field = np.asarray(matched_nodes[0][1]).copy()
+      self.energy_node_found = True
 
-  def update(self, step_energy_field, step_visible, last_energy_field,
-             last_visible, game_step):
+  def update_energy(self, step_energy_field, step_visible, last_energy_field,
+                    last_visible, game_step):
+    # print(
+    # f"step={game_step} (before update), energy field found={self.energy_node_found}, node={self.energy_node}, candidates={self.candidate_energy_posotions}",
+    # file=sys.stderr)
+
     comm_visible = (step_visible & last_visible)
     if comm_visible.sum() > 0:
       if (step_energy_field[comm_visible]
           != last_energy_field[comm_visible]).any():
-        self.energy_node_changed = True
+
+        # in case has found the energy field before, track the position
+        if self.energy_node_found:
+          if self.energy_node is not None:
+            mp = np.zeros(MAP_SHAPE2, dtype=bool)
+            # print(f"self.energy_node={self.energy_node}, mp.shape={mp.shape}",
+            # file=sys.stderr)
+
+            mp[self.energy_node[0]][self.energy_node[1]] = True
+            mp = maximum_filter(mp,
+                                size=MAX_ENERGY_NODE_DRIFT_MAGNITUDE * 2 + 1)
+            mp[self.energy_node[0]][self.energy_node[1]] = False
+
+            upper = generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0),
+                                            MAP_WIDTH - 1)
+            mp[~upper] = False
+
+            self.candidate_energy_posotions = np.argwhere(mp)
+            # print(
+            # f"----------small reset energy node positions: {self.candidate_energy_posotions}",
+            # file=sys.stderr)
+            print(f"----------small reset energy node positions",
+                  file=sys.stderr)
+          # empty energy node will not change
+        else:
+          if len(self.candidate_energy_posotions) == 0:
+            # reset search range
+            positions = np.argwhere(
+                generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0),
+                                        MAP_WIDTH - 1))
+            self.candidate_energy_posotions = [v for v in positions] + [None]
+            print(f"************Reset energy node positions", file=sys.stderr)
+          # else: there is still candidates, search them first
+
+        self.energy_node_found = False
         print(f"energy field changed at step = {game_step}", file=sys.stderr)
 
     step_visible_num = step_visible.sum()
-    if step_visible_num >= 10 and self.energy_node_changed:
-      found, energy_field = self.find_energy_node(step_energy_field,
-                                                  step_visible)
-      if found:
-        self.energy_node_changed = False
-        self.current_energy_field = energy_field
+    if step_visible_num > 0 and not self.energy_node_found:
+      self.find_energy_node(step_energy_field, step_visible)
+
+    print(
+        f"step={game_step} (after update), energy field found={self.energy_node_found}, node={self.energy_node}, candidates={self.candidate_energy_posotions}",
+        file=sys.stderr)
 
 
 class NebulaDriftEstimator:
@@ -236,7 +291,7 @@ class NebulaDriftEstimator:
   def update(self, step_map, last_cells, game_step):
     matched, n = self.is_map_matched(step_map, last_cells)
     drifted = not matched
-    print(f'step={game_step}, drifted={drifted} n={n}', file=sys.stderr)
+    # print(f'step={game_step}, nebula drifted={drifted} n={n}', file=sys.stderr)
     if not drifted:
       return
 
@@ -1045,32 +1100,35 @@ class MapManager:
 
   def update_cell_energy(self, ob):
     energy = ob['map_features']['energy']
-    is_visible = self.visible
-    self.cell_energy[is_visible] = energy[is_visible]
+    sensor_mask = ob['sensor_mask']
 
     change_step = ob['steps'] - 1
     if len(self.past_obs) > 0:
       last_energy = self.past_obs[0]['map_features']['energy']
-      last_visible = self.past_obs[0]['sensor_mask'].astype(bool)
-      self.energy_node_estimator.update(energy, is_visible, last_energy,
-                                        last_visible, change_step)
-
-    if self.enable_anti_sym:
-      energy_tr = anti_diag_sym(energy)
-      is_visible_tr = anti_diag_sym(is_visible)
-      self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
+      last_visible = self.past_obs[0]['sensor_mask']
+      self.energy_node_estimator.update_energy(energy, sensor_mask,
+                                               last_energy, last_visible,
+                                               change_step)
 
     if self.energy_node_estimator.energy_node_found:
-      self.cell_energy = np.asarray(
-          self.energy_node_estimator.current_energy_field).copy()
+      self.cell_energy = self.energy_node_estimator.current_energy_field
       print(
           f"--> using energy node at {self.energy_node_estimator.energy_node}",
           file=sys.stderr)
+    else:
+      # In case energy node is not found, fallback to update energy field map
+      self.cell_energy[sensor_mask] = energy[sensor_mask]
+      if self.enable_anti_sym:
+        energy_tr = anti_diag_sym(energy)
+        is_visible_tr = anti_diag_sym(sensor_mask)
+        self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
   @lru_cache(maxsize=None)
   def get_player_half_mask(self, player_id):
     init_pos = get_player_init_pos(player_id)
-    return generate_manhattan_mask(MAP_SHAPE2, init_pos, range_limit=MAP_WIDTH)
+    return generate_manhattan_mask(MAP_SHAPE2,
+                                   init_pos,
+                                   range_limit=MAP_WIDTH - 1)
 
   def update_hidden_relic_estimator(self, ob):
     relic_nodes_mask = ob['relic_nodes_mask']
