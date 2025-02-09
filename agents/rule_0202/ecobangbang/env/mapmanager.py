@@ -221,6 +221,9 @@ class EnergyNodeEstimator:
     # file=sys.stderr)
 
     comm_visible = (step_visible & last_visible)
+    print(
+        f"[debug][step={game_step+1}] comm_visible.sum() = {comm_visible.sum()}",
+        file=sys.stderr)
     if comm_visible.sum() > 0:
       if (step_energy_field[comm_visible]
           != last_energy_field[comm_visible]).any():
@@ -943,7 +946,7 @@ class MapManager:
     # Match restarted and reset some of the unit states
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
-      self.past_obs.clear()
+      # self.past_obs.clear()
       self.total_units_dead_count = 0
       self.total_units_frozen_count = 0
       self.match_visited[:, :] = 0
@@ -1051,6 +1054,9 @@ class MapManager:
       position = (0, 0) if self.player_id == 0 else (MAP_WIDTH - 1,
                                                      MAP_HEIGHT - 1)
 
+    # do not use previous step info for match reset
+    if t > 0 and self.match_step < ob['match_steps']:
+      mask = False
     return mask, position, energy
 
   def get_game_visited_relic_nb_num(self):
