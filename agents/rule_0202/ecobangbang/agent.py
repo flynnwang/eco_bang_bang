@@ -222,12 +222,13 @@ class Agent:
     d1 /= MAP_WIDTH
 
     def get_fuel_energy(upos, energy, cpos):
-      fuel = energy_map[cpos[0]][cpos[1]]
-
-      if fuel > 0 and fire_zone[cpos[0]][cpos[1]]:
-        fuel += (fuel * d1[cpos[0]][cpos[1]])
-
+      e = fuel = energy_map[cpos[0]][cpos[1]]
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
+
+      # Boost more net energy position without energy thresholding
+      if e > 0 and fire_zone[cpos[0]][cpos[1]]:
+        fuel += (e * 2 * d1[cpos[0]][cpos[1]])
+
       return fuel
 
     def get_open_relic_nb(upos, energy, cpos):
