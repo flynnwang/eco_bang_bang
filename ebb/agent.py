@@ -22,6 +22,7 @@ from .env.mapmanager import (
     is_pos_on_map,
     pos_equal,
     generate_manhattan_mask,
+    generate_manhattan_dist,
 )
 
 # SUBMIT_AGENT = False
@@ -214,12 +215,19 @@ class Agent:
 
     fire_zone = self.gen_fire_zone()
 
+    player_init_pos = get_player_init_pos(mm.player_id)
+    d1 = generate_manhattan_dist(MAP_SHAPE2,
+                                 player_init_pos).astype(np.float32)
+    d1[d1 > MAP_WIDTH] = MAP_WIDTH
+    d1 /= MAP_WIDTH
+
     def get_fuel_energy(upos, energy, cpos):
       fuel = energy_map[cpos[0]][cpos[1]]
-      fuel = right_tailed_exp(energy, fuel, energy_threshold)
 
       if fuel > 0 and fire_zone[cpos[0]][cpos[1]]:
-        fuel *= 2
+        fuel += (fuel * d1[cpos[0]][cpos[1]])
+
+      fuel = right_tailed_exp(energy, fuel, energy_threshold)
       return fuel
 
     def get_open_relic_nb(upos, energy, cpos):

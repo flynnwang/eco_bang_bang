@@ -31,11 +31,16 @@ def get_player_init_pos(player_id):
   return target_pos
 
 
-def generate_manhattan_mask(shape, center, range_limit):
+def generate_manhattan_dist(shape, center):
   rows, cols = shape
   x_center, y_center = center
   x, y = np.ogrid[:rows, :cols]
   manhattan_distance = np.abs(x - x_center) + np.abs(y - y_center)
+  return manhattan_distance
+
+
+def generate_manhattan_mask(shape, center, range_limit):
+  manhattan_distance = generate_manhattan_dist(shape, center)
   mask = manhattan_distance <= range_limit
   return mask
 
