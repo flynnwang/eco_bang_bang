@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_imitation_0217
+group: luxs3_imitation_0208
 
 ## ENV params
 obs_space_kwargs:
@@ -39,6 +39,7 @@ reward_shaping_params:
 ## TRAINING params
 total_steps: 2e8
 num_actors: 28
+#num_actors: 2
 n_actor_envs: 8
 
 unroll_length: 16
@@ -76,7 +77,6 @@ optimizer_kwargs:
   weight_decay: 1e-4
   #weight_decay: 1e-5
   #weight_decay: 1e-6
-  #weight_decay: 1e-7
   #alpha: 0.9
 min_lr_mod: 0.01
 

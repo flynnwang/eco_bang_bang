@@ -478,6 +478,7 @@ class BasicActorCriticNetwork(nn.Module):
     self.dict_input_layer = DictInputLayer()
     self.actor_base_model = actor_base_model
     self.critic_base_model = critic_base_model
+    print(f"self.critic_base_model = {self.critic_base_model}")
     self.hidden_dim = hidden_dim
     self.base_out_channels = base_out_channels
 
@@ -566,10 +567,7 @@ class BasicActorCriticNetwork(nn.Module):
     return nn.Sequential(*layers)
 
 
-def create_model(flags,
-                 observation_space,
-                 device: torch.device,
-                 reset=None) -> nn.Module:
+def create_model(flags, observation_space, device: torch.device) -> nn.Module:
   reward_spec = None
   if flags.reward_schema == 'shaping':
     reward_spec = RewardSpec(
@@ -636,6 +634,7 @@ def _create_model(observation_space,
                                                 kernel_size=kernel_size)
                                   for _ in range(n_blocks)
                               ])
+  print(f'>>>>>>>>>>>>> use_separate_base={use_separate_base}')
   if use_separate_base:
     critic_base_model = nn.Sequential(
         ConvEmbeddingInputLayer(observation_space,
@@ -649,7 +648,6 @@ def _create_model(observation_space,
                                                   kernel_size=kernel_size)
                                     for _ in range(n_blocks)
                                 ])
-
   else:
     critic_base_model = None
   model = BasicActorCriticNetwork(actor_base_model, critic_base_model,

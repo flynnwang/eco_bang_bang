@@ -45,6 +45,8 @@ def get_default_flags(flags: DictConfig) -> DictConfig:
   flags.setdefault("teacher_baseline_cost",
                    flags.get("teacher_kl_cost", 0.) / 2.)
 
+  flags.setdefault("use_shared_base", True)
+
   # Model params
   flags.setdefault("use_index_select", True)
   if flags.get("use_index_select"):

@@ -398,6 +398,9 @@ class LuxS3Env(gym.Env):
     # f"step={raw_obs[PLAYER0]['steps']} final_state.energy_nodes={final_state.energy_nodes}, final_state.energy_nodes_mask={final_state.energy_nodes_mask}"
     # )
 
+    # print(
+    # f"step={raw_obs[PLAYER0]['steps']} final_state.energy_nodes={final_state.energy_nodes}, final_state.energy_nodes_mask={final_state.energy_nodes_mask}"
+    # )
     self._update_mms(raw_obs,
                      model_actions=model_action,
                      env_state=final_state)
@@ -833,26 +836,21 @@ class LuxS3Env(gym.Env):
   def _convert_win_loss_reward2(self, raw_obs, env_state):
 
     def _convert(mm, ob):
-      if mm.match_step == MAX_MATCH_STEPS:
-        team_points = raw_obs[mm.player]['team_points'][mm.player_id]
-        enemy_points = raw_obs[mm.player]['team_points'][mm.enemy_id]
-        if team_points > enemy_points:
-          mm.match_wins += 1
-        elif team_points < enemy_points:
-          mm.match_wins -= 1
-        # print(f'team_points={team_points} enemy_points={enemy_points}')
+      team_wins = raw_obs[mm.player]['team_wins'][mm.player_id]
+      enemy_wins = raw_obs[mm.player]['team_wins'][mm.enemy_id]
+      # print(f'team_points={team_points} enemy_points={enemy_points}')
 
       # game end reward
       r_game = 0
       if self.is_game_done(raw_obs, mm.player):
-        if mm.match_wins > 0:
+        if team_wins > enemy_wins:
           r_game = 1
-        elif mm.match_wins < 0:
+        else:
           r_game = -1
 
-      # print(
-      # f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}, match_wins={mm.match_wins}'
-      # )
+        print(
+            f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}, team_wins={team_wins}, enemy_wins={enemy_wins}'
+        )
       return r_game
 
     return [

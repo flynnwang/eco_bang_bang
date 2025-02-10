@@ -267,7 +267,6 @@ class EnergyNodeEstimator:
             # print(
             # f"----------small reset energy node positions: {self.candidate_energy_posotions}",
             # file=sys.stderr)
-
             if step_visible_num > 0 and not self.energy_node_found:
               self.find_energy_node(step_energy_field, step_visible)
             # print(
@@ -450,9 +449,9 @@ class UnitSapDropoffFactorEstimator:
         if energy_delta >= 20:
           self.unit_energy_lost[p0[0]][p0[1]] += energy_delta
           self.unit_energy_lost_step[p0[0]][p0[1]] = self.mm.game_step
-          print(
-              f" >>> step={self.mm.game_step}, unid_id={i}, {p1}=>{p0}, e={e1}=>{e0} ce={cell_energy}, ne={nebula_energy}, mc={move_cost} sap={sap_cost} energy_delta={energy_delta} ",
-              file=sys.stderr)
+          # print(
+          # f" >>> step={self.mm.game_step}, unid_id={i}, {p1}=>{p0}, e={e1}=>{e0} ce={cell_energy}, ne={nebula_energy}, mc={move_cost} sap={sap_cost} energy_delta={energy_delta} ",
+          # file=sys.stderr)
 
 
 class Observation:

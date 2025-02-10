@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250201_baseline_split_with_match_win_loss_r0
+name: run_20250213_game_win_loss_b16_r0
 
 ## WANDB params
 # The wandb project name
@@ -16,28 +16,31 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_baseline_split_0201
+group: luxs3_rl_exp_0211
 
 ## ENV params
 obs_space_kwargs:
   use_energy_cost_map: True
   use_single_player: False
+  use_agent: False
 
 
 reward_space_kwargs: {}
-#reward_schema: game_win_loss2
-reward_schema: match_explore_win_loss
+reward_schema: game_win_loss2
+use_separate_base: False
+
+#reward_schema: match_explore_win_loss
 #reward_schema: shaping_v2
 reward_shaping_params:
   use_hidden_relic_estimator: True
   energy_cost_change: 0
   match_observed: 0
-  match_win: 1
+  match_win: 0.2
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 12
-n_actor_envs: 16
+num_actors: 28
+n_actor_envs: 8
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`
@@ -47,7 +50,7 @@ discounting: 0.999
 
 ## MODEL params
 model_arch: conv_model
-n_blocks: 12
+n_blocks: 16
 hidden_dim: 128
 base_out_channels: 128
 embedding_dim: 32
@@ -66,19 +69,25 @@ optimizer_class: Adam
 optimizer_kwargs:
   #lr: 1e-5
   #lr: 5e-6
-  lr: 1e-6
+  lr: 1e-5
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
 min_lr_mod: 0.01
 
 ## LOSS params
-#entropy_cost: 3e-4
-#entropy_cost: 6e-4
-entropy_cost: 1e-3
+#entropy_cost: 1e-5
+entropy_cost: 2e-4
+#entropy_cost: 5e-4
+#entropy_cost: 1e-3
+#entropy_cost: 5e-3
 baseline_cost: 1.
-teacher_kl_cost: 0
+#teacher_kl_cost: 0
+teacher_kl_cost: 1e-2
+#teacher_kl_cost: 5e-3
 #teacher_kl_cost: 1e-3
+#teacher_kl_cost: 5e-4
+#teacher_kl_cost: 1e-4
 teacher_baseline_cost: 0.0
 # lambda parameter for TD-lambda and UPGO losses
 lmb: 0.8
@@ -87,9 +96,15 @@ reduction: sum
 
 
 # Pretrained model for KL loss
-use_teacher: False
-teacher_load_dir:
-teacher_checkpoint_file:
+use_teacher: True
+#teacher_load_dir:
+#teacher_checkpoint_file:
+teacher_load_dir: /home/flynnwang/runs/ebb/02-13/09-49-49
+teacher_checkpoint_file: 069918208_weights.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-10/12-25-05
+#teacher_checkpoint_file: 028339392.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-11/09-03-17
+#teacher_checkpoint_file: 024009920.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -111,12 +126,21 @@ debug: False
 #disable_wandb: True
 #debug: True
 
+
 load_dir:
 checkpoint_file:
-#load_dir: /home/flynnwang/runs/ebb/01-29/20-29-15
-#checkpoint_file: 006923264.pt
-#load_dir: /home/flynnwang/runs/ebb/01-22/10-00-47
-#checkpoint_file: 059385024.pt
+#load_dir: /home/flynnwang/runs/ebb/02-12/12-25-13
+#checkpoint_file: 030106368.pt
+#load_dir: /home/flynnwang/runs/ebb/02-11/22-10-09
+#checkpoint_file: 058145728.pt
+#load_dir: /home/flynnwang/runs/ebb/02-11/09-03-17
+#checkpoint_file: 029776512.pt
+#load_dir: /home/flynnwang/runs/ebb/02-10/22-03-19
+#checkpoint_file: 002186368.pt
+#load_dir: /home/flynnwang/runs/ebb/02-10/20-39-01
+#checkpoint_file: 001480192.pt
+#load_dir: /home/flynnwang/runs/ebb/02-10/12-25-05
+#checkpoint_file: 028339392.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
