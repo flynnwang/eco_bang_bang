@@ -17,7 +17,7 @@ from .env.luxenv import (
 )
 from .model import create_model
 
-SUBMIT_AGENT = False
+SUBMIT_AGENT = True
 
 MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
 
@@ -159,10 +159,10 @@ class Agent:
     self.md = self.load_model()
 
   def load_model(self):
-    flags = dict(n_blocks=12,
+    flags = dict(n_blocks=8,
                  hidden_dim=128,
                  base_out_channels=128,
-                 embedding_dim=32,
+                 embedding_dim=16,
                  kernel_size=5,
                  reward_schema="match_explore_win_loss")
     flags = Namespace(**flags)

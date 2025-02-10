@@ -17,7 +17,6 @@ from random import randint
 
 from .const import *
 from .mapmanager import *
-from ..agent import Agent
 
 # Let's use move action only first
 ACTION_SPACE = spaces.Dict({
@@ -219,6 +218,7 @@ class LuxS3Env(gym.Env):
 
     self.agents = [None, None]
     if self.use_agent:
+      from ..agent import Agent
       self.agents = [
           Agent(self.mms[0].player, env_cfg),
           Agent(self.mms[1].player, env_cfg),
@@ -860,6 +860,17 @@ class LuxS3Env(gym.Env):
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
         actions_mask[i][k] = 1
+
+      if self.game == 1:
+        team_point_prob = mm.team_point_mass[pos[0]][pos[1]]
+        if team_point_prob >= MIN_TP_VAL:
+
+          # Only one units can stay
+          if pos not in action_centered_positions:
+            actions_mask[i][ACTION_CENTER] = 1
+            action_centered_positions.add(pos)
+          else:
+            actions_mask[i][ACTION_CENTER] = 0
 
     sap_hit_map = mm.get_global_sap_hit_map()
 

@@ -18,11 +18,16 @@ cp -r ${AGENT_TEMPLATE} ${AGENT_NAME}
 
 cp ../ebb/env/const.py ${AGENT_NAME}/ecobangbang/env/
 cp ../ebb/env/luxenv.py ${AGENT_NAME}/ecobangbang/env/
+cp ../ebb/env/mapmanager.py ${AGENT_NAME}/ecobangbang/env/
 cp ../ebb/model.py ${AGENT_NAME}/ecobangbang/
 cp ${WEIGHTS_PATH} ${AGENT_NAME}/ecobangbang
 
 # Update weights file name
 WEIGHTS_NAME=$(basename "$WEIGHTS_PATH")
-sed -i "s/WEIGHTS_FILE_NAME/$WEIGHTS_NAME/g" "${AGENT_NAME}/ecobangbang/agent.py"
+if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' "s/WEIGHTS_FILE_NAME/$WEIGHTS_NAME/g" "${AGENT_NAME}/ecobangbang/agent.py"
+else
+    sed -i "s/WEIGHTS_FILE_NAME/$WEIGHTS_NAME/g" "${AGENT_NAME}/ecobangbang/agent.py"
+fi
 
 echo "OK! agent: ${AGENT_NAME} created with weights: ${WEIGHTS_NAME}"
