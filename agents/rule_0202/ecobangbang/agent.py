@@ -23,6 +23,7 @@ from .env.mapmanager import (
     pos_equal,
     generate_manhattan_mask,
     generate_manhattan_dist,
+    gen_sap_range,
 )
 
 # SUBMIT_AGENT = False
@@ -61,16 +62,6 @@ def can_attack(energy, mm, margin=3):
 def cant_move_to(upos, cpos, mm):
   return (mm.cell_type[cpos[0]][cpos[1]] == CELL_ASTERIOD
           and not pos_equal(cpos, upos))
-
-
-def gen_sap_range(pos, d, dtype=bool, val=True):
-  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
-  x0 = max(0, (pos[0] - d))
-  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
-  y0 = max(0, (pos[1] - d))
-  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
-  sap_range[x0:x1, y0:y1] = val
-  return sap_range
 
 
 def is_within_sap_range(upos, cpos, unit_sap_range):
@@ -135,9 +126,20 @@ class Agent:
     self.prev_model_action = None
     self.last_sap_locations = []
 
+  def get_enemy_sap_range(self):
+    # TODO: exclude the position enemy can not see
+    enemy_sap_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
+      if not mask or energy < self.mm.unit_sap_cost:
+        continue
+      sap_range = gen_sap_range(pos,
+                                self.mm.unit_sap_range + 1)  # add 1 for safety
+      enemy_sap_map[sap_range] = True
+    return enemy_sap_map
+
   def get_sap_hit_map(self, factor):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
-
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask:
@@ -237,6 +239,8 @@ class Agent:
 
       return fuel
 
+    enemy_sap_range = self.get_enemy_sap_range()
+
     def get_open_relic_nb(upos, energy, cpos):
       """First visit on relic neighbour"""
       if not mm.is_relic_neighbour[cpos[0]][cpos[1]]:
@@ -250,17 +254,20 @@ class Agent:
         return 0
 
       v = RELIC_NB_SCORE
-      # Do not goto enemy side if energy below threshold
+      # Lower relic nb on enemy side
       if on_enemy_side(cpos, mm.player_id):
         # v = mm.unit_sap_cost / 10 * p
         v = mm.unit_sap_cost / 10
+
+      # If enemy may sap it, lower its weight
+      if enemy_sap_range[cpos[0]][cpos[1]]:
+        v = mm.unit_sap_cost / 10 * 0.5
 
       last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
       t = mm.game_step - last_visited_step
       alpha = np.log(t + 1) / LOG3
       w = min(alpha, 1) * v
 
-      # has enemy nearby, dangerous, go away
       # cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
       # if (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0:
       # w = -1
@@ -287,6 +294,10 @@ class Agent:
       # Do not goto enemy side if energy below threshold
       if on_enemy_side(cpos, mm.player_id):
         v = mm.unit_sap_cost / 10
+
+      # If enemy may sap it, lower its weight
+      if not pos_equal(cpos, upos) and enemy_sap_range[cpos[0]][cpos[1]]:
+        v = mm.unit_sap_cost / 10 * 0.5
 
       w = 0
       if p > IS_RELIC_CELL_PROB:
@@ -361,7 +372,7 @@ class Agent:
 
       is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
       # has enemy nearby, dangerous, go away
-      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range)
+      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
       if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
           and (not is_relic_nb or on_enemy_side(cpos, mm.player_id))):
         wt -= self.mm.unit_sap_cost / 10
@@ -377,8 +388,8 @@ class Agent:
           'mdist': mdist,
       }
 
-      if USE_RANDOM:
-        wt += np.random.rand() / 1000
+      # if USE_RANDOM:
+      # wt += np.random.rand() / 1000
       return wt
 
     weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
