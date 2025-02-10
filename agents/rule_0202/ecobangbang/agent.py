@@ -139,16 +139,38 @@ class Agent:
     return enemy_sap_map
 
   def get_sap_hit_map(self, factor):
+
+    def predict_next_move(enemy_unit_id, pos0, unit_energy):
+      mask1, pos1, _ = self.mm.get_unit_info(self.mm.enemy_id,
+                                             enemy_unit_id,
+                                             t=1)
+      if not mask1 or pos_equal(pos0, pos1):
+        return pos0
+
+      # Assume units will stay on relic
+      if self.mm.team_point_mass[pos0[0]][pos0[1]] > IS_RELIC_CELL_PROB:
+        return pos0
+
+      # Move is the first thing in resolusion order
+      pos = pos0
+      if unit_energy >= self.mm.unit_move_cost:
+        dx = pos0[0] - pos1[0]
+        dy = pos0[1] - pos1[1]
+        pos = (pos0[0] + dx, pos0[1] + dy)
+
+      # print(
+      # f"$$$$$$$$$$$$$$ predict enemy move from pos[t-1]={pos1}, pos[t]={pos0} to pos[t+1]={pos}",
+      # file=sys.stderr)
+      return pos
+
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
-      if not mask:
+      if not mask or energy < 0:
         continue
 
-      if energy < 0:
-        # print(f'Enemy unit [{i}] at {pos} with energy={energy}',
-        # file=sys.stderr)
-        continue
+      if self.mm.unit_sap_dropoff_factor < 1:
+        pos = predict_next_move(i, pos, energy)
 
       if self.mm.enemy_positions[pos[0]][pos[1]]:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
