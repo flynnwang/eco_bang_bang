@@ -41,7 +41,7 @@ if not SUBMIT_AGENT:
 
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
-LOG3 = np.log(3)
+LOG3 = np.log(4)
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
@@ -108,6 +108,11 @@ def left_tailed_exp(energy, val, m, v=20):
 RELIC_SCORE = 30
 RELIC_NB_SCORE = 15
 
+MIN_OPEN_RELIC_NB_PROB = 0.01
+IS_RELIC_CELL_PROB = 0.8
+
+BOOST_SAP_ENERGY_THRESHOOD = 180
+
 
 class Agent:
 
@@ -145,7 +150,7 @@ class Agent:
 
       if self.mm.enemy_positions[pos[0]][pos[1]]:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
-        if p > 0.8:
+        if p > IS_RELIC_CELL_PROB:
           hit_map[pos[0]][pos[1]] += RELIC_SCORE
 
       for d in [1, 0]:
@@ -170,12 +175,13 @@ class Agent:
 
     return hit_map
 
-  def gen_fire_zone(self):
+  def gen_fire_zone(self, extend_dist=2):
     """Fire zone is the positive energy cells that could either attack enemy
     relic position or protect my reilc points."""
     mm = self.mm
-    team_point_mask = (mm.team_point_mass > 0.8)
-    fire_zone = maximum_filter(team_point_mask, mm.unit_sap_range * 2 + 1)
+    team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
+    fire_zone_range = mm.unit_sap_range * 2 + 1 + extend_dist
+    fire_zone = maximum_filter(team_point_mask, fire_zone_range)
     return fire_zone
 
   def compute_unit_to_cell(self):
@@ -218,7 +224,7 @@ class Agent:
     player_init_pos = get_player_init_pos(mm.player_id)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    d1[d1 > MAP_WIDTH] = MAP_WIDTH
+    # d1[d1 > MAP_WIDTH] = MAP_WIDTH
     d1 /= MAP_WIDTH
 
     def get_fuel_energy(upos, energy, cpos):
@@ -227,7 +233,7 @@ class Agent:
 
       # Boost more net energy position without energy thresholding
       if e > 0 and fire_zone[cpos[0]][cpos[1]]:
-        fuel += (e * 2 * d1[cpos[0]][cpos[1]])
+        fuel += (e * d1[cpos[0]][cpos[1]])
 
       return fuel
 
@@ -240,13 +246,14 @@ class Agent:
       # return RELIC_NB_SCORE
 
       p = mm.team_point_mass[cpos[0]][cpos[1]]
-      if p < 0.1:
+      if p < MIN_OPEN_RELIC_NB_PROB:
         return 0
 
       v = RELIC_NB_SCORE
       # Do not goto enemy side if energy below threshold
       if on_enemy_side(cpos, mm.player_id):
-        v = mm.unit_sap_cost / 10 * p
+        # v = mm.unit_sap_cost / 10 * p
+        v = mm.unit_sap_cost / 10
 
       last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
       t = mm.game_step - last_visited_step
@@ -263,12 +270,17 @@ class Agent:
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
-    blind_shot_targets = ((~mm.visible) & (mm.team_point_mass > 0.8)
+    blind_shot_targets = ((~mm.visible) &
+                          (mm.team_point_mass > IS_RELIC_CELL_PROB)
                           & enemy_half)
     # blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
+      # If the relic node is occupied by unit not this one, skip this relic node
+      if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
+        return 0
+
       v = RELIC_SCORE
       p = mm.team_point_mass[cpos[0]][cpos[1]]
 
@@ -277,7 +289,7 @@ class Agent:
         v = mm.unit_sap_cost / 10
 
       w = 0
-      if p > 0.8:
+      if p > IS_RELIC_CELL_PROB:
         w += v * p
 
       return w
@@ -303,8 +315,8 @@ class Agent:
       h = enemy_hit_map[sap_range].max()
       h /= hit_factor
 
-      # h = left_tailed_exp(energy, h, energy_threshold)
-      # h *= (energy / 200)
+      # Boost unit with extra energy for SAP
+      h *= min(energy / BOOST_SAP_ENERGY_THRESHOOD, 1)
 
       # sap if energy is large (and unit not on relic)
       # if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
@@ -541,7 +553,7 @@ class Agent:
         print(f"no attack_positions found, return", file=sys.stderr)
       return
 
-    def get_sap_damage(upos, cpos):
+    def get_sap_damage(upos, unit_energy, cpos):
       if not is_within_sap_range(upos, cpos, self.mm.unit_sap_range):
         return -1
 
@@ -550,12 +562,14 @@ class Agent:
       if (self.mm.team_point_mass[cpos[0]][cpos[1]] < 0.6
           and self.blind_shot_targets[cpos[0]][cpos[1]]):
         h += self.mm.unit_sap_cost * self.mm.unit_sap_dropoff_factor  # lower the priority of blind shot
+
+      h *= min(unit_energy / BOOST_SAP_ENERGY_THRESHOOD, 1)
       return h
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
-    for i, (unit_id, unit_pos, _) in enumerate(attackers):
+    for i, (unit_id, unit_pos, unit_energy) in enumerate(attackers):
       for j, cpos in enumerate(attack_positions):
-        weights[i, j] = get_sap_damage(unit_pos, cpos)
+        weights[i, j] = get_sap_damage(unit_pos, unit_energy, cpos)
 
     attack_actions = []
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
