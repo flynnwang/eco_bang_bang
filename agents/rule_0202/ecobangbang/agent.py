@@ -156,7 +156,9 @@ class Agent:
       if unit_energy >= self.mm.unit_move_cost:
         dx = pos0[0] - pos1[0]
         dy = pos0[1] - pos1[1]
-        pos = (pos0[0] + dx, pos0[1] + dy)
+        tmp_pos = (pos0[0] + dx, pos0[1] + dy)
+        if is_pos_on_map(tmp_pos):
+          pos = tmp_pos
 
       # print(
       # f"$$$$$$$$$$$$$$ predict enemy move from pos[t-1]={pos1}, pos[t]={pos0} to pos[t+1]={pos}",
@@ -169,15 +171,9 @@ class Agent:
       if not mask or energy < 0:
         continue
 
-      if self.mm.unit_sap_dropoff_factor < 1:
-        pos = predict_next_move(i, pos, energy)
-
-      if self.mm.enemy_positions[pos[0]][pos[1]]:
-        p = self.mm.team_point_mass[pos[0]][pos[1]]
-        if p > IS_RELIC_CELL_PROB:
-          hit_map[pos[0]][pos[1]] += RELIC_SCORE
-
-      for d in [1, 0]:
+      # For positions around current position, add cost with dropoff
+      # (intended not using surrandings from predicted move)
+      for d in [1]:
         x0 = max(0, (pos[0] - d))
         x1 = min(MAP_WIDTH, (pos[0] + d + 1))
         y0 = max(0, (pos[1] - d))
@@ -188,6 +184,18 @@ class Agent:
           h *= self.mm.unit_sap_dropoff_factor
         hit_map[x0:x1, y0:y1] += h
 
+      # For predicted next move, set hit_map to unit_sap_cost
+      next_pos = pos
+      if self.mm.unit_sap_dropoff_factor < 1:
+        next_pos = predict_next_move(i, pos, energy)
+      hit_map[next_pos[0]][next_pos[1]] = self.mm.unit_sap_cost
+
+      # For on-relic enemy, add extra score
+      if self.mm.enemy_positions[pos[0]][pos[1]]:
+        p = self.mm.team_point_mass[pos[0]][pos[1]]
+        if p > IS_RELIC_CELL_PROB:
+          hit_map[pos[0]][pos[1]] += RELIC_SCORE
+
       # slightly favour cell for enemy next move
       x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
       enemy_dist = np.abs(x - pos[0]) + np.abs(y - pos[1])
@@ -195,7 +203,7 @@ class Agent:
       enemy_init_pos_dist = manhatten_distance(pos, init_pos)
       init_pos_dist = np.abs(x - init_pos[0]) + np.abs(y - init_pos[0])
       mask = (enemy_dist == 1) & (init_pos_dist < enemy_init_pos_dist)
-      hit_map[mask] += 1
+      hit_map[mask] += 3
 
     return hit_map
 
@@ -306,15 +314,20 @@ class Agent:
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
-      # If the relic node is occupied by unit not this one, skip this relic node
+      p_unit = mm.team_point_mass[pos[0]][pos[1]]
+      if (p_unit > IS_RELIC_CELL_PROB and not pos_equal(upos, cpos)):
+        # Relic unit do not change relic position
+        return 0
+
+      # If the relic node is occupied by unit but not this one, skip this relic node
       if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
         return 0
 
+      # Will score only for relic p > 0.8
       v = RELIC_SCORE
       p = mm.team_point_mass[cpos[0]][cpos[1]]
-
-      # Do not goto enemy side if energy below threshold
       if on_enemy_side(cpos, mm.player_id):
+        # Do not goto enemy side if energy below threshold
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
@@ -324,7 +337,6 @@ class Agent:
       w = 0
       if p > IS_RELIC_CELL_PROB:
         w += v * p
-
       return w
 
     hit_factor = 10
