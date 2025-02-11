@@ -210,14 +210,19 @@ class Agent:
 
     return hit_map
 
-  def gen_fire_zone(self, extend_dist=2):
+  def gen_fire_zone(self, extend_dist=2, backoff_steps=5):
     """Fire zone is the positive energy cells that could either attack enemy
     relic position or protect my reilc points."""
     mm = self.mm
     team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
     fire_zone_range = mm.unit_sap_range * 2 + 1 + extend_dist
     fire_zone = maximum_filter(team_point_mask, fire_zone_range)
-    return fire_zone
+
+    energy_lost_step = self.mm.sap_dropoff_factor_estimator.unit_energy_lost_step
+    energy_lost_mask = (mm.game_step - energy_lost_step) >= backoff_steps
+    energy_lost_mask = maximum_filter(energy_lost_mask, 3)
+
+    return fire_zone | energy_lost_mask, energy_lost_mask
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -254,7 +259,7 @@ class Agent:
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
           file=sys.stderr)
 
-    fire_zone = self.gen_fire_zone()
+    fire_zone, energy_lost_mask = self.gen_fire_zone()
 
     player_init_pos = get_player_init_pos(mm.player_id)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
@@ -317,6 +322,7 @@ class Agent:
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
+      # on_energy_lost_cell = energy_lost_mask[upos[0]][upos[1]]
       p_unit = mm.team_point_mass[pos[0]][pos[1]]
       if (p_unit > IS_RELIC_CELL_PROB and not pos_equal(upos, cpos)):
         # Relic unit do not change relic position
