@@ -186,15 +186,18 @@ class Agent:
 
       # For predicted next move, set hit_map to unit_sap_cost
       next_pos = pos
-      if self.mm.unit_sap_dropoff_factor < 1:
-        next_pos = predict_next_move(i, pos, energy)
-      hit_map[next_pos[0]][next_pos[1]] = self.mm.unit_sap_cost
+      # if self.mm.unit_sap_dropoff_factor < 1:
+      # next_pos = predict_next_move(i, pos, energy)
+      hit_map[next_pos[0]][next_pos[1]] += self.mm.unit_sap_cost
+
+      # TODO: Keep the current posotion
+      # hit_map[pos[0]][pos[1]] = self.mm.unit_sap_cost
 
       # For on-relic enemy, add extra score
       if self.mm.enemy_positions[pos[0]][pos[1]]:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
         if p > IS_RELIC_CELL_PROB:
-          hit_map[pos[0]][pos[1]] += RELIC_SCORE
+          hit_map[pos[0]][pos[1]] += self.mm.unit_sap_cost * 2
 
       # slightly favour cell for enemy next move
       x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]

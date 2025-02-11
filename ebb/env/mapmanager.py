@@ -334,6 +334,7 @@ class UnitSapDropoffFactorEstimator:
   def __init__(self, mm):
     self.mm = mm
     self._counter = Counter()
+    self.unit_energy_lost_step = np.ones(MAP_SHAPE2, dtype=int) * 1000
 
   def _add_dropoff_factor(self, factor):
     for v in self.VALID_VALUES:
@@ -398,6 +399,32 @@ class UnitSapDropoffFactorEstimator:
 
         dropoff_factor = (energy_delta / dropoff_num) / self.mm.unit_sap_cost
         self._add_dropoff_factor(dropoff_factor)
+
+    def unit_energy_lost_map(self):
+      self.unit_energy_lost = np.zeros(MAP_SHAPE2, dtype=int) * 1000
+      for i in range(MAX_UNIT_NUM):
+        m0, p0, e0 = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+        if not m0:
+          continue
+        m1, p1, e1 = self.mm.get_unit_info(self.mm.player_id, i, t=1)
+        if not m1:
+          continue
+
+        energy_delta = e1 - e0
+        if enemy_energy > 0:
+          cell_energy = self.mm.cell_energy[p0[0]][p0[1]]
+          nebula_energy = 0
+          if self.mm.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
+            nebula_energy = self.mm.nebula_energy_reduction
+
+          move_cost = 0
+          if not pos_equal(p0, p1):
+            move_cost = self.mm.unit_move_cost
+
+          energy_delta -= (-cell_energy + nebula_energy + move_cost)
+          if energy_delta > 0:
+            self.unit_energy_lost[p0[0]][p0[1]] += energy_delta
+            self.unit_energy_lost_step[p0[0]][p0[1]] = self.mm.game_step
 
 
 class HiddenRelicNodeEstimator:
