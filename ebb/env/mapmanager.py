@@ -425,6 +425,9 @@ class UnitSapDropoffFactorEstimator:
         if energy_delta > 0:
           self.unit_energy_lost[p0[0]][p0[1]] += energy_delta
           self.unit_energy_lost_step[p0[0]][p0[1]] = self.mm.game_step
+          print(
+              f" >>> step={self.mm.game_step}, unid_id={i}, {p1}=>{p0}, e={e1}=>{e0} ce={cell_energy}, ne={nebula_energy}, mc={move_cost} energy_delta={energy_delta} ",
+              file=sys.stderr)
 
 
 class HiddenRelicNodeEstimator:
@@ -842,6 +845,7 @@ class MapManager:
               and self.cell_type[tmp[0], tmp[1]] != CELL_ASTERIOD):
             p = tmp
 
+        e += self.cell_energy[tmp[0]][tmp[1]]
         e -= self.unit_move_cost
         e = max(e, 0)
         return p, e
@@ -870,9 +874,11 @@ class MapManager:
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
         reduction = e1 - energy
         self._nebula_energy_reduction.add(reduction)
-        # print(
-        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}'
-        # )
+        print(
+            f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}',
+            file=sys.stderr)
+        print(f' [debug] unit={i}, {p0}=>{position} e=({e0}={energy}) a={a}',
+              file=sys.stderr)
 
   @property
   def step_units_on_relic_num(self):
