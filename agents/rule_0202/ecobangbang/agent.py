@@ -219,7 +219,7 @@ class Agent:
     fire_zone = maximum_filter(team_point_mask, fire_zone_range)
 
     energy_lost_step = self.mm.sap_dropoff_factor_estimator.unit_energy_lost_step
-    energy_lost_mask = (mm.game_step - energy_lost_step) >= backoff_steps
+    energy_lost_mask = (mm.game_step - energy_lost_step) <= backoff_steps
     energy_lost_mask = maximum_filter(energy_lost_mask, 3)
 
     return fire_zone, energy_lost_mask
@@ -322,7 +322,7 @@ class Agent:
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
-      p_unit = mm.team_point_mass[pos[0]][pos[1]]
+      p_unit = mm.team_point_mass[upos[0]][upos[1]]
       if (p_unit > IS_RELIC_CELL_PROB and not pos_equal(upos, cpos)):
         # Relic unit do not change relic position
         return 0
@@ -412,10 +412,11 @@ class Agent:
 
       # If enemy hit me at relic position, skip them?
       cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
-      any_enemy_nearby = mm.enemy_max_energy[cpos_nb_mask].sum() > 0
+      any_enemy_nearby = mm.enemy_position_mask_can_negtive[cpos_nb_mask].sum(
+      ) > 0
       if not any_enemy_nearby and energy_lost_mask[cpos[0]][cpos[1]]:
-        on_relic_wt *= 0.1
-        relic_nb_wt *= 0.1
+        on_relic_wt *= 0.2
+        relic_nb_wt *= 0.2
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
 

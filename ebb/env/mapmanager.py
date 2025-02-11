@@ -224,6 +224,7 @@ class EnergyNodeEstimator:
     # print(
     # f"step={game_step} (before update), energy field found={self.energy_node_found}, node={self.energy_node}, candidates={self.candidate_energy_posotions}",
     # file=sys.stderr)
+    step_visible_num = step_visible.sum()
 
     comm_visible = (step_visible & last_visible)
     print(
@@ -235,6 +236,7 @@ class EnergyNodeEstimator:
 
         # in case has found the energy field before, track the position
         if self.energy_node_found:
+          self.energy_node_found = False
           if self.energy_node is not None:
             mp = np.zeros(MAP_SHAPE2, dtype=bool)
             # print(f"self.energy_node={self.energy_node}, mp.shape={mp.shape}",
@@ -253,23 +255,25 @@ class EnergyNodeEstimator:
             # print(
             # f"----------small reset energy node positions: {self.candidate_energy_posotions}",
             # file=sys.stderr)
-            print(f"----------small reset energy node positions",
-                  file=sys.stderr)
-          # empty energy node will not change
-        else:
-          if len(self.candidate_energy_posotions) == 0:
-            # reset search range
-            positions = np.argwhere(
-                generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0),
-                                        MAP_WIDTH - 1))
-            self.candidate_energy_posotions = [v for v in positions] + [None]
-            print(f"************Reset energy node positions", file=sys.stderr)
-          # else: there is still candidates, search them first
 
-        self.energy_node_found = False
+            if step_visible_num > 0 and not self.energy_node_found:
+              self.find_energy_node(step_energy_field, step_visible)
+            print(
+                f"----------small reset energy node positions, found? = {self.energy_node_found}",
+                file=sys.stderr)
+
+        # In case not found by small reset, Reset to search
+        if not self.energy_node_found:
+          # reset search range
+          positions = np.argwhere(
+              generate_manhattan_mask((MAP_WIDTH, MAP_HEIGHT), (0, 0),
+                                      MAP_WIDTH - 1))
+          self.candidate_energy_posotions = [v for v in positions] + [None]
+
+          print(f"************Reset energy node positions!", file=sys.stderr)
+
         print(f"energy field changed at step = {game_step}", file=sys.stderr)
 
-    step_visible_num = step_visible.sum()
     if step_visible_num > 0 and not self.energy_node_found:
       self.find_energy_node(step_energy_field, step_visible)
 
@@ -334,7 +338,8 @@ class UnitSapDropoffFactorEstimator:
   def __init__(self, mm):
     self.mm = mm
     self._counter = Counter()
-    self.unit_energy_lost_step = np.ones(MAP_SHAPE2, dtype=int) * 1000
+    self.unit_energy_lost_step = np.ones(MAP_SHAPE2,
+                                         dtype=int) * -MAX_MATCH_STEPS
 
   def _add_dropoff_factor(self, factor):
     for v in self.VALID_VALUES:
@@ -375,6 +380,7 @@ class UnitSapDropoffFactorEstimator:
       if not m1:
         continue
 
+      # Here, we assume the enemy does not trigger sap itself, in that case it is wrong.
       dropoff_num = dropoff[p0[0]][p0[1]]
       if dropoff_num > 0:
         # TODO: consider energy void field?
@@ -416,17 +422,24 @@ class UnitSapDropoffFactorEstimator:
         nebula_energy = 0
         if self.mm.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
           nebula_energy = self.mm.nebula_energy_reduction
+          # print(
+          # f" -- -- -- nebula_energy_reduction={nebula_energy}: {self.mm._nebula_energy_reduction.counter}",
+          # file=sys.stderr)
 
         move_cost = 0
         if not pos_equal(p0, p1):
           move_cost = self.mm.unit_move_cost
 
-        energy_delta -= (-cell_energy + nebula_energy + move_cost)
-        if energy_delta > 0:
+        sap_cost = 0
+        if self.mm.unit_sapped_last_step[i]:
+          sap_cost = self.mm.unit_sap_cost
+
+        energy_delta += (cell_energy - nebula_energy - move_cost - sap_cost)
+        if energy_delta >= 20:
           self.unit_energy_lost[p0[0]][p0[1]] += energy_delta
           self.unit_energy_lost_step[p0[0]][p0[1]] = self.mm.game_step
           print(
-              f" >>> step={self.mm.game_step}, unid_id={i}, {p1}=>{p0}, e={e1}=>{e0} ce={cell_energy}, ne={nebula_energy}, mc={move_cost} energy_delta={energy_delta} ",
+              f" >>> step={self.mm.game_step}, unid_id={i}, {p1}=>{p0}, e={e1}=>{e0} ce={cell_energy}, ne={nebula_energy}, mc={move_cost} sap={sap_cost} energy_delta={energy_delta} ",
               file=sys.stderr)
 
 
@@ -827,31 +840,34 @@ class MapManager:
     self.true_cell_energy = mat_trans(self.true_cell_energy)
 
   def infer_nebula_energy_reduction(self, ob, model_action):
+    self.unit_sapped_last_step = np.zeros(MAX_UNIT_NUM, dtype=bool)
     if (model_action is None
         or len(self.past_obs) == 0) or ob['match_steps'] <= 1:
       return
 
     units_action = model_action[UNITS_ACTION]
 
-    def make_action(p, e, action):
+    def make_action(p, e, action, unit_id):
       if a == ACTION_CENTER:
         return p, e
 
       # TODO: check move target
       if a in MOVE_ACTIONS_NO_CENTER:
-        if e > self.unit_move_cost:
+        if e >= self.unit_move_cost:
+          e -= self.unit_move_cost
           tmp = unit_move(p, a)
           if (0 <= tmp[0] < MAP_WIDTH and 0 <= tmp[1] < MAP_HEIGHT
               and self.cell_type[tmp[0], tmp[1]] != CELL_ASTERIOD):
             p = tmp
 
-        e += self.cell_energy[tmp[0]][tmp[1]]
-        e -= self.unit_move_cost
+        e += self.cell_energy[p[0]][p[1]]
         e = max(e, 0)
         return p, e
 
       assert a >= ACTION_SAP
-      e -= self.unit_sap_cost
+      if e >= self.unit_sap_cost:
+        e -= self.unit_sap_cost
+        self.unit_sapped_last_step[unit_id] = True
       return p, e
 
     pid = self.player_id
@@ -869,7 +885,7 @@ class MapManager:
       energy = ob['units']['energy'][pid][i]
 
       a = units_action[i][0]
-      p1, e1 = make_action(p0, e0, a)
+      p1, e1 = make_action(p0, e0, a, i)
       if (m0 and mask and e0 > 0 and energy > 0 and e1 > 0
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
         reduction = e1 - energy
@@ -1004,13 +1020,16 @@ class MapManager:
                            ob['units']['position'][self.player_id],
                            ob['units']['energy'][self.player_id])
 
-    self.infer_nebula_energy_reduction(ob, model_action)
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']
     self.update_counters()
 
+    # Update map info first
     self.update_visible_and_observed(ob)
     self.update_cell_type(ob)
+    self.update_cell_energy(ob)
+
+    self.infer_nebula_energy_reduction(ob, model_action)
 
     unit_masks = ob['units_mask'][self.player_id]
     unit_positions = ob['units']['position'][self.player_id][unit_masks]
@@ -1020,8 +1039,6 @@ class MapManager:
 
     if not self.use_hidden_relic_estimator:
       self.update_team_point_mass(ob, unit_positions)
-
-    self.update_cell_energy(ob)
 
     self.append_ob(ob)
 
@@ -1042,10 +1059,17 @@ class MapManager:
   def update_sap_position_by_enemy_position(self):
     """Enemy position for sap action"""
     self.enemy_position_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.enemy_position_mask_can_negtive = np.zeros((MAP_WIDTH, MAP_HEIGHT),
+                                                    dtype=bool)
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
       if mask and energy >= 0:
         self.enemy_position_mask[pos[0], pos[1]] = True
+
+      if mask:
+        ob = self.past_obs[0]
+        pos = ob['units']['position'][self.enemy_id][i]
+        self.enemy_position_mask_can_negtive[pos[0], pos[1]] = True
 
     self.enemy_position_mask = maximum_filter(self.enemy_position_mask, size=3)
 
@@ -1160,13 +1184,13 @@ class MapManager:
       print(
           f"--> using energy node at {self.energy_node_estimator.energy_node}",
           file=sys.stderr)
-    else:
-      # In case energy node is not found, fallback to update energy field map
-      self.cell_energy[sensor_mask] = energy[sensor_mask]
-      if self.enable_anti_sym:
-        energy_tr = anti_diag_sym(energy)
-        is_visible_tr = anti_diag_sym(sensor_mask)
-        self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
+
+    # In case energy node is not found, always update energy field map
+    self.cell_energy[sensor_mask] = energy[sensor_mask]
+    if self.enable_anti_sym:
+      energy_tr = anti_diag_sym(energy)
+      is_visible_tr = anti_diag_sym(sensor_mask)
+      self.cell_energy[is_visible_tr] = energy_tr[is_visible_tr]
 
   @lru_cache(maxsize=None)
   def get_player_half_mask(self, player_id):
