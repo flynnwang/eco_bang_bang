@@ -222,7 +222,7 @@ class Agent:
     energy_lost_mask = (mm.game_step - energy_lost_step) >= backoff_steps
     energy_lost_mask = maximum_filter(energy_lost_mask, 3)
 
-    return fire_zone | energy_lost_mask, energy_lost_mask
+    return fire_zone, energy_lost_mask
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -322,7 +322,6 @@ class Agent:
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
-      # on_energy_lost_cell = energy_lost_mask[upos[0]][upos[1]]
       p_unit = mm.team_point_mass[pos[0]][pos[1]]
       if (p_unit > IS_RELIC_CELL_PROB and not pos_equal(upos, cpos)):
         # Relic unit do not change relic position
@@ -411,12 +410,19 @@ class Agent:
 
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
+      # If enemy hit me at relic position, skip them?
+      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
+      any_enemy_nearby = mm.enemy_max_energy[cpos_nb_mask].sum() > 0
+      if not any_enemy_nearby and energy_lost_mask[cpos[0]][cpos[1]]:
+        on_relic_wt *= 0.1
+        relic_nb_wt *= 0.1
+
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
 
       is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
       # has enemy nearby, dangerous, go away
-      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
-      if ((mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
+      has_enemy_nearby = (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
+      if (has_enemy_nearby
           and (not is_relic_nb or on_enemy_side(cpos, mm.player_id))):
         wt -= self.mm.unit_sap_cost / 10
 
