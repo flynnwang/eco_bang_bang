@@ -99,6 +99,9 @@ def left_tailed_exp(energy, val, m, v=20):
 RELIC_SCORE = 30
 RELIC_NB_SCORE = 15
 
+EXPLORE_CELL_SCORE = 3
+MAX_EXPLORE_SCORE = 10
+
 MIN_OPEN_RELIC_NB_PROB = 0.01
 IS_RELIC_CELL_PROB = 0.8
 
@@ -171,9 +174,15 @@ class Agent:
       if not mask or energy < 0:
         continue
 
+      # For on-relic enemy, add extra score
+      if self.mm.enemy_positions[pos[0]][pos[1]]:
+        p = self.mm.team_point_mass[pos[0]][pos[1]]
+        if p > IS_RELIC_CELL_PROB:
+          hit_map[pos[0]][pos[1]] += RELIC_SCORE
+
       # For positions around current position, add cost with dropoff
       # (intended not using surrandings from predicted move)
-      for d in [1]:
+      for d in [1, 0]:
         x0 = max(0, (pos[0] - d))
         x1 = min(MAP_WIDTH, (pos[0] + d + 1))
         y0 = max(0, (pos[1] - d))
@@ -185,19 +194,13 @@ class Agent:
         hit_map[x0:x1, y0:y1] += h
 
       # For predicted next move, set hit_map to unit_sap_cost
-      next_pos = pos
+      # next_pos = pos
       # if self.mm.unit_sap_dropoff_factor < 1:
       # next_pos = predict_next_move(i, pos, energy)
-      hit_map[next_pos[0]][next_pos[1]] += self.mm.unit_sap_cost
+      # hit_map[next_pos[0]][next_pos[1]] += self.mm.unit_sap_cost
 
       # TODO: Keep the current posotion
       # hit_map[pos[0]][pos[1]] = self.mm.unit_sap_cost
-
-      # For on-relic enemy, add extra score
-      if self.mm.enemy_positions[pos[0]][pos[1]]:
-        p = self.mm.team_point_mass[pos[0]][pos[1]]
-        if p > IS_RELIC_CELL_PROB:
-          hit_map[pos[0]][pos[1]] += self.mm.unit_sap_cost * 2
 
       # slightly favour cell for enemy next move
       x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
@@ -206,7 +209,7 @@ class Agent:
       enemy_init_pos_dist = manhatten_distance(pos, init_pos)
       init_pos_dist = np.abs(x - init_pos[0]) + np.abs(y - init_pos[0])
       mask = (enemy_dist == 1) & (init_pos_dist < enemy_init_pos_dist)
-      hit_map[mask] += 3
+      hit_map[mask] += 1
 
     return hit_map
 
@@ -218,11 +221,12 @@ class Agent:
     fire_zone_range = mm.unit_sap_range * 2 + 1 + extend_dist
     fire_zone = maximum_filter(team_point_mask, fire_zone_range)
 
-    energy_lost_step = self.mm.sap_dropoff_factor_estimator.unit_energy_lost_step
-    energy_lost_mask = (mm.game_step - energy_lost_step) <= backoff_steps
-    energy_lost_mask = maximum_filter(energy_lost_mask, 3)
+    # energy_lost_step = self.mm.sap_dropoff_factor_estimator.unit_energy_lost_step
+    # energy_lost_mask = (mm.game_step - energy_lost_step) <= backoff_steps
+    # energy_lost_mask = maximum_filter(energy_lost_mask, 3)
 
-    return fire_zone, energy_lost_mask
+    # return fire_zone, energy_lost_mask
+    return fire_zone
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -235,21 +239,28 @@ class Agent:
     if mm.match_step >= 70:
       energy_threshold = 60
 
-    def get_explore_weight(upos, energy, cpos):
-      alpha = 1
+    has_found_relic = mm.has_found_relic_in_match()
+    n = (MAP_WIDTH * MAP_HEIGHT)
+    n_explore = n - match_observed.sum()
+    expore_score = n * EXPLORE_CELL_SCORE / (n_explore + 1)
+    print(
+        f' +++ step={mm.game_step} to-exp-cell-num={n_explore} exp_score={expore_score} has_found_relic={has_found_relic}, last_match_found_relic={mm.last_match_found_relic}',
+        file=sys.stderr)
 
-      # last_ob_time = mm.last_observed_step[cpos[0]][cpos[1]]
-      # t = mm.game_step - last_ob_time
-      # alpha = np.log(t + 1) / LOGX
+    def get_explore_weight(upos, energy, cpos):
+      if mm.game_step >= (3 * MAX_MATCH_STEPS):
+        return 0
+
+      if not mm.last_match_found_relic:
+        return 0
+
+      if has_found_relic:
+        return 0
 
       if match_observed[cpos[0]][cpos[1]]:
         return 0
 
-      wt = 3
-      if not is_explore_step:
-        wt /= 5
-
-      return wt * alpha
+      return min(expore_score, MAX_EXPLORE_SCORE)
 
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
@@ -259,7 +270,7 @@ class Agent:
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
           file=sys.stderr)
 
-    fire_zone, energy_lost_mask = self.gen_fire_zone()
+    fire_zone = self.gen_fire_zone()
 
     player_init_pos = get_player_init_pos(mm.player_id)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
@@ -322,20 +333,21 @@ class Agent:
     self.blind_shot_targets = blind_shot_targets
 
     def stay_on_relic(upos, energy, cpos):
-      p_unit = mm.team_point_mass[upos[0]][upos[1]]
-      if (p_unit > IS_RELIC_CELL_PROB and not pos_equal(upos, cpos)):
-        # Relic unit do not change relic position
-        return 0
-
-      # If the relic node is occupied by unit but not this one, skip this relic node
+      # If the relic node has been occupied by unit but not this one, lower its score
       if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
         return 0
+
+      # # Relic unit do not change relic position
+      # p_unit = mm.team_point_mass[upos[0]][upos[1]]
+      # if (p_unit > IS_RELIC_CELL_PROB and not pos_equal(upos, cpos)):
+      # return 0
 
       # Will score only for relic p > 0.8
       v = RELIC_SCORE
       p = mm.team_point_mass[cpos[0]][cpos[1]]
+
+      # Do not goto enemy side if energy below threshold
       if on_enemy_side(cpos, mm.player_id):
-        # Do not goto enemy side if energy below threshold
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
@@ -345,6 +357,7 @@ class Agent:
       w = 0
       if p > IS_RELIC_CELL_PROB:
         w += v * p
+
       return w
 
     hit_factor = 10
@@ -398,9 +411,7 @@ class Agent:
 
       energy_ratio = energy / energy_threshold
 
-      expore_wt = 0
-      if energy >= 50:
-        expore_wt = get_explore_weight(upos, energy, cpos)
+      expore_wt = get_explore_weight(upos, energy, cpos)
 
       fuel_wt = get_fuel_energy(upos, energy, cpos)
 
@@ -412,11 +423,11 @@ class Agent:
 
       # If enemy hit me at relic position, skip them?
       cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
-      any_enemy_nearby = mm.enemy_position_mask_can_negtive[cpos_nb_mask].sum(
-      ) > 0
-      if not any_enemy_nearby and energy_lost_mask[cpos[0]][cpos[1]]:
-        on_relic_wt *= 0.2
-        relic_nb_wt *= 0.2
+      # any_enemy_nearby = mm.enemy_position_mask_can_negtive[cpos_nb_mask].sum(
+      # ) > 0
+      # if not any_enemy_nearby and energy_lost_mask[cpos[0]][cpos[1]]:
+      # on_relic_wt *= 0.2
+      # relic_nb_wt *= 0.2
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
 
@@ -516,11 +527,16 @@ class Agent:
 
     energy_map = mm.cell_energy_with_nebula_energy_reduction
 
+    move_actions = [ACTION_UP, ACTION_DOWN, ACTION_LEFT, ACTION_RIGHT]
+    if USE_RANDOM:
+      np.random.shuffle(move_actions)
+
     def select_move_action(unit_id, unit_pos, unit_energy, energy_cost):
       action = ACTION_CENTER
       if not np.isinf(energy_cost[unit_pos[0]][unit_pos[1]]):
         actions = []
-        for k in range(1, MAX_MOVE_ACTION_IDX + 1):
+        # for k in range(1, MAX_MOVE_ACTION_IDX + 1):
+        for k in move_actions:
           nx, ny = (unit_pos[0] + DIRECTIONS[k][0],
                     unit_pos[1] + DIRECTIONS[k][1])
           if not is_pos_on_map((nx, ny)):

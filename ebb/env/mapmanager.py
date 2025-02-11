@@ -684,6 +684,8 @@ class MapManager:
     self.units_dead_count = 0
     self.prev_units_dead_count = 0
     self.total_units_dead_count = 0
+    self.last_match_relic_cell_num = -1
+    self.last_match_found_relic = True
 
     self.use_mirror = use_mirror
     self.use_hidden_relic_estimator = use_hidden_relic_estimator
@@ -703,9 +705,12 @@ class MapManager:
 
     self.has_reset_cell_type = False
 
+  def has_found_relic_in_match(self):
+    return self.is_relic_node.sum() > self.last_match_relic_cell_num
+
   def add_sap_locations(self, sap_locations):
     self.sap_dropoff_factor_estimator.estimate(sap_locations)
-    self.sap_dropoff_factor_estimator.update_unit_energy_lost_map()
+    # self.sap_dropoff_factor_estimator.update_unit_energy_lost_map()
 
   @property
   def nebula_energy_reduction(self):
@@ -1009,6 +1014,9 @@ class MapManager:
       self.prev_units_on_relic_num = self.units_on_relic_num = 0
       self.prev_units_dead_count = self.units_dead_count = 0
       self.prev_units_frozen_count = self.units_frozen_count = 0
+
+      self.last_match_found_relic = self.has_found_relic_in_match()
+      self.last_match_relic_cell_num = self.is_relic_node.sum()
 
       # self.append_ob(ob)
 
