@@ -591,7 +591,7 @@ class Agent:
       if not SUBMIT_AGENT:
         # if self.player == PLAYER1:
         print(
-            f"game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+            f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
             file=sys.stderr)
 
       energy_cost = self.compute_energy_cost_map(cell_pos)

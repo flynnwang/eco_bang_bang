@@ -15,6 +15,8 @@ from scipy.ndimage import maximum_filter, minimum_filter
 
 from .const import *
 
+SAVE_ALL_STEPS_TP_PROB = False
+
 
 def sigmoid(x):
   return 1 / (1 + np.exp(-x))
@@ -705,6 +707,9 @@ class MapManager:
 
     self.has_reset_cell_type = False
 
+    if SAVE_ALL_STEPS_TP_PROB:
+      self.team_point_probs = []
+
   def has_found_relic_in_match(self):
     return self.is_relic_node.sum() > self.last_match_relic_cell_num
 
@@ -1039,8 +1044,7 @@ class MapManager:
 
     self.infer_nebula_energy_reduction(ob, model_action)
 
-    unit_masks = ob['units_mask'][self.player_id]
-    unit_positions = ob['units']['position'][self.player_id][unit_masks]
+    unit_positions = self.get_unit_positions(ob, self.player_id)
     self.update_visited_node(unit_positions, ob)
 
     self.update_relic_node(ob)
@@ -1056,6 +1060,9 @@ class MapManager:
 
     if self.use_hidden_relic_estimator and ob['match_steps'] > 0:
       self.update_hidden_relic_estimator(ob)
+      if SAVE_ALL_STEPS_TP_PROB:
+        self.team_point_probs.append(self.hidden_relic_estimator.priori.copy())
+        print(f'xxxxxxxxxxx  {len(self.team_point_probs)}')
 
     self.energy_cost_map = self.compute_energy_cost_map(
         self.cell_type, self.cell_energy, self.is_relic_node,
@@ -1144,17 +1151,27 @@ class MapManager:
     energy_map[self.cell_type == CELL_NEBULA] -= self.nebula_energy_reduction
     return energy_map
 
+  def get_unit_positions(self, ob, pid, drop_died=True):
+    unit_masks = ob['units_mask'][pid]
+    unit_energy = ob['units']['energy'][pid]
+
+    mask = unit_masks
+    if drop_died:
+      mask &= (unit_energy >= 0)
+
+    unit_positions = ob['units']['position'][pid][mask]
+    return unit_positions
+
   def update_visited_node(self, unit_positions, ob):
     self.unit_positions = np.zeros((MAP_SHAPE2), dtype=bool)
     self.unit_positions[unit_positions[:, 0], unit_positions[:, 1]] = True
+
     self.match_visited[self.unit_positions] = 1
     self.game_visited |= self.match_visited
-
     self.last_visited_step[self.unit_positions] = self.game_step
 
-    enemy_masks = ob['units_mask'][self.enemy_id]
-    enemy_positions = ob['units']['position'][self.enemy_id][enemy_masks]
     self.enemy_positions = np.zeros((MAP_SHAPE2), dtype=bool)
+    enemy_positions = self.get_unit_positions(ob, self.enemy_id)
     self.enemy_positions[enemy_positions[:, 0], enemy_positions[:, 1]] = True
 
   def count_on_relic_nodes_units(self):
