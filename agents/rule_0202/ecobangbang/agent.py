@@ -491,7 +491,7 @@ class Agent:
 
   def compute_energy_cost_map(self,
                               target_pos,
-                              asteriod_cost=100,
+                              asteriod_cost=400,
                               N=MAP_WIDTH * 2,
                               extra_step_cost=10):
     """Using `extra_step_cost` to control the balance between cost and path length."""
@@ -500,9 +500,6 @@ class Agent:
     static_cost_map = np.full((MAP_WIDTH, MAP_HEIGHT),
                               float(mm.unit_move_cost))
     static_cost_map -= mm.cell_energy
-
-    # Add extra step cost to favour shorter path
-    static_cost_map += extra_step_cost
 
     cell_type = mm.cell_type
 
@@ -517,9 +514,11 @@ class Agent:
         # nebula energy reduction adds extra cost
         cost_map[cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
         # use a large value for asteriod
-        cost_map[cell_type == CELL_ASTERIOD] = asteriod_cost
+        cost_map[cell_type == CELL_ASTERIOD] += asteriod_cost
         # cell energy cost change the cost map but max at 0 to prevent from loop
-        cost_map = np.maximum(cost_map, extra_step_cost)
+        cost_map = np.maximum(cost_map, 0)
+        # Add extra step cost to favour shorter path
+        cost_map += extra_step_cost
 
       min_neighbors = minimum_filter(energy_cost,
                                      footprint=kernel,
@@ -531,7 +530,7 @@ class Agent:
       is_map_drifted = False
 
       # Do not shift map in first 50 steps because map info is not populated yet
-      if mm.game_step > 50:
+      if mm.game_step > MAX_MATCH_STEPS:
         game_step = mm.game_step + n
         drift_speed = mm.nebula_drift_estimator.drift_speed
         if drift_speed is not None and is_drifted_step(game_step, drift_speed):
