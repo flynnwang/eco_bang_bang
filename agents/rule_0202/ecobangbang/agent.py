@@ -35,6 +35,7 @@ DO_SAMPLE = True
 USE_MIRROR_TRANS = False
 
 USE_RANDOM = True
+# USE_RANDOM = False
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
@@ -84,6 +85,10 @@ def on_enemy_side(cpos, player_id):
   return mdist > MAP_WIDTH
 
 
+def on_team_side(cpos, player_id):
+  return not on_enemy_side(cpos, player_id)
+
+
 def right_tailed_exp(energy, val, m, v=20):
   if energy >= m:
     alpha = np.exp(-(energy - m)**2 / (v**2 * 2.0))
@@ -131,16 +136,18 @@ class Agent:
     self.prev_model_action = None
     self.last_sap_locations = []
 
-  def get_enemy_sap_range(self):
+  def get_enemy_sap_cost_map(self, unit_energy=None, extra_range=0):
     # TODO: exclude the position enemy can not see
     enemy_sap_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask or energy < self.mm.unit_sap_cost:
         continue
-      sap_range = gen_sap_range(pos,
-                                self.mm.unit_sap_range + 1)  # add 1 for safety
-      enemy_sap_map[sap_range] = True
+      if unit_energy is not None and energy < unit_energy:
+        continue
+      # add 1 for dropoff and extra_range for margin
+      sap_range = gen_sap_range(pos, self.mm.unit_sap_range + 1 + extra_range)
+      enemy_sap_map[sap_range] = self.mm.unit_sap_cost
     return enemy_sap_map
 
   def get_sap_hit_map(self, factor):
@@ -290,7 +297,8 @@ class Agent:
 
       return fuel
 
-    enemy_sap_range = self.get_enemy_sap_range()
+    enemy_sap_cost = self.get_enemy_sap_cost_map()
+    self.enemy_sap_cost = enemy_sap_cost
 
     def get_open_relic_nb(upos, energy, cpos):
       """First visit on relic neighbour"""
@@ -311,7 +319,7 @@ class Agent:
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
-      if enemy_sap_range[cpos[0]][cpos[1]]:
+      if enemy_sap_cost[cpos[0]][cpos[1]] > 0:
         v = mm.unit_sap_cost / 10 * 0.5
 
       last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
@@ -353,7 +361,7 @@ class Agent:
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
-      if not pos_equal(cpos, upos) and enemy_sap_range[cpos[0]][cpos[1]]:
+      if not pos_equal(cpos, upos) and enemy_sap_cost[cpos[0]][cpos[1]] > 0:
         v = mm.unit_sap_cost / 10 * 0.5
 
       w = 0
@@ -393,18 +401,14 @@ class Agent:
 
     score_debug = {}
 
+    enemy_max_energy = maximum_filter(mm.enemy_max_energy, size=5)
+    self.enemy_max_energy = enemy_max_energy
+
     def get_unit_cell_wt(upos, energy, cpos, unit_cost_map):
       if cant_move_to(upos, cpos, mm):
         return -9999
 
-      # if energy < unit_cost_map[cpos[0]][cpos[1]]:
-      # if not SUBMIT_AGENT:
-      # print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
-      # file=sys.stderr)
-      # return -9999
-
-      # Do not target cell with enemy energy > unit energy
-      if energy < mm.enemy_max_energy[cpos[0]][cpos[1]]:
+      if energy <= enemy_max_energy[cpos[0]][cpos[1]]:
         return -9999
 
       # mdist = manhatten_distance(upos, cpos) + 7
@@ -423,22 +427,13 @@ class Agent:
 
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
-      # If enemy hit me at relic position, skip them?
-      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
-      # any_enemy_nearby = mm.enemy_position_mask_can_negtive[cpos_nb_mask].sum(
-      # ) > 0
-      # if not any_enemy_nearby and energy_lost_mask[cpos[0]][cpos[1]]:
-      # on_relic_wt *= 0.2
-      # relic_nb_wt *= 0.2
+      # If unit do not have much energy for one sap attack
+      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+      if (not (unit_on_relic and on_team_side(upos, mm.player_id))
+          and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
+        wt -= self.mm.unit_sap_cost / 10
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
-
-      is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
-      # has enemy nearby, dangerous, go away
-      has_enemy_nearby = (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
-      if (has_enemy_nearby
-          and (not is_relic_nb or on_enemy_side(cpos, mm.player_id))):
-        wt -= self.mm.unit_sap_cost / 10
 
       score_debug[(tuple(upos), tuple(cpos))] = {
           'explore_wt': expore_wt,
@@ -493,7 +488,8 @@ class Agent:
                               target_pos,
                               asteriod_cost=100,
                               N=MAP_WIDTH * 2,
-                              extra_step_cost=10):
+                              extra_step_cost=10,
+                              enemy_cost=None):
     """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
 
@@ -503,6 +499,9 @@ class Agent:
 
     # Add extra step cost to favour shorter path
     static_cost_map += extra_step_cost
+
+    if enemy_cost is not None:
+      static_cost_map += enemy_cost
 
     cell_type = mm.cell_type
 
@@ -613,7 +612,12 @@ class Agent:
             f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
             file=sys.stderr)
 
-      energy_cost = self.compute_energy_cost_map(cell_pos)
+      danger_zone = ((self.enemy_max_energy >= unit_energy)
+                     | (self.enemy_sap_cost[unit_pos[0]][unit_pos[1]]
+                        >= unit_energy))
+      enemy_cost = (danger_zone.astype(int) * MAX_UNIT_ENERGY)
+      energy_cost = self.compute_energy_cost_map(cell_pos,
+                                                 enemy_cost=enemy_cost)
       unit_actions[i][0] = select_move_action(i, unit_pos, unit_energy,
                                               energy_cost)
 

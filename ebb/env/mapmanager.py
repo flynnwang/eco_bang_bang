@@ -229,9 +229,9 @@ class EnergyNodeEstimator:
     step_visible_num = step_visible.sum()
 
     comm_visible = (step_visible & last_visible)
-    print(
-        f"[debug][step={game_step+1}] comm_visible.sum() = {comm_visible.sum()}",
-        file=sys.stderr)
+    # print(
+    # f"[debug][step={game_step+1}] comm_visible.sum() = {comm_visible.sum()}",
+    # file=sys.stderr)
     if comm_visible.sum() > 0:
       if (step_energy_field[comm_visible]
           != last_energy_field[comm_visible]).any():
@@ -1094,6 +1094,7 @@ class MapManager:
       if mask:
         self.enemy_max_energy[pos[0]][pos[1]] = max(
             self.enemy_max_energy[pos[0]][pos[1]], energy)
+    # self.enemy_max_energy = maximum_filter(self.enemy_max_energy, size=3)
 
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
