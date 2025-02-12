@@ -147,8 +147,18 @@ class Agent:
         continue
       # add 1 for dropoff and extra_range for margin
       sap_range = gen_sap_range(pos, self.mm.unit_sap_range + 1 + extra_range)
-      enemy_sap_map[sap_range] = self.mm.unit_sap_cost
+      enemy_sap_map[sap_range] += self.mm.unit_sap_cost
     return enemy_sap_map
+
+  def get_enemy_max_energy_level(self, unit_energy, max_dist=3):
+    enemy_max_energy = self.mm.enemy_max_energy.copy()
+    enemy_positions = (enemy_max_energy >= unit_energy)
+    for d in range(max_dist):
+      dist = max_dist - d - 1
+      cost = (d / (max_dist - 1) + 1)
+      position_mask = maximum_filter(enemy_positions, size=2 * dist + 1)
+      enemy_max_energy[position_mask] = MAX_UNIT_ENERGY * cost
+    return enemy_max_energy
 
   def get_sap_hit_map(self, factor):
 
@@ -612,10 +622,12 @@ class Agent:
             f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
             file=sys.stderr)
 
-      danger_zone = ((self.enemy_max_energy >= unit_energy)
-                     | (self.enemy_sap_cost[unit_pos[0]][unit_pos[1]]
-                        >= unit_energy))
-      enemy_cost = (danger_zone.astype(int) * MAX_UNIT_ENERGY)
+      sap_dead_zone = self.enemy_sap_cost >= unit_energy
+      enemy_sap_cost = self.enemy_sap_cost.copy()
+      enemy_sap_cost[~sap_dead_zone] = 0
+
+      enemy_pos_cost = self.get_enemy_max_energy_level(unit_energy)
+      enemy_cost = enemy_pos_cost + enemy_sap_cost
       energy_cost = self.compute_energy_cost_map(cell_pos,
                                                  enemy_cost=enemy_cost)
       unit_actions[i][0] = select_move_action(i, unit_pos, unit_energy,

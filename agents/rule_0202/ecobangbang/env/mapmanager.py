@@ -931,10 +931,9 @@ class MapManager:
       is_dead, is_frozen = False, False
       mask, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
       mask1, p1, e1 = self.get_unit_info(self.player_id, i, t=1)
+      if mask1 and e0 < 0 and e1 >= 0:
+        is_dead = True
       if mask and mask1:
-        if e0 < 0 and e1 >= 0:
-          is_dead = True
-
         if (e0 == 0 and e1 >= 0
             and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
           is_frozen = True
@@ -950,9 +949,9 @@ class MapManager:
         n_units += 1
 
       # if is_dead:
-      # print(
-      # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, unit[{i}] p0={p0}, e0={e0} to p1={p1} e1={e1} is_dead={is_dead}, is_frozen={is_frozen}'
-      # )
+      print(
+          f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, unit[{i}] p0={p0}, e0={e0} m0={mask} to p1={p1} e1={e1} m1={mask1} is_dead={is_dead}, is_frozen={is_frozen}',
+          file=sys.stderr)
 
       self.units_frozen_count += int(is_frozen)
       self.units_dead_count += int(is_dead)
@@ -1129,7 +1128,7 @@ class MapManager:
     # )
 
     # TODO: use last unit position, maybe not important?
-    if not mask or energy < 0:
+    if not mask:
       position = (0, 0) if self.player_id == 0 else (MAP_WIDTH - 1,
                                                      MAP_HEIGHT - 1)
 
