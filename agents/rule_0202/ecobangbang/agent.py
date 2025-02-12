@@ -395,11 +395,11 @@ class Agent:
       if cant_move_to(upos, cpos, mm):
         return -9999
 
-      if energy < unit_cost_map[cpos[0]][cpos[1]]:
-        # if not SUBMIT_AGENT:
-        # print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
-        # file=sys.stderr)
-        return -9999
+      # if energy < unit_cost_map[cpos[0]][cpos[1]]:
+      # if not SUBMIT_AGENT:
+      # print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
+      # file=sys.stderr)
+      # return -9999
 
       # Do not target cell with enemy energy > unit energy
       if energy < mm.enemy_max_energy[cpos[0]][cpos[1]]:
@@ -463,15 +463,12 @@ class Agent:
       if not mask:
         continue
 
-      unit_cost_map = self.compute_energy_cost_map(pos, asteriod_cost=75)
       for j in cell_index:
-        r, c = cell_idx_to_pos(j)
-        # if energy < mm.unit_move_cost:
-        # if pos_equal(pos, (r, c)):
-        # weights[i, j] = 100
-        # # TODO: This will block attack position
-        # else:
-        weights[i, j] = get_unit_cell_wt(pos, energy, (r, c), unit_cost_map)
+        target_cell_pos = cell_idx_to_pos(j)
+        weights[i, j] = get_unit_cell_wt(pos,
+                                         energy,
+                                         target_cell_pos,
+                                         unit_cost_map=None)
 
     unit_to_cell = {}
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
@@ -493,7 +490,9 @@ class Agent:
   def compute_energy_cost_map(self,
                               target_pos,
                               asteriod_cost=100,
-                              N=MAP_WIDTH * 2):
+                              N=MAP_WIDTH * 2,
+                              extra_step_cost=10):
+    """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
     cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(mm.unit_move_cost))
 
@@ -501,8 +500,11 @@ class Agent:
     cost_map[mm.cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
+    cost_map += extra_step_cost
     cost_map -= mm.cell_energy
-    cost_map = np.maximum(cost_map, 1)
+    cost_map = np.maximum(cost_map, extra_step_cost)
+
+    # Add extra step cost for favouring shorter path
 
     # use a big value for asteriod
     cost_map[mm.cell_type == CELL_ASTERIOD] = asteriod_cost
