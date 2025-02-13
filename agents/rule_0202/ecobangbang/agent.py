@@ -157,7 +157,7 @@ class Agent:
       dist = max_dist - d - 1
       cost = (d / (max_dist - 1) + 1)
       position_mask = maximum_filter(enemy_positions, size=2 * dist + 1)
-      enemy_max_energy[position_mask] = MAX_UNIT_ENERGY * cost
+      enemy_max_energy[position_mask] = 100 * cost
     return enemy_max_energy
 
   def get_sap_hit_map(self, factor):
@@ -418,7 +418,8 @@ class Agent:
       if cant_move_to(upos, cpos, mm):
         return -9999
 
-      if energy <= enemy_max_energy[cpos[0]][cpos[1]]:
+      # Use single enemy enregy cell
+      if energy < mm.enemy_max_energy[cpos[0]][cpos[1]]:
         return -9999
 
       # mdist = manhatten_distance(upos, cpos) + 7
@@ -438,12 +439,20 @@ class Agent:
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
       # If unit do not have much energy for one sap attack
-      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
-      if (not (unit_on_relic and on_team_side(upos, mm.player_id))
-          and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
-        wt -= self.mm.unit_sap_cost / 10
+      # unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+      # if (not (unit_on_relic and on_team_side(upos, mm.player_id))
+      # and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
+      # wt -= self.mm.unit_sap_cost / 10
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
+
+      # has enemy nearby, dangerous, go away
+      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
+      is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
+      has_enemy_nearby = (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
+      if (has_enemy_nearby
+          and (not is_relic_nb or on_enemy_side(cpos, mm.player_id))):
+        wt -= self.mm.unit_sap_cost / 10
 
       score_debug[(tuple(upos), tuple(cpos))] = {
           'explore_wt': expore_wt,
@@ -496,7 +505,7 @@ class Agent:
 
   def compute_energy_cost_map(self,
                               target_pos,
-                              asteriod_cost=400,
+                              asteriod_cost=100,
                               N=MAP_WIDTH * 2,
                               extra_step_cost=10,
                               enemy_cost=None):
@@ -607,12 +616,13 @@ class Agent:
             f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
             file=sys.stderr)
 
-      sap_dead_zone = self.enemy_sap_cost >= unit_energy
-      enemy_sap_cost = self.enemy_sap_cost.copy()
-      enemy_sap_cost[~sap_dead_zone] = 0
+      # sap_dead_zone = self.enemy_sap_cost >= unit_energy
+      # enemy_sap_cost = self.enemy_sap_cost.copy()
+      # enemy_sap_cost[~sap_dead_zone] = 0
 
       enemy_pos_cost = self.get_enemy_max_energy_level(unit_energy)
-      enemy_cost = enemy_pos_cost + enemy_sap_cost
+      # enemy_cost = enemy_pos_cost + enemy_sap_cost
+      enemy_cost = enemy_pos_cost
       energy_cost = self.compute_energy_cost_map(cell_pos,
                                                  enemy_cost=enemy_cost)
       unit_actions[i][0] = select_move_action(i, unit_pos, unit_energy,
