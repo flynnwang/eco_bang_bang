@@ -502,50 +502,35 @@ class Agent:
                               enemy_cost=None):
     """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
+    cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(mm.unit_move_cost))
 
-    static_cost_map = np.full((MAP_WIDTH, MAP_HEIGHT),
-                              float(mm.unit_move_cost))
-    static_cost_map -= mm.cell_energy
+    # nebula energy reduction adds extra cost
+    cost_map[mm.cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
 
-    # Add extra step cost to favour shorter path
-    static_cost_map += extra_step_cost
+    # Add extra step cost for favouring shorter path
+    cost_map += extra_step_cost
+    cost_map -= mm.cell_energy
+
+    # cell energy cost change the cost map but max at 0 to prevent from loop
+    cost_map = np.maximum(cost_map, extra_step_cost)
+
+    # use a big value for asteriod
+    cost_map[mm.cell_type == CELL_ASTERIOD] = asteriod_cost
 
     if enemy_cost is not None:
-      static_cost_map += enemy_cost
-
-    cell_type = mm.cell_type
+      cost_map += enemy_cost
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
     energy_cost[target_pos[0]][target_pos[1]] = 0
 
-    is_map_drifted = True
     kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float64)
-    for n in range(N):
-      if is_map_drifted:
-        cost_map = static_cost_map.copy()
-        # nebula energy reduction adds extra cost
-        cost_map[cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
-        # use a large value for asteriod
-        cost_map[cell_type == CELL_ASTERIOD] += asteriod_cost
-        # cell energy cost change the cost map but max at 0 to prevent from loop
-        cost_map = np.maximum(cost_map, extra_step_cost)
-
+    for _ in range(N):
       min_neighbors = minimum_filter(energy_cost,
                                      footprint=kernel,
                                      mode='constant',
                                      cval=np.inf)
       with np.errstate(invalid='ignore'):
         energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
-
-      is_map_drifted = False
-
-      # Do not shift map in first 50 steps because map info is not populated yet
-      if mm.game_step > 100:
-        game_step = mm.game_step + n
-        drift_speed = mm.nebula_drift_estimator.drift_speed
-        if drift_speed is not None and is_drifted_step(game_step, drift_speed):
-          is_map_drifted = True
-          cell_type = shift_map_by_sign(cell_type, drift_speed)
 
     return energy_cost
 
