@@ -157,7 +157,7 @@ class Agent:
       dist = max_dist - d - 1
       cost = (d / (max_dist - 1) + 1)
       position_mask = maximum_filter(enemy_positions, size=2 * dist + 1)
-      enemy_max_energy[position_mask] = MAX_UNIT_ENERGY * cost
+      enemy_max_energy[position_mask] = 100 * cost
     return enemy_max_energy
 
   def get_sap_hit_map(self, factor):
@@ -418,7 +418,8 @@ class Agent:
       if cant_move_to(upos, cpos, mm):
         return -9999
 
-      if energy <= enemy_max_energy[cpos[0]][cpos[1]]:
+      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+      if (not unit_on_relic) and energy <= enemy_max_energy[cpos[0]][cpos[1]]:
         return -9999
 
       # mdist = manhatten_distance(upos, cpos) + 7
@@ -438,7 +439,6 @@ class Agent:
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
       # If unit do not have much energy for one sap attack
-      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
       if (not (unit_on_relic and on_team_side(upos, mm.player_id))
           and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
         wt -= self.mm.unit_sap_cost / 10
@@ -496,9 +496,9 @@ class Agent:
 
   def compute_energy_cost_map(self,
                               target_pos,
-                              asteriod_cost=400,
+                              asteriod_cost=100,
                               N=MAP_WIDTH * 2,
-                              extra_step_cost=10,
+                              extra_step_cost=20,
                               enemy_cost=None):
     """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
@@ -512,10 +512,10 @@ class Agent:
     cost_map -= mm.cell_energy
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
-    cost_map = np.maximum(cost_map, extra_step_cost)
+    # cost_map = np.maximum(cost_map, extra_step_cost)
 
     # use a big value for asteriod
-    cost_map[mm.cell_type == CELL_ASTERIOD] = asteriod_cost
+    cost_map[mm.cell_type == CELL_ASTERIOD] += asteriod_cost
 
     if enemy_cost is not None:
       cost_map += enemy_cost
