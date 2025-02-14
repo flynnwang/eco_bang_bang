@@ -745,6 +745,9 @@ class MapManager:
   def unit_sap_range(self):
     return self.env_cfg['unit_sap_range']
 
+  def last_step_team_points(self, player_id, t):
+    return self.past_obs[t]['team_points'][player_id]
+
   def update_cell_type(self, ob):
     # TODO: may not needed
     # if (not self.has_reset_cell_type and ob['steps'] > 82

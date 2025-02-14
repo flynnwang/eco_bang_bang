@@ -903,11 +903,11 @@ class MapManager:
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
         reduction = e1 - energy
         self._nebula_energy_reduction.add(reduction)
-        # print(
-        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}',
-        # file=sys.stderr)
-        # print(f' [debug] unit={i}, {p0}=>{position} e=({e0}={energy}) a={a}',
-        # file=sys.stderr)
+        print(
+            f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}',
+            file=sys.stderr)
+        print(f' [debug] unit={i}, {p0}=>{position} e=({e0}={energy}) a={a}',
+              file=sys.stderr)
 
   @property
   def step_units_on_relic_num(self):

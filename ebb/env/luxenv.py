@@ -1072,7 +1072,7 @@ class LuxS3Env(gym.Env):
       ]  # single player
     else:
       return [
-          _get_info(model_action[i], raw_obs[player], mm.past_obs[1][player],
+          _get_info(model_action[i], raw_obs[player], self.mms[i].past_obs[1],
                     reward[i], self.mms[i], env_state)
           for i, player in enumerate([PLAYER0, PLAYER1])
       ]

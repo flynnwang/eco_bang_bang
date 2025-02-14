@@ -48,6 +48,18 @@ N_CELLS = MAP_WIDTH * MAP_HEIGHT
 LOG3 = np.log(4)
 
 
+def draw_line(mp, pos):
+  pos2 = anti_diag_sym_i(pos)
+  min_x = min(pos[0], pos2[0])
+  max_x = max(pos[0], pos2[0])
+  min_y = min(pos[1], pos2[1])
+  max_y = max(pos[1], pos2[1])
+  for i, x in enumerate(range(min_x, max_x + 1)):
+    y = min_y + i
+    mp[x][y] = 1
+  return mp
+
+
 @functools.lru_cache(maxsize=1024, typed=False)
 def dd(dist, r=1.1):
   dist = min(dist, MAP_WIDTH * 2)
@@ -112,7 +124,7 @@ MAX_EXPLORE_SCORE = 10
 MIN_OPEN_RELIC_NB_PROB = 0.01
 IS_RELIC_CELL_PROB = 0.8
 
-BOOST_SAP_ENERGY_THRESHOOD = 180
+BOOST_SAP_ENERGY_THRESHOOD = 120
 
 
 class Agent:
@@ -157,7 +169,7 @@ class Agent:
       dist = max_dist - d - 1
       cost = (d / (max_dist - 1) + 1)
       position_mask = maximum_filter(enemy_positions, size=2 * dist + 1)
-      enemy_max_energy[position_mask] = 100 * cost
+      enemy_max_energy[position_mask] = cost
     return enemy_max_energy
 
   def get_sap_hit_map(self, factor):
@@ -232,19 +244,26 @@ class Agent:
 
     return hit_map
 
-  def gen_fire_zone(self, extend_dist=2, backoff_steps=5):
+  def gen_fire_zone(self, dist_to_init_pos):
     """Fire zone is the positive energy cells that could either attack enemy
     relic position or protect my reilc points."""
     mm = self.mm
+
+    attack_path_mask = mm.is_relic_node.copy()
+    relic_node_positions = mm.hidden_relic_estimator.relic_node_positions
+    for pos in relic_node_positions:
+      draw_line(attack_path_mask, pos)
+
+    attack_path_mask = maximum_filter(attack_path_mask, size=7)
+
     team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
-    fire_zone_range = mm.unit_sap_range * 2 + 1 + extend_dist
-    fire_zone = maximum_filter(team_point_mask, fire_zone_range)
+    enemy_side_mask = (dist_to_init_pos >= MAP_WIDTH)
+    fire_zone = (team_point_mask & enemy_side_mask)
 
-    # energy_lost_step = self.mm.sap_dropoff_factor_estimator.unit_energy_lost_step
-    # energy_lost_mask = (mm.game_step - energy_lost_step) <= backoff_steps
-    # energy_lost_mask = maximum_filter(energy_lost_mask, 3)
+    fire_zone_range = mm.unit_sap_range * 2 + 1
+    fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
-    # return fire_zone, energy_lost_mask
+    fire_zone = fire_zone.astype(int) + attack_path_mask
     return fire_zone
 
   def compute_unit_to_cell(self):
@@ -253,8 +272,7 @@ class Agent:
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + mm.match_step
-
-    # TODO: test drop it
+    energy_threshold = max(energy_threshold, 120)
     if mm.match_step >= 70:
       energy_threshold = 60
 
@@ -289,12 +307,10 @@ class Agent:
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
           file=sys.stderr)
 
-    fire_zone = self.gen_fire_zone()
-
     player_init_pos = get_player_init_pos(mm.player_id)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    # d1[d1 > MAP_WIDTH] = MAP_WIDTH
+    fire_zone = self.gen_fire_zone(d1)
     d1 /= MAP_WIDTH
 
     def get_fuel_energy(upos, energy, cpos):
@@ -371,13 +387,12 @@ class Agent:
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
-      if not pos_equal(cpos, upos) and enemy_sap_cost[cpos[0]][cpos[1]] > 0:
-        v = mm.unit_sap_cost / 10 * 0.5
+      # if not pos_equal(cpos, upos) and enemy_sap_cost[cpos[0]][cpos[1]] > 0:
+      # v = mm.unit_sap_cost / 10 * 0.5
 
       w = 0
       if p > IS_RELIC_CELL_PROB:
         w += v * p
-
       return w
 
     hit_factor = 10
@@ -496,7 +511,7 @@ class Agent:
 
   def compute_energy_cost_map(self,
                               target_pos,
-                              asteriod_cost=100,
+                              asteriod_cost=20 * 25,
                               N=MAP_WIDTH * 2,
                               extra_step_cost=20,
                               enemy_cost=None):
@@ -572,9 +587,9 @@ class Agent:
           # if not SUBMIT_AGENT and self.player == PLAYER1:
 
           # if self.player == PLAYER1:
-          # print(
-          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
-          # file=sys.stderr)
+          print(
+              f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+              file=sys.stderr)
 
       if len(actions):
         actions.sort()
@@ -601,20 +616,21 @@ class Agent:
         unit_actions[i][0] = ACTION_CENTER
         continue
 
-      if not SUBMIT_AGENT:
-        # if self.player == PLAYER1:
-        print(
-            f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-            file=sys.stderr)
+      # if not SUBMIT_AGENT:
+      # if self.player == PLAYER1:
+      print(
+          f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+          file=sys.stderr)
 
       sap_dead_zone = self.enemy_sap_cost >= unit_energy
       enemy_sap_cost = self.enemy_sap_cost.copy()
       enemy_sap_cost[~sap_dead_zone] = 0
 
       enemy_pos_cost = self.get_enemy_max_energy_level(unit_energy)
-      enemy_cost = enemy_pos_cost + enemy_sap_cost
+      enemy_cost = (enemy_pos_cost * 1000) + (enemy_sap_cost * 5)
       energy_cost = self.compute_energy_cost_map(cell_pos,
                                                  enemy_cost=enemy_cost)
+      self.energy_cost_ = energy_cost
       unit_actions[i][0] = select_move_action(i, unit_pos, unit_energy,
                                               energy_cost)
 
