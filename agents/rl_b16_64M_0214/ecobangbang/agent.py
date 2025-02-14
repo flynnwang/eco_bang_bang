@@ -19,7 +19,7 @@ from .model import create_model
 
 SUBMIT_AGENT = True
 
-MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
+MODEL_FILE_NAME = "063230272_weights.pt"
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
