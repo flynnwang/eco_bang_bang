@@ -120,7 +120,7 @@ class LuxS3Env(gym.Env):
     self.game = game_env or LuxAIS3GymEnv(numpy_output=True)
     self.reward_shaping_params = reward_shaping_params
     self.mms = None
-    self.prev_raw_obs = None
+    self.raw_obs = None  # for debug
     self._seed = None
     self.last_sap_locations = [[], []]
     self.agent_actions = [None, None]
@@ -226,7 +226,7 @@ class LuxS3Env(gym.Env):
       self.agents[0].env = self
       self.agents[1].env = self
 
-    self.prev_raw_obs = raw_obs
+    self.raw_obs = raw_obs
     done = False
     reward = self._convert_reward(raw_obs, final_state)
 
@@ -292,6 +292,7 @@ class LuxS3Env(gym.Env):
       # uid = mm.unit_idx_to_id[i]
       uid = i
 
+      # print(f' 88888888888888888 {action.shape} . {action} ')
       a = int(action[i][0])  # unbox [a] => a
       a, x, y = encode(i, a)
 
@@ -367,7 +368,6 @@ class LuxS3Env(gym.Env):
     reward = self._convert_reward(raw_obs, final_state)
     info = self.get_info(model_action, raw_obs, reward, done, final_state)
 
-    self.prev_raw_obs = raw_obs
     self.raw_obs = raw_obs
     return obs, reward, done, info
 
@@ -477,13 +477,12 @@ class LuxS3Env(gym.Env):
     o['units_team_points'] = scalar(units_points, MAX_TEAM_POINTS)
     o['team_points_delta'] = scalar(units_points - enemy_points,
                                     MAX_TEAM_POINTS)
-    prev_team_points = self.prev_raw_obs[mm.player]['team_points']
     units_team_points_growth = max(
-        units_points - prev_team_points[mm.player_id], 0)
+        units_points - mm.last_step_team_points(mm.player_id, t=1), 0)
     o['units_team_points_growth'] = scalar(units_team_points_growth,
                                            MAX_UNIT_NUM)
     enemy_team_points_growth = max(
-        enemy_points - prev_team_points[mm.enemy_id], 0)
+        enemy_points - mm.last_step_team_points(mm.enemy_id, t=1), 0)
     team_points_growth_delta = units_team_points_growth - enemy_team_points_growth
     o['team_points_growth_delta'] = scalar(team_points_growth_delta,
                                            MAX_UNIT_NUM)
@@ -634,7 +633,7 @@ class LuxS3Env(gym.Env):
 
       r_team_point = max(
           ob['team_points'][mm.player_id] -
-          self.prev_raw_obs[mm.player]['team_points'][mm.player_id], 0)
+          mm.last_step_team_points(mm.player_id, t=1), 0)
       r_team_point *= wt['team_point']
 
       team_wins = raw_obs[mm.player]['team_wins']
@@ -649,7 +648,7 @@ class LuxS3Env(gym.Env):
 
       # match end reward
       r_match = 0
-      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      prev_team_wins = mm.past_ob[1][mm.player]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
         r_match = wt['match_result']
@@ -687,7 +686,7 @@ class LuxS3Env(gym.Env):
 
       # match end reward
       r_match = 0
-      prev_team_wins = self.prev_raw_obs[mm.player]['team_wins']
+      prev_team_wins = mm.past_ob[1][mm.player]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
         r_match = wt['match_result']
@@ -855,22 +854,25 @@ class LuxS3Env(gym.Env):
       # has enough energy to move
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+        # print(
+        # f">>>>>>>>>>>>>>>>> unit_id={i} pos={pos}, dir={DIRECTIONS[k]}, not on map {nx, ny}",
+        # file=sys.stderr)
         if not is_pos_on_map((nx, ny)):
           continue
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
         actions_mask[i][k] = 1
 
-      if self.game == 1:
-        team_point_prob = mm.team_point_mass[pos[0]][pos[1]]
-        if team_point_prob >= MIN_TP_VAL:
+      # if self.game == 1:
+      # team_point_prob = mm.team_point_mass[pos[0]][pos[1]]
+      # if team_point_prob >= MIN_TP_VAL:
 
-          # Only one units can stay
-          if pos not in action_centered_positions:
-            actions_mask[i][ACTION_CENTER] = 1
-            action_centered_positions.add(pos)
-          else:
-            actions_mask[i][ACTION_CENTER] = 0
+      # # Only one units can stay
+      # if pos not in action_centered_positions:
+      # actions_mask[i][ACTION_CENTER] = 1
+      # action_centered_positions.add(pos)
+      # else:
+      # actions_mask[i][ACTION_CENTER] = 0
 
     sap_hit_map = mm.get_global_sap_hit_map()
 
@@ -1065,13 +1067,12 @@ class LuxS3Env(gym.Env):
 
     if self.use_single_player:
       return [
-          _get_info(model_action[0], raw_obs[PLAYER0],
-                    self.prev_raw_obs[PLAYER0], reward[0], self.mms[0],
-                    env_state)
+          _get_info(model_action[0], raw_obs[PLAYER0], mm.past_obs[1][PLAYER0],
+                    reward[0], self.mms[0], env_state)
       ]  # single player
     else:
       return [
-          _get_info(model_action[i], raw_obs[player],
-                    self.prev_raw_obs[player], reward[i], self.mms[i],
-                    env_state) for i, player in enumerate([PLAYER0, PLAYER1])
+          _get_info(model_action[i], raw_obs[player], mm.past_obs[1][player],
+                    reward[i], self.mms[i], env_state)
+          for i, player in enumerate([PLAYER0, PLAYER1])
       ]

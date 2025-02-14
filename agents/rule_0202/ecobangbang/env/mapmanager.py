@@ -949,9 +949,9 @@ class MapManager:
         n_units += 1
 
       # if is_dead:
-      print(
-          f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, unit[{i}] p0={p0}, e0={e0} m0={mask} to p1={p1} e1={e1} m1={mask1} is_dead={is_dead}, is_frozen={is_frozen}',
-          file=sys.stderr)
+      # print(
+      # f'gstep={self.game_step}, mstep={self.match_step} pid={self.player_id}, unit[{i}] p0={p0}, e0={e0} m0={mask} to p1={p1} e1={e1} m1={mask1} is_dead={is_dead}, is_frozen={is_frozen}',
+      # file=sys.stderr)
 
       self.units_frozen_count += int(is_frozen)
       self.units_dead_count += int(is_dead)
