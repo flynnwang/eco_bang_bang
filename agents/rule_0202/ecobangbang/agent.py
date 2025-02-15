@@ -513,7 +513,7 @@ class Agent:
                               target_pos,
                               asteriod_cost=20 * 25,
                               N=MAP_WIDTH * 2,
-                              extra_step_cost=20,
+                              extra_step_cost=1,
                               enemy_cost=None):
     """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
@@ -523,11 +523,11 @@ class Agent:
     cost_map[mm.cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
 
     # Add extra step cost for favouring shorter path
-    cost_map += extra_step_cost
+    # cost_map += extra_step_cost
     cost_map -= mm.cell_energy
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
-    # cost_map = np.maximum(cost_map, extra_step_cost)
+    cost_map = np.maximum(cost_map, extra_step_cost)
 
     # use a big value for asteriod
     cost_map[mm.cell_type == CELL_ASTERIOD] += asteriod_cost
