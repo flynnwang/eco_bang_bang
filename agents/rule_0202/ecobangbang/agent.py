@@ -268,11 +268,9 @@ class Agent:
 
   def compute_unit_to_cell(self):
     mm = self.mm
-    is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + mm.match_step
-    energy_threshold = max(energy_threshold, 120)
     if mm.match_step >= 70:
       energy_threshold = 60
 
@@ -513,7 +511,7 @@ class Agent:
                               target_pos,
                               asteriod_cost=20 * 25,
                               N=MAP_WIDTH * 2,
-                              extra_step_cost=1,
+                              extra_step_cost=5,
                               enemy_cost=None):
     """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
@@ -523,11 +521,11 @@ class Agent:
     cost_map[mm.cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
 
     # Add extra step cost for favouring shorter path
-    # cost_map += extra_step_cost
+    cost_map += extra_step_cost
     cost_map -= mm.cell_energy
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
-    cost_map = np.maximum(cost_map, extra_step_cost)
+    cost_map = np.maximum(cost_map, 1)
 
     # use a big value for asteriod
     cost_map[mm.cell_type == CELL_ASTERIOD] += asteriod_cost
@@ -622,12 +620,14 @@ class Agent:
           f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
           file=sys.stderr)
 
-      sap_dead_zone = self.enemy_sap_cost >= unit_energy
-      enemy_sap_cost = self.enemy_sap_cost.copy()
-      enemy_sap_cost[~sap_dead_zone] = 0
+      # sap_dead_zone = self.enemy_sap_cost >= unit_energy
+      # enemy_sap_cost = self.enemy_sap_cost.copy()
+      # enemy_sap_cost[~sap_dead_zone] = 0
 
       enemy_pos_cost = self.get_enemy_max_energy_level(unit_energy)
-      enemy_cost = (enemy_pos_cost * 1000) + (enemy_sap_cost * 5)
+      # enemy_cost = (enemy_pos_cost * 1000) + (enemy_sap_cost * 5)
+      enemy_cost = (enemy_pos_cost * 1000)
+
       energy_cost = self.compute_energy_cost_map(cell_pos,
                                                  enemy_cost=enemy_cost)
       self.energy_cost_ = energy_cost

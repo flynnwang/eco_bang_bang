@@ -445,12 +445,117 @@ class UnitSapDropoffFactorEstimator:
               file=sys.stderr)
 
 
+class Observation:
+
+  def __init__(self, positions, relic_num):
+    self.positions = [(int(x), int(y)) for x, y in positions]
+    self.relic_num = relic_num
+
+  def is_determined(self):
+    return self.relic_num == 0 or (self.relic_num == len(self.positions))
+
+  def simplify(self, position_to_relic):
+    next_positions = []
+    num = self.relic_num
+    for pos in self.positions:
+      is_relic = position_to_relic.get(pos)
+      if is_relic is not None:
+        num -= int(is_relic)
+        continue
+      next_positions.append(pos)
+    return Observation(next_positions, num)
+
+  def is_valid_solution(self, pos_to_val):
+    num = 0
+    for pos in self.positions:
+      num += pos_to_val[pos]
+    return num == self.relic_num
+
+
+class HiddenRelicSolver:
+
+  def __init__(self):
+    self.position_to_relic = {}
+    self.obs = []
+
+  def reset_with_relic_nb(self, new_relic_nb_positions):
+    for x, y in new_relic_nb_positions:
+      pos = (int(x), int(y))
+      is_relic = self.position_to_relic.get(pos)
+      if is_relic == False:
+        del self.position_to_relic[pos]
+
+  def add_determined_observation(self, ob):
+    is_relic = True
+    if ob.relic_num == 0:
+      is_relic = False
+    for pos in ob.positions:
+      self.position_to_relic[pos] = is_relic
+
+  def solve(self):
+    # First, simplify all observations to reduce search spaces
+    has_determined_pos = True
+    unsolved_positions = set()
+    while has_determined_pos:
+      has_determined_pos = False
+      next_obs = []
+      for ob in reversed(self.obs):
+        ob = ob.simplify(self.position_to_relic)
+        if ob.is_determined():
+          self.add_determined_observation(ob)
+          has_determined_pos = True
+        else:
+          next_obs.append(ob)
+          unsolved_positions.update(ob.positions)
+      self.obs = next_obs
+
+    n = len(unsolved_positions)
+    unsolved_positions = list(unsolved_positions)
+    print(f"Solving {n} positions...", file=sys.stderr)
+
+    positions_values = defaultdict(set)
+    for s in range(2**n):
+      pos_to_val = {}
+      tmp = s
+      for pos in unsolved_positions:
+        pos_to_val[pos] = tmp % 2
+        tmp >>= 1
+
+      valid = True
+      for ob in self.obs:
+        if not ob.is_valid_solution(pos_to_val):
+          valid = False
+          break
+
+      if valid:
+        for pos, val in pos_to_val.items():
+          positions_values[pos].add(val)
+        print(f'valid solution: s={s}, pos_to_val={pos_to_val.items()}',
+              file=sys.stderr)
+
+    solved_num = 0
+    for pos, values in positions_values.items():
+      if len(values) == 1:
+        self.position_to_relic[pos] = bool(list(values)[0])
+        solved_num += 1
+      print(f"pos={pos}, values={values}", file=sys.stderr)
+
+    print(
+        f"Solved position: {solved_num}; undetermined: {len(positions_values) - solved_num}",
+        file=sys.stderr)
+
+  def observe(self, ob):
+    self.obs.append(ob)
+    self.solve()
+
+
 class HiddenRelicNodeEstimator:
 
   def __init__(self, enable_anti_sym):
     self.priori = np.zeros((MAP_WIDTH, MAP_HEIGHT))
     self.relic_node_positions = set()
     self.enable_anti_sym = enable_anti_sym
+    self.solver = HiddenRelicSolver()
 
   def check_new_relic_nodes(self, relic_node_positions):
     new_relic_node_positions = []
@@ -467,75 +572,38 @@ class HiddenRelicNodeEstimator:
              new_team_points):
     # first find the newly found relic node positions
     new_relic_node_positions = self.check_new_relic_nodes(relic_node_positions)
-    # if new_relic_node_positions.size > 0:
-    # print(f"new_relic_node_positions: {new_relic_node_positions}")
 
     # update (or reset) new relic node nb with priori
     new_relic_nb_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     if new_relic_node_positions.size > 0:
       new_relic_nb_mask[new_relic_node_positions[:, 0],
                         new_relic_node_positions[:, 1]] = True
-    # if self.enable_anti_sym:
-    # new_relic_nb_mask = new_relic_nb_mask | (
-    # anti_diag_sym(new_relic_nb_mask))
 
-    new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
-    # if new_relic_nb_mask.sum() > 0:
-    # print(f"reset new_relic_nb_mask: {new_relic_nb_mask.sum()}")
-    tmp_pri = self.priori.copy()
-    tmp_pri[new_relic_nb_mask] = PRIORI
-    self.priori = np.maximum(self.priori, tmp_pri)
+    # for newly found relic node, reset previous solved ones.
+    if new_relic_nb_mask.sum():
+      new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
+      new_relic_nb_positions = np.argwhere(new_relic_nb_mask)
+      self.solver.reset_with_relic_nb(new_relic_nb_positions)
 
-    is_relc_nb = (is_relic_neighbour == 1)
-    obs = np.argwhere(is_relc_nb & unit_positions)
-    post = self.calc_posteriori_probs(obs, new_team_points)
-    # print(new_team_points, post[post > 0])
+    is_relic_nb = (is_relic_neighbour == 1)
+    relic_positions = np.argwhere(is_relic_nb & unit_positions)
 
-    self.priori[is_relc_nb] = np.clip(post[is_relc_nb], MIN_PROB, MAX_PROB)
+    ob = Observation(relic_positions, new_team_points)
+    self.solver.observe(ob)
 
-  def calculate_p_data(self, obs, n, p):
-    if n < 0:
-      return 0
+    # Use solver states when possible, and random guess for unsolved ones.
+    self.priori = np.zeros(MAP_SHAPE2)
+    relic_nb_positions = np.argwhere(is_relic_nb)
+    for x, y in relic_nb_positions:
+      pos = (int(x), int(y))
+      is_relic = self.solver.position_to_relic.get(pos)
 
-    m = len(obs)
-
-    # represent the probability of observe k team points from the first j locations.
-    dp = np.zeros((m + 1, n + 1))
-    dp[0][0] = 1
-
-    for j in range(1, m + 1):
-      pos = obs[j - 1]
-      pj = p[pos[0]][pos[1]]
-      for k in range(n + 1):
-        dp[j][k] += dp[j - 1][k] * (1 - pj)
-        if k > 0:
-          dp[j][k] += dp[j - 1][k - 1] * pj
-    return dp[m][n]
-
-  def calc_posteriori_probs(self, observed_cells, new_team_points):
-    m = len(observed_cells)
-    n = min(new_team_points, m)
-
-    p_data = self.calculate_p_data(observed_cells, n, self.priori)
-    if p_data <= 0:
-      return self.priori
-    assert p_data > 0
-    # print(f'p_data = {p_data}')
-
-    post = self.priori.copy()
-    for i in observed_cells:
-      x, y = i
-      ob_exclude = [c for c in observed_cells if not (c[0] == x and c[1] == y)]
-      # print(observed_cells, ob_exclude, new_team_points)
-      p_data_given_i = self.calculate_p_data(ob_exclude, n - 1, self.priori)
-
-      post_prob = p_data_given_i * self.priori[x][y] / p_data
-      post[x][y] = post_prob
-      # post[y][x] = post_prob
-      # print(
-      # f"post[{x}][{y}] = {post[x][y]}, self.priori[x][y]={self.priori[x][y]}, p_data_given_i={p_data_given_i}"
-      # )
-    return post
+      p = 0
+      if is_relic is None:
+        p = random.random() * 0.5 + 0.25
+      else:
+        p = 1.0 if is_relic else 0.0
+      self.priori[pos[0]][pos[1]] = p
 
 
 class NebulaEnergyReduction:
