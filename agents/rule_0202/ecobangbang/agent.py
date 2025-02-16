@@ -84,21 +84,21 @@ def is_within_sap_range(upos, cpos, unit_sap_range):
           and (abs(upos[1] - cpos[1]) <= unit_sap_range))
 
 
-def get_player_init_pos(player_id):
+def get_player_init_pos(player_id, use_mirror):
   target_pos = (0, 0)
-  if player_id == 1:
+  if player_id == 1 and not use_mirror:
     target_pos = (23, 23)
   return target_pos
 
 
-def on_enemy_side(cpos, player_id):
-  target_pos = get_player_init_pos(player_id)
+def on_enemy_side(cpos, player_id, use_mirror):
+  target_pos = get_player_init_pos(player_id, use_mirror)
   mdist = manhatten_distance(target_pos, cpos)
   return mdist > MAP_WIDTH
 
 
-def on_team_side(cpos, player_id):
-  return not on_enemy_side(cpos, player_id)
+def on_team_side(cpos, player_id, use_mirror):
+  return not on_enemy_side(cpos, player_id, use_mirror)
 
 
 def right_tailed_exp(energy, val, m, v=20):
@@ -129,10 +129,14 @@ BOOST_SAP_ENERGY_THRESHOOD = 120
 
 class Agent:
 
-  def __init__(self, player: str, env_cfg) -> None:
+  def __init__(self, player: str, env_cfg, use_mirror=False) -> None:
     self.player = player
     self.env_cfg = env_cfg
     # np.random.seed(0)
+
+    # For testing
+    # if player == PLAYER1:
+    # use_mirror = True
 
     obs_space_kwargs = {
         'use_energy_cost_map': True,
@@ -143,7 +147,7 @@ class Agent:
                          env_cfg,
                          transpose=False,
                          sap_indexer=SapIndexer(),
-                         use_mirror=False,
+                         use_mirror=use_mirror,
                          use_hidden_relic_estimator=True)
     self.prev_model_action = None
     self.last_sap_locations = []
@@ -236,7 +240,7 @@ class Agent:
       # slightly favour cell for enemy next move
       x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
       enemy_dist = np.abs(x - pos[0]) + np.abs(y - pos[1])
-      init_pos = get_player_init_pos(self.mm.player_id)
+      init_pos = get_player_init_pos(self.mm.player_id, self.mm.use_mirror)
       enemy_init_pos_dist = manhatten_distance(pos, init_pos)
       init_pos_dist = np.abs(x - init_pos[0]) + np.abs(y - init_pos[0])
       mask = (enemy_dist == 1) & (init_pos_dist < enemy_init_pos_dist)
@@ -305,7 +309,7 @@ class Agent:
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
           file=sys.stderr)
 
-    player_init_pos = get_player_init_pos(mm.player_id)
+    player_init_pos = get_player_init_pos(mm.player_id, self.mm.use_mirror)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
     fire_zone = self.gen_fire_zone(d1)
@@ -338,7 +342,7 @@ class Agent:
 
       v = RELIC_NB_SCORE
       # Lower relic nb on enemy side
-      if on_enemy_side(cpos, mm.player_id):
+      if on_enemy_side(cpos, mm.player_id, mm.use_mirror):
         # v = mm.unit_sap_cost / 10 * p
         v = mm.unit_sap_cost / 10
 
@@ -356,7 +360,7 @@ class Agent:
       # w = -1
       return w
 
-    init_pos = get_player_init_pos(mm.enemy_id)
+    init_pos = get_player_init_pos(mm.enemy_id, mm.use_mirror)
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
@@ -381,7 +385,7 @@ class Agent:
       p = mm.team_point_mass[cpos[0]][cpos[1]]
 
       # Do not goto enemy side if energy below threshold
-      if on_enemy_side(cpos, mm.player_id):
+      if on_enemy_side(cpos, mm.player_id, mm.use_mirror):
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
@@ -452,7 +456,8 @@ class Agent:
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
       # If unit do not have much energy for one sap attack
-      if (not (unit_on_relic and on_team_side(upos, mm.player_id))
+      if (not (unit_on_relic
+               and on_team_side(upos, mm.player_id, mm.use_mirror))
           and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
         wt -= self.mm.unit_sap_cost / 10
 
@@ -736,6 +741,17 @@ class Agent:
             f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
             file=sys.stderr)
 
+  def mirror_action(self, unit_actions):
+    for i in range(MAX_UNIT_NUM):
+      a, x, y = unit_actions[i]
+
+      if self.mm.use_mirror:
+        a = MIRRORED_ACTION[a]
+        x, y = -y, -x
+
+      unit_actions[i][:] = (a, x, y)
+    return unit_actions
+
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
 
@@ -745,11 +761,13 @@ class Agent:
       print(f"============ game step {self.mm.game_step + 1} ========== ",
             file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
-    self.mm.add_sap_locations(self.last_sap_locations)
+    # self.mm.add_sap_locations(self.last_sap_locations)
 
     unit_to_cell = self.compute_unit_to_cell()
     unit_actions = self.encode_unit_actions(unit_to_cell)
     self.attack(unit_actions, unit_to_cell)
-
     self.prev_model_action = {UNITS_ACTION: unit_actions}
+
+    if self.mm.use_mirror:
+      unit_actions = self.mirror_action(unit_actions)
     return unit_actions

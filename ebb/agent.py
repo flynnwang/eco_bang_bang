@@ -35,6 +35,7 @@ DO_SAMPLE = True
 USE_MIRROR_TRANS = False
 
 USE_RANDOM = True
+# USE_RANDOM = False
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
@@ -45,6 +46,18 @@ if not SUBMIT_AGENT:
 N_CELLS = MAP_WIDTH * MAP_HEIGHT
 
 LOG3 = np.log(4)
+
+
+def draw_line(mp, pos):
+  pos2 = anti_diag_sym_i(pos)
+  min_x = min(pos[0], pos2[0])
+  max_x = max(pos[0], pos2[0])
+  min_y = min(pos[1], pos2[1])
+  max_y = max(pos[1], pos2[1])
+  for i, x in enumerate(range(min_x, max_x + 1)):
+    y = min_y + i
+    mp[x][y] = 1
+  return mp
 
 
 @functools.lru_cache(maxsize=1024, typed=False)
@@ -71,17 +84,21 @@ def is_within_sap_range(upos, cpos, unit_sap_range):
           and (abs(upos[1] - cpos[1]) <= unit_sap_range))
 
 
-def get_player_init_pos(player_id):
+def get_player_init_pos(player_id, use_mirror):
   target_pos = (0, 0)
-  if player_id == 1:
+  if player_id == 1 and not use_mirror:
     target_pos = (23, 23)
   return target_pos
 
 
-def on_enemy_side(cpos, player_id):
-  target_pos = get_player_init_pos(player_id)
+def on_enemy_side(cpos, player_id, use_mirror):
+  target_pos = get_player_init_pos(player_id, use_mirror)
   mdist = manhatten_distance(target_pos, cpos)
   return mdist > MAP_WIDTH
+
+
+def on_team_side(cpos, player_id, use_mirror):
+  return not on_enemy_side(cpos, player_id, use_mirror)
 
 
 def right_tailed_exp(energy, val, m, v=20):
@@ -107,15 +124,19 @@ MAX_EXPLORE_SCORE = 10
 MIN_OPEN_RELIC_NB_PROB = 0.01
 IS_RELIC_CELL_PROB = 0.8
 
-BOOST_SAP_ENERGY_THRESHOOD = 180
+BOOST_SAP_ENERGY_THRESHOOD = 120
 
 
 class Agent:
 
-  def __init__(self, player: str, env_cfg) -> None:
+  def __init__(self, player: str, env_cfg, use_mirror=False) -> None:
     self.player = player
     self.env_cfg = env_cfg
     # np.random.seed(0)
+
+    # For testing
+    # if player == PLAYER1:
+    # use_mirror = True
 
     obs_space_kwargs = {
         'use_energy_cost_map': True,
@@ -126,22 +147,34 @@ class Agent:
                          env_cfg,
                          transpose=False,
                          sap_indexer=SapIndexer(),
-                         use_mirror=False,
+                         use_mirror=use_mirror,
                          use_hidden_relic_estimator=True)
     self.prev_model_action = None
     self.last_sap_locations = []
 
-  def get_enemy_sap_range(self):
+  def get_enemy_sap_cost_map(self, unit_energy=None, extra_range=0):
     # TODO: exclude the position enemy can not see
     enemy_sap_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask or energy < self.mm.unit_sap_cost:
         continue
-      sap_range = gen_sap_range(pos,
-                                self.mm.unit_sap_range + 1)  # add 1 for safety
-      enemy_sap_map[sap_range] = True
+      if unit_energy is not None and energy < unit_energy:
+        continue
+      # add 1 for dropoff and extra_range for margin
+      sap_range = gen_sap_range(pos, self.mm.unit_sap_range + 1 + extra_range)
+      enemy_sap_map[sap_range] += self.mm.unit_sap_cost
     return enemy_sap_map
+
+  def get_enemy_max_energy_level(self, unit_energy, max_dist=3):
+    enemy_max_energy = self.mm.enemy_max_energy.copy()
+    enemy_positions = (enemy_max_energy >= unit_energy)
+    for d in range(max_dist):
+      dist = max_dist - d - 1
+      cost = (d / (max_dist - 1) + 1)
+      position_mask = maximum_filter(enemy_positions, size=2 * dist + 1)
+      enemy_max_energy[position_mask] = cost
+    return enemy_max_energy
 
   def get_sap_hit_map(self, factor):
 
@@ -207,7 +240,7 @@ class Agent:
       # slightly favour cell for enemy next move
       x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
       enemy_dist = np.abs(x - pos[0]) + np.abs(y - pos[1])
-      init_pos = get_player_init_pos(self.mm.player_id)
+      init_pos = get_player_init_pos(self.mm.player_id, self.mm.use_mirror)
       enemy_init_pos_dist = manhatten_distance(pos, init_pos)
       init_pos_dist = np.abs(x - init_pos[0]) + np.abs(y - init_pos[0])
       mask = (enemy_dist == 1) & (init_pos_dist < enemy_init_pos_dist)
@@ -215,29 +248,33 @@ class Agent:
 
     return hit_map
 
-  def gen_fire_zone(self, extend_dist=2, backoff_steps=5):
+  def gen_fire_zone(self, dist_to_init_pos):
     """Fire zone is the positive energy cells that could either attack enemy
     relic position or protect my reilc points."""
     mm = self.mm
+
+    attack_path_mask = mm.is_relic_node.copy()
+    relic_node_positions = mm.hidden_relic_estimator.relic_node_positions
+    for pos in relic_node_positions:
+      draw_line(attack_path_mask, pos)
+
+    attack_path_mask = maximum_filter(attack_path_mask, size=7)
+
     team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
-    fire_zone_range = mm.unit_sap_range * 2 + 1 + extend_dist
-    fire_zone = maximum_filter(team_point_mask, fire_zone_range)
+    enemy_side_mask = (dist_to_init_pos >= MAP_WIDTH)
+    fire_zone = (team_point_mask & enemy_side_mask)
 
-    # energy_lost_step = self.mm.sap_dropoff_factor_estimator.unit_energy_lost_step
-    # energy_lost_mask = (mm.game_step - energy_lost_step) <= backoff_steps
-    # energy_lost_mask = maximum_filter(energy_lost_mask, 3)
+    fire_zone_range = mm.unit_sap_range * 2 + 1
+    fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
-    # return fire_zone, energy_lost_mask
+    fire_zone = fire_zone.astype(int) + attack_path_mask
     return fire_zone
 
   def compute_unit_to_cell(self):
     mm = self.mm
-    is_explore_step = (mm.match_step <= 50 and mm.game_step < 303)
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + mm.match_step
-
-    # TODO: test drop it
     if mm.match_step >= 70:
       energy_threshold = 60
 
@@ -272,12 +309,10 @@ class Agent:
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
           file=sys.stderr)
 
-    fire_zone = self.gen_fire_zone()
-
-    player_init_pos = get_player_init_pos(mm.player_id)
+    player_init_pos = get_player_init_pos(mm.player_id, self.mm.use_mirror)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    # d1[d1 > MAP_WIDTH] = MAP_WIDTH
+    fire_zone = self.gen_fire_zone(d1)
     d1 /= MAP_WIDTH
 
     def get_fuel_energy(upos, energy, cpos):
@@ -290,7 +325,8 @@ class Agent:
 
       return fuel
 
-    enemy_sap_range = self.get_enemy_sap_range()
+    enemy_sap_cost = self.get_enemy_sap_cost_map()
+    self.enemy_sap_cost = enemy_sap_cost
 
     def get_open_relic_nb(upos, energy, cpos):
       """First visit on relic neighbour"""
@@ -306,12 +342,12 @@ class Agent:
 
       v = RELIC_NB_SCORE
       # Lower relic nb on enemy side
-      if on_enemy_side(cpos, mm.player_id):
+      if on_enemy_side(cpos, mm.player_id, mm.use_mirror):
         # v = mm.unit_sap_cost / 10 * p
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
-      if enemy_sap_range[cpos[0]][cpos[1]]:
+      if enemy_sap_cost[cpos[0]][cpos[1]] > 0:
         v = mm.unit_sap_cost / 10 * 0.5
 
       last_visited_step = mm.last_visited_step[cpos[0]][cpos[1]]
@@ -324,7 +360,7 @@ class Agent:
       # w = -1
       return w
 
-    init_pos = get_player_init_pos(mm.enemy_id)
+    init_pos = get_player_init_pos(mm.enemy_id, mm.use_mirror)
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
@@ -349,17 +385,16 @@ class Agent:
       p = mm.team_point_mass[cpos[0]][cpos[1]]
 
       # Do not goto enemy side if energy below threshold
-      if on_enemy_side(cpos, mm.player_id):
+      if on_enemy_side(cpos, mm.player_id, mm.use_mirror):
         v = mm.unit_sap_cost / 10
 
       # If enemy may sap it, lower its weight
-      if not pos_equal(cpos, upos) and enemy_sap_range[cpos[0]][cpos[1]]:
-        v = mm.unit_sap_cost / 10 * 0.5
+      # if not pos_equal(cpos, upos) and enemy_sap_cost[cpos[0]][cpos[1]] > 0:
+      # v = mm.unit_sap_cost / 10 * 0.5
 
       w = 0
       if p > IS_RELIC_CELL_PROB:
         w += v * p
-
       return w
 
     hit_factor = 10
@@ -393,18 +428,15 @@ class Agent:
 
     score_debug = {}
 
+    enemy_max_energy = maximum_filter(mm.enemy_max_energy, size=5)
+    self.enemy_max_energy = enemy_max_energy
+
     def get_unit_cell_wt(upos, energy, cpos, unit_cost_map):
       if cant_move_to(upos, cpos, mm):
         return -9999
 
-      # if energy < unit_cost_map[cpos[0]][cpos[1]]:
-      # if not SUBMIT_AGENT:
-      # print(f'game_step={mm.game_step}: skip due to inf at {cpos}',
-      # file=sys.stderr)
-      # return -9999
-
-      # Do not target cell with enemy energy > unit energy
-      if energy < mm.enemy_max_energy[cpos[0]][cpos[1]]:
+      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+      if (not unit_on_relic) and energy <= enemy_max_energy[cpos[0]][cpos[1]]:
         return -9999
 
       # mdist = manhatten_distance(upos, cpos) + 7
@@ -423,22 +455,13 @@ class Agent:
 
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
-      # If enemy hit me at relic position, skip them?
-      cpos_nb_mask = gen_sap_range(cpos, self.mm.unit_sap_range + 1)
-      # any_enemy_nearby = mm.enemy_position_mask_can_negtive[cpos_nb_mask].sum(
-      # ) > 0
-      # if not any_enemy_nearby and energy_lost_mask[cpos[0]][cpos[1]]:
-      # on_relic_wt *= 0.2
-      # relic_nb_wt *= 0.2
+      # If unit do not have much energy for one sap attack
+      if (not (unit_on_relic
+               and on_team_side(upos, mm.player_id, mm.use_mirror))
+          and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
+        wt -= self.mm.unit_sap_cost / 10
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
-
-      is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
-      # has enemy nearby, dangerous, go away
-      has_enemy_nearby = (mm.enemy_max_energy[cpos_nb_mask] > energy).sum() > 0
-      if (has_enemy_nearby
-          and (not is_relic_nb or on_enemy_side(cpos, mm.player_id))):
-        wt -= self.mm.unit_sap_cost / 10
 
       score_debug[(tuple(upos), tuple(cpos))] = {
           'explore_wt': expore_wt,
@@ -491,50 +514,41 @@ class Agent:
 
   def compute_energy_cost_map(self,
                               target_pos,
-                              asteriod_cost=100,
+                              asteriod_cost=20 * 25,
                               N=MAP_WIDTH * 2,
-                              extra_step_cost=10):
+                              extra_step_cost=5,
+                              enemy_cost=None):
     """Using `extra_step_cost` to control the balance between cost and path length."""
     mm = self.mm
+    cost_map = np.full((MAP_WIDTH, MAP_HEIGHT), float(mm.unit_move_cost))
 
-    static_cost_map = np.full((MAP_WIDTH, MAP_HEIGHT),
-                              float(mm.unit_move_cost))
-    static_cost_map -= mm.cell_energy
+    # nebula energy reduction adds extra cost
+    cost_map[mm.cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
 
-    # Add extra step cost to favour shorter path
-    static_cost_map += extra_step_cost
+    # Add extra step cost for favouring shorter path
+    cost_map += extra_step_cost
+    cost_map -= mm.cell_energy
 
-    cell_type = mm.cell_type
+    # cell energy cost change the cost map but max at 0 to prevent from loop
+    cost_map = np.maximum(cost_map, 1)
+
+    # use a big value for asteriod
+    cost_map[mm.cell_type == CELL_ASTERIOD] += asteriod_cost
+
+    if enemy_cost is not None:
+      cost_map += enemy_cost
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
     energy_cost[target_pos[0]][target_pos[1]] = 0
 
-    is_map_drifted = True
     kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float64)
-    for n in range(N):
-      if is_map_drifted:
-        cost_map = static_cost_map.copy()
-        # nebula energy reduction adds extra cost
-        cost_map[cell_type == CELL_NEBULA] += mm.nebula_energy_reduction
-        # use a large value for asteriod
-        cost_map[cell_type == CELL_ASTERIOD] = asteriod_cost
-        # cell energy cost change the cost map but max at 0 to prevent from loop
-        cost_map = np.maximum(cost_map, extra_step_cost)
-
+    for _ in range(N):
       min_neighbors = minimum_filter(energy_cost,
                                      footprint=kernel,
                                      mode='constant',
                                      cval=np.inf)
       with np.errstate(invalid='ignore'):
         energy_cost = np.minimum(energy_cost, min_neighbors + cost_map)
-
-      is_map_drifted = False
-
-      game_step = mm.game_step + n
-      drift_speed = mm.nebula_drift_estimator.drift_speed
-      if drift_speed is not None and is_drifted_step(game_step, drift_speed):
-        is_map_drifted = True
-        cell_type = shift_map_by_sign(cell_type, drift_speed)
 
     return energy_cost
 
@@ -576,9 +590,9 @@ class Agent:
           # if not SUBMIT_AGENT and self.player == PLAYER1:
 
           # if self.player == PLAYER1:
-          # print(
-          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
-          # file=sys.stderr)
+          print(
+              f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+              file=sys.stderr)
 
       if len(actions):
         actions.sort()
@@ -605,13 +619,23 @@ class Agent:
         unit_actions[i][0] = ACTION_CENTER
         continue
 
-      if not SUBMIT_AGENT:
-        # if self.player == PLAYER1:
-        print(
-            f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-            file=sys.stderr)
+      # if not SUBMIT_AGENT:
+      # if self.player == PLAYER1:
+      print(
+          f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+          file=sys.stderr)
 
-      energy_cost = self.compute_energy_cost_map(cell_pos)
+      # sap_dead_zone = self.enemy_sap_cost >= unit_energy
+      # enemy_sap_cost = self.enemy_sap_cost.copy()
+      # enemy_sap_cost[~sap_dead_zone] = 0
+
+      enemy_pos_cost = self.get_enemy_max_energy_level(unit_energy)
+      # enemy_cost = (enemy_pos_cost * 1000) + (enemy_sap_cost * 5)
+      enemy_cost = (enemy_pos_cost * 1000)
+
+      energy_cost = self.compute_energy_cost_map(cell_pos,
+                                                 enemy_cost=enemy_cost)
+      self.energy_cost_ = energy_cost
       unit_actions[i][0] = select_move_action(i, unit_pos, unit_energy,
                                               energy_cost)
 
@@ -717,6 +741,17 @@ class Agent:
             f'step={mm.game_step}, unit[{unit_pos}] sap at {cpos} with damage={wt}',
             file=sys.stderr)
 
+  def mirror_action(self, unit_actions):
+    for i in range(MAX_UNIT_NUM):
+      a, x, y = unit_actions[i]
+
+      if self.mm.use_mirror:
+        a = MIRRORED_ACTION[a]
+        x, y = -y, -x
+
+      unit_actions[i][:] = (a, x, y)
+    return unit_actions
+
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
 
@@ -726,11 +761,13 @@ class Agent:
       print(f"============ game step {self.mm.game_step + 1} ========== ",
             file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
-    self.mm.add_sap_locations(self.last_sap_locations)
+    # self.mm.add_sap_locations(self.last_sap_locations)
 
     unit_to_cell = self.compute_unit_to_cell()
     unit_actions = self.encode_unit_actions(unit_to_cell)
     self.attack(unit_actions, unit_to_cell)
-
     self.prev_model_action = {UNITS_ACTION: unit_actions}
+
+    if self.mm.use_mirror:
+      unit_actions = self.mirror_action(unit_actions)
     return unit_actions
