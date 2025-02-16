@@ -1093,6 +1093,8 @@ class MapManager:
       self.last_match_found_relic = self.has_found_relic_in_match()
       self.last_match_relic_cell_num = self.is_relic_node.sum()
 
+      self.hidden_relic_estimator.solver.obs = []
+
       # self.append_ob(ob)
 
       # use match_step=0 reset map manager, do not update below
