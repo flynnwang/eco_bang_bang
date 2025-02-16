@@ -18,6 +18,8 @@ from random import randint
 from .const import *
 from .mapmanager import *
 
+USE_MIRROR_FOR_PLAYER1 = True
+
 # Let's use move action only first
 ACTION_SPACE = spaces.Dict({
     UNITS_ACTION:
@@ -192,7 +194,8 @@ class LuxS3Env(gym.Env):
     # tr2 = ((self._seed // 2) % 2 == 0)
     # mirror1 = ((self._seed // 4) % 2 == 0)
     # mirror2 = ((self._seed // 8) % 2 == 0)
-    tr1 = tr2 = mirror1 = mirror2 = False
+    tr1 = tr2 = mirror1 = False
+    mirror2 = USE_MIRROR_FOR_PLAYER1
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -221,7 +224,8 @@ class LuxS3Env(gym.Env):
       from ..agent import Agent
       self.agents = [
           Agent(self.mms[0].player, env_cfg),
-          Agent(self.mms[1].player, env_cfg),
+          Agent(self.mms[1].player, env_cfg,
+                use_mirror=USE_MIRROR_FOR_PLAYER1),
       ]
       self.agents[0].env = self
       self.agents[1].env = self

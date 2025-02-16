@@ -761,7 +761,7 @@ class Agent:
       print(f"============ game step {self.mm.game_step + 1} ========== ",
             file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
-    # self.mm.add_sap_locations(self.last_sap_locations)
+    self.mm.add_sap_locations(self.last_sap_locations)
 
     unit_to_cell = self.compute_unit_to_cell()
     unit_actions = self.encode_unit_actions(unit_to_cell)
