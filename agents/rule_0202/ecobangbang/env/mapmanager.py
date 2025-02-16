@@ -27,9 +27,14 @@ def manhatten_distance(p1, p2):
 
 
 def get_player_init_pos(player_id, use_mirror):
-  target_pos = (0, 0)
-  if player_id == 1 and not use_mirror:
-    target_pos = (23, 23)
+  if not use_mirror:
+    target_pos = (0, 0)
+    if player_id == 1:
+      target_pos = (23, 23)
+  else:
+    target_pos = (0, 0)
+    if player_id == 0:
+      target_pos = (23, 23)
   return target_pos
 
 
