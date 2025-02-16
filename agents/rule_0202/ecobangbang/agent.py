@@ -26,6 +26,7 @@ from .env.mapmanager import (
     gen_sap_range,
     is_drifted_step,
     shift_map_by_sign,
+    get_player_init_pos,
 )
 
 # SUBMIT_AGENT = False
@@ -82,13 +83,6 @@ def cant_move_to(upos, cpos, mm):
 def is_within_sap_range(upos, cpos, unit_sap_range):
   return ((abs(upos[0] - cpos[0]) <= unit_sap_range)
           and (abs(upos[1] - cpos[1]) <= unit_sap_range))
-
-
-def get_player_init_pos(player_id, use_mirror):
-  target_pos = (0, 0)
-  if player_id == 1 and not use_mirror:
-    target_pos = (23, 23)
-  return target_pos
 
 
 def on_enemy_side(cpos, player_id, use_mirror):

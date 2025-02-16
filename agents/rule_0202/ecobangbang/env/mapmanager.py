@@ -26,9 +26,9 @@ def manhatten_distance(p1, p2):
   return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
 
 
-def get_player_init_pos(player_id):
+def get_player_init_pos(player_id, use_mirror):
   target_pos = (0, 0)
-  if player_id == 1:
+  if player_id == 1 and not use_mirror:
     target_pos = (23, 23)
   return target_pos
 
@@ -1292,7 +1292,7 @@ class MapManager:
 
   @lru_cache(maxsize=None)
   def get_player_half_mask(self, player_id):
-    init_pos = get_player_init_pos(player_id)
+    init_pos = get_player_init_pos(player_id, self.use_mirror)
     return generate_manhattan_mask(MAP_SHAPE2,
                                    init_pos,
                                    range_limit=MAP_WIDTH - 1)
@@ -1410,11 +1410,7 @@ class MapManager:
       hit_map[x0:x1, y0:y1] += True
 
     # Add unvisible team point positions
-    if self.player_id == 1:
-      assert self.transpose == False
-      assert self.use_mirror == False
-
-    init_pos = get_player_init_pos(self.enemy_id)
+    init_pos = get_player_init_pos(self.enemy_id, self.use_mirror)
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
