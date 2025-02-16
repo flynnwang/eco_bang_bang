@@ -129,8 +129,8 @@ class Agent:
     # np.random.seed(0)
 
     # For testing
-    if player == PLAYER1:
-      use_mirror = True
+    # if player == PLAYER1:
+    # use_mirror = True
 
     obs_space_kwargs = {
         'use_energy_cost_map': True,
@@ -247,22 +247,22 @@ class Agent:
     relic position or protect my reilc points."""
     mm = self.mm
 
+    attack_path_mask = mm.is_relic_node.copy()
+    relic_node_positions = mm.hidden_relic_estimator.relic_node_positions
+    for pos in relic_node_positions:
+      draw_line(attack_path_mask, pos)
+
+    attack_path_mask = maximum_filter(attack_path_mask, size=7)
+
     team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
-    unit_relic_mask = (dist_to_init_pos <= MAP_WIDTH) & team_point_mask
-
-    dx = mm.unit_sap_range // 2 + 1
-    if mm.player_id == 1 and not mm.use_mirror:
-      dx = -dx
-    unit_relic_mask = np.roll(unit_relic_mask, shift=(dx, dx), axis=(0, 1))
-    defense_zone = maximum_filter(unit_relic_mask, size=mm.unit_sap_range + 1)
-
     enemy_side_mask = (dist_to_init_pos >= MAP_WIDTH)
     fire_zone = (team_point_mask & enemy_side_mask)
 
     fire_zone_range = mm.unit_sap_range * 2 + 1
     fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
-    return fire_zone, defense_zone
+    fire_zone = fire_zone.astype(int) + attack_path_mask
+    return fire_zone
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -274,7 +274,6 @@ class Agent:
 
     has_found_relic = mm.has_found_relic_in_match()
     n = (MAP_WIDTH * MAP_HEIGHT)
-
     n_explore = n - match_observed.sum()
     expore_score = n * EXPLORE_CELL_SCORE / (n_explore + 1)
     print(
@@ -307,9 +306,8 @@ class Agent:
     player_init_pos = get_player_init_pos(mm.player_id, self.mm.use_mirror)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    fire_zone, defense_zone = self.gen_fire_zone(d1)
-
-    # d1 /= MAP_WIDTH
+    fire_zone = self.gen_fire_zone(d1)
+    d1 /= MAP_WIDTH
 
     def get_fuel_energy(upos, energy, cpos):
       e = fuel = energy_map[cpos[0]][cpos[1]]
@@ -317,21 +315,7 @@ class Agent:
 
       # Boost more net energy position without energy thresholding
       if e > 0 and fire_zone[cpos[0]][cpos[1]]:
-        boost = 2 * e
-        boost = left_tailed_exp(energy,
-                                boost,
-                                m=BOOST_SAP_ENERGY_THRESHOOD,
-                                v=30)
-        fuel += boost
-
-      if e > 0 and defense_zone[cpos[0]][cpos[1]]:
-        boost = 2 * e
-        boost = left_tailed_exp(energy, boost, m=50, v=30)
-        boost = right_tailed_exp(energy,
-                                 boost,
-                                 m=BOOST_SAP_ENERGY_THRESHOOD,
-                                 v=30)
-        fuel += boost
+        fuel += (e * d1[cpos[0]][cpos[1]])
 
       return fuel
 
