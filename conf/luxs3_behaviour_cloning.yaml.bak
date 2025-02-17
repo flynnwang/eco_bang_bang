@@ -1,0 +1,132 @@
+defaults:
+
+
+- override hydra/job_logging: default
+- override hydra/hydra_logging: default
+
+hydra:
+  run:
+    dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
+
+name: run_20250208_behaviour_cloning_r0_with_drift_estimation_cont3
+
+## WANDB params
+# The wandb project name
+project: lux_s3
+# The wandb user to log to
+entity: pyflynn
+# The wandb group for the run
+group: luxs3_imitation_0208
+
+## ENV params
+obs_space_kwargs:
+  use_energy_cost_map: True
+  use_single_player: False
+  use_agent: True
+
+
+reward_space_kwargs: {}
+#reward_schema: game_win_loss2
+reward_schema: match_explore_win_loss
+#reward_schema: shaping_v2
+reward_shaping_params:
+  use_hidden_relic_estimator: True
+  energy_cost_change: 0
+  match_observed: 0
+  match_win: 1
+
+## TRAINING params
+total_steps: 2e8
+num_actors: 31
+#num_actors: 2
+n_actor_envs: 8
+
+unroll_length: 16
+# Batch must be multiple of `n_actor_envs`
+batch_size: 4
+
+discounting: 0.999
+
+## MODEL params
+model_arch: conv_model
+n_blocks: 8
+hidden_dim: 128
+base_out_channels: 128
+embedding_dim: 16
+n_merge_layers: 1
+normalize: False
+sum_player_embeddings: False
+use_index_select: False
+rescale_value_input: True
+rescale_se_input: True
+# Conv-specific params
+kernel_size: 5
+
+
+## OPTIMIZER params
+optimizer_class: Adam
+optimizer_kwargs:
+  lr: 1e-5
+  #lr: 5e-6
+  #lr: 1e-6
+  # See https://arxiv.org/pdf/2105.05246.pdf
+  eps: 0.0003
+  #weight_decay: 0.001
+  #weight_decay: 6e-4
+  #weight_decay: 1e-4
+  #weight_decay: 1e-5
+  #weight_decay: 1e-6
+  weight_decay: 1e-7
+  #alpha: 0.9
+min_lr_mod: 0.01
+
+## LOSS params
+#entropy_cost: 3e-4
+#entropy_cost: 6e-4
+entropy_cost: 1e-3
+baseline_cost: 1.
+teacher_kl_cost: 0
+#teacher_kl_cost: 1e-3
+teacher_baseline_cost: 0.0
+# lambda parameter for TD-lambda and UPGO losses
+lmb: 0.8
+#lmb: 0.9
+reduction: sum
+
+
+# Pretrained model for KL loss
+use_teacher: False
+teacher_load_dir:
+teacher_checkpoint_file:
+
+# MISCELLANEOUS params
+use_mixed_precision: True
+max_one_gpu_actor_num: 8
+actor_device: cuda:0
+learner_device: cuda:1
+
+#actor_device: cpu
+#learner_device: cpu
+model_log_freq: 100
+
+# in minutes
+checkpoint_freq: 20
+# file_descriptor or file_system
+sharing_strategy: file_system
+
+disable_wandb: False
+debug: False
+#disable_wandb: True
+#debug: True
+#
+load_dir: /home/flynnwang/runs/ebb/02-09/15-12-07
+checkpoint_file: 025278912.pt
+#load_dir: /home/flynnwang/runs/ebb/02-09/13-51-53
+#checkpoint_file: 015898048.pt
+#load_dir: /home/flynnwang/runs/ebb/02-09/11-46-11
+#checkpoint_file: 015463424.pt
+#load_dir: /home/flynnwang/runs/ebb/02-08/10-31-08
+#checkpoint_file: 014363648.pt
+#
+weights_only: False
+n_value_warmup_batches: 0

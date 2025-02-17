@@ -10,7 +10,8 @@ def create_env(flags, device: torch.device) -> DictEnv:
   for _ in range(flags.n_actor_envs):
     env = LuxS3Env(flags.reward_schema,
                    obs_space_kwargs=flags.obs_space_kwargs,
-                   reward_shaping_params=flags.reward_shaping_params)
+                   reward_shaping_params=flags.reward_shaping_params,
+                   use_separate_base=flags.use_separate_base)
     envs.append(env)
   env = VecEnv(envs, flags.obs_space_kwargs['use_single_player'])
   env = PytorchEnv(env, device)

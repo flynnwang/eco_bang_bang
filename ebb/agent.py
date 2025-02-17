@@ -703,8 +703,8 @@ class Agent:
       if not SUBMIT_AGENT:
         _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
         wts = score_debug[(tuple(upos), tuple(cpos))]
-        print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
-              file=sys.stderr)
+        # print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
+        # file=sys.stderr)
 
     self.unit_to_cell = unit_to_cell
     self.unit_score = unit_score
@@ -790,6 +790,7 @@ class Agent:
           # if self.player == PLAYER1:
           # print(
           # f"game_step={mm.game_step}, unit={unit_id} t staction={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
           # file=sys.stderr)
 
       if len(actions):

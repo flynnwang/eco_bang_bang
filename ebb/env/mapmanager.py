@@ -221,7 +221,7 @@ class EnergyNodeEstimator:
       # file=sys.stderr)
       if matched:
         matched_nodes.append((pos, field))
-        print(f"***** --> found energy node at {pos}", file=sys.stderr)
+        # print(f"***** --> found energy node at {pos}", file=sys.stderr)
 
     # Update the candidates: TODO: generate energy field generation only once
     self.candidate_energy_posotions = [x[0] for x in matched_nodes]
@@ -270,9 +270,9 @@ class EnergyNodeEstimator:
 
             if step_visible_num > 0 and not self.energy_node_found:
               self.find_energy_node(step_energy_field, step_visible)
-            print(
-                f"----------small reset energy node positions, found? = {self.energy_node_found}",
-                file=sys.stderr)
+            # print(
+            # f"----------small reset energy node positions, found? = {self.energy_node_found}",
+            # file=sys.stderr)
 
         # In case not found by small reset, Reset to search
         if not self.energy_node_found:
@@ -282,16 +282,16 @@ class EnergyNodeEstimator:
                                       MAP_WIDTH - 1))
           self.candidate_energy_posotions = [v for v in positions] + [None]
 
-          print(f"************Reset energy node positions!", file=sys.stderr)
+          # print(f"************Reset energy node positions!", file=sys.stderr)
 
-        print(f"energy field changed at step = {game_step}", file=sys.stderr)
+        # print(f"energy field changed at step = {game_step}", file=sys.stderr)
 
     if step_visible_num > 0 and not self.energy_node_found:
       self.find_energy_node(step_energy_field, step_visible)
 
-    print(
-        f"step={game_step} (after update), energy field found={self.energy_node_found}, node={self.energy_node}, candidates={self.candidate_energy_posotions}",
-        file=sys.stderr)
+    # print(
+    # f"step={game_step} (after update), energy field found={self.energy_node_found}, node={self.energy_node}, candidates={self.candidate_energy_posotions}",
+    # file=sys.stderr)
 
 
 class NebulaDriftEstimator:
@@ -523,7 +523,7 @@ class HiddenRelicSolver:
 
     n = len(unsolved_positions)
     unsolved_positions = list(unsolved_positions)
-    print(f"Solving {n} positions...", file=sys.stderr)
+    # print(f"Solving {n} positions...", file=sys.stderr)
 
     start_time = datetime.now()
     positions_values = defaultdict(set)
@@ -545,7 +545,6 @@ class HiddenRelicSolver:
           positions_values[pos].add(val)
         # print(f'valid solution: s={s}, pos_to_val={pos_to_val.items()}',
         # file=sys.stderr)
-
       now = datetime.now()
       waitTime = min((remainingOverageTime - 5), 10)
       if (now - start_time).total_seconds() > waitTime:
@@ -556,11 +555,11 @@ class HiddenRelicSolver:
       if len(values) == 1:
         self.position_to_relic[pos] = bool(list(values)[0])
         solved_num += 1
-      print(f"pos={pos}, values={values}", file=sys.stderr)
+      # print(f"pos={pos}, values={values}", file=sys.stderr)
 
-    print(
-        f"Solved position: {solved_num}; undetermined: {len(positions_values) - solved_num}",
-        file=sys.stderr)
+    # print(
+    # f"Solved position: {solved_num}; undetermined: {len(positions_values) - solved_num}",
+    # file=sys.stderr)
 
   def observe(self, ob, remainingOverageTime):
     self.obs.append(ob)
@@ -933,9 +932,9 @@ class MapManager:
 
     drift_speed = self.nebula_drift_estimator.drift_speed
     if drift_speed is not None and is_drifted_step(change_step, drift_speed):
-      print(
-          f'step={self.game_step}, apply nebula drift = {drift_speed}, {self.nebula_drift_estimator.counter}',
-          file=sys.stderr)
+      # print(
+      # f'step={self.game_step}, apply nebula drift = {drift_speed}, {self.nebula_drift_estimator.counter}',
+      # file=sys.stderr)
       self.cell_type = shift_map_by_sign(self.cell_type, drift_speed)
 
     # Update map cell type
@@ -1072,11 +1071,11 @@ class MapManager:
           and self.cell_type[position[0], position[1]] == CELL_NEBULA):
         reduction = e1 - energy
         self._nebula_energy_reduction.add(reduction)
-        print(
-            f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}',
-            file=sys.stderr)
-        print(f' [debug] unit={i}, {p0}=>{position} e=({e0}={energy}) a={a}',
-              file=sys.stderr)
+        # print(
+        # f'gstep={ob["steps"]}, mstep={ob["match_steps"]}, nebula_energy_reduction={self._nebula_energy_reduction.best_guess()}',
+        # file=sys.stderr)
+        # print(f' [debug] unit={i}, {p0}=>{position} e=({e0}={energy}) a={a}',
+        # file=sys.stderr)
 
   @property
   def step_units_on_relic_num(self):
@@ -1392,9 +1391,9 @@ class MapManager:
 
     if self.energy_node_estimator.energy_node_found:
       self.cell_energy = self.energy_node_estimator.current_energy_field
-      print(
-          f"--> using energy node at {self.energy_node_estimator.energy_node}",
-          file=sys.stderr)
+      # print(
+      # f"--> using energy node at {self.energy_node_estimator.energy_node}",
+      # file=sys.stderr)
 
     # In case energy node is not found, always update energy field map
     self.cell_energy[sensor_mask] = energy[sensor_mask]

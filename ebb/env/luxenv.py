@@ -47,7 +47,7 @@ OB = OrderedDict([
     ('unit_sap_dropoff_factor',
      spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_SAP_DROPOFF_FACTOR)),
     # Scores
-    ('player_id', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # ('player_id', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('team_points_delta', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_team_points_growth', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -62,12 +62,11 @@ OB = OrderedDict([
     ('visible', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('last_observed_age', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('last_visited_age', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('_a_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('_b_is_relic_node', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-
-    # use this to indicate nodes of unvisited relic cells (and its neighbour)
+    #
     ('_a_is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_is_relic_neighbour', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    # use this to indicate nodes of unvisited relic cells (and its neighbour)
+    ('solved_relic', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     # use this to indicate the hidden place of relc nodes.
     ('_a_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('_b_team_point_prob', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
@@ -80,13 +79,18 @@ OB = OrderedDict([
 
     # units team map
     ('units_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('units_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_min_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_max_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('units_loc_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('units_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_min_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('units_max_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    #
     ('enemy_loc_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('enemy_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_min_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_max_energy_t0', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_loc_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
-    ('enemy_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_min_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('enemy_max_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Extra baseline mode feature
     ("_baseline_extras",
@@ -115,7 +119,8 @@ class LuxS3Env(gym.Env):
                reward_schema,
                obs_space_kwargs,
                game_env=None,
-               reward_shaping_params=None):
+               reward_shaping_params=None,
+               use_separate_base=False):
     self.reward_schema = reward_schema
     self.obs_space_kwargs = obs_space_kwargs
     self.use_agent = obs_space_kwargs.get("use_agent")
@@ -126,6 +131,7 @@ class LuxS3Env(gym.Env):
     self._seed = None
     self.last_sap_locations = [[], []]
     self.agent_actions = [None, None]
+    self.use_separate_base = use_separate_base
 
   @property
   def total_agent_controls(self):
@@ -280,13 +286,14 @@ class LuxS3Env(gym.Env):
         # print(f'sap: dx={x}, dy={y}')
 
       # Note: transpose shoud happen before mirror
-      if mm.transpose:
-        a = TRANSPOSED_ACTION[a]
-        x, y = y, x
+      if not self.use_agent:
+        if mm.transpose:
+          a = TRANSPOSED_ACTION[a]
+          x, y = y, x
 
-      if mm.use_mirror:
-        a = MIRRORED_ACTION[a]
-        x, y = -y, -x
+        if mm.use_mirror:
+          a = MIRRORED_ACTION[a]
+          x, y = -y, -x
 
       return a, x, y
 
@@ -358,9 +365,9 @@ class LuxS3Env(gym.Env):
 
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
-    print(
-        f"step={raw_obs[PLAYER0]['steps']} final_state.energy_nodes={final_state.energy_nodes}, final_state.energy_nodes_mask={final_state.energy_nodes_mask}"
-    )
+    # print(
+    # f"step={raw_obs[PLAYER0]['steps']} final_state.energy_nodes={final_state.energy_nodes}, final_state.energy_nodes_mask={final_state.energy_nodes_mask}"
+    # )
 
     self._update_mms(raw_obs,
                      model_actions=model_action,
@@ -473,7 +480,7 @@ class LuxS3Env(gym.Env):
         mm.sap_dropoff_factor_estimator.index())
 
     # Scores
-    o['player_id'] = scalar(mm.player_id, 1)
+    # o['player_id'] = scalar(mm.player_id, 1)
 
     team_points = ob['team_points']
     units_points = team_points[mm.player_id]
@@ -498,7 +505,8 @@ class LuxS3Env(gym.Env):
 
     # Map info
     o['_a_cell_type'] = mm.cell_type.copy()
-    o['_b_cell_type'] = mm.true_cell_type.copy()
+    if self.use_separate_base:
+      o['_b_cell_type'] = mm.true_cell_type.copy()
 
     o['visible'] = mm.visible.astype(np.float32)
     ob_age = np.minimum((mm.game_step - mm.last_observed_step),
@@ -508,38 +516,50 @@ class LuxS3Env(gym.Env):
                            MAX_MATCH_STEPS)
     o['last_visited_age'] = visit_age / MAX_MATCH_STEPS
 
-    o['_a_is_relic_node'] = mm.is_relic_node.astype(np.float32)
-    o['_b_is_relic_node'] = mm.true_relic_map.astype(np.float32)
-
     o['_a_is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
     true_relic_neighbour = maximum_filter((mm.true_relic_map == 1),
                                           size=RELIC_NB_SIZE)
-    o['_b_is_relic_neighbour'] = true_relic_neighbour.astype(np.float32)
+    if self.use_separate_base:
+      o['_b_is_relic_neighbour'] = true_relic_neighbour.astype(np.float32)
+
+    # Turn off relic nb
+    solved_relic = np.zeros(MAP_SHAPE2)
+    relic_nb_positions = np.argwhere(mm.is_relic_neighbour > 0)
+    for x, y in relic_nb_positions:
+      pos = (int(x), int(y))
+      is_relic = mm.hidden_relic_estimator.solver.position_to_relic.get(pos)
+      if is_relic is not None and is_relic:
+        solved_relic[x][y] = 1.0
+
+    o['solved_relic'] = solved_relic
 
     # places need unit stay
     o['_a_team_point_prob'] = mm.team_point_mass.astype(np.float32)
-    o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
+    if self.use_separate_base:
+      o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
 
     if self.obs_space_kwargs.get('use_energy_cost_map'):
       o['_a_energy_cost_map'] = mm.get_erengy_cost_map_feature(
           mm.energy_cost_map)
 
-      energy_reduction = mm.nebula_energy_reduction
-      if mm.full_params:
-        energy_reduction = mm.full_params['nebula_tile_energy_reduction']
-      true_cost_map = mm.compute_energy_cost_map(mm.true_cell_type,
-                                                 mm.true_cell_energy,
-                                                 mm.true_relic_map,
-                                                 energy_reduction)
-      o['_b_energy_cost_map'] = mm.get_erengy_cost_map_feature(true_cost_map)
+      if self.use_separate_base:
+        energy_reduction = mm.nebula_energy_reduction
+        if mm.full_params:
+          energy_reduction = mm.full_params['nebula_tile_energy_reduction']
+        true_cost_map = mm.compute_energy_cost_map(mm.true_cell_type,
+                                                   mm.true_cell_energy,
+                                                   mm.true_relic_map,
+                                                   energy_reduction)
+        o['_b_energy_cost_map'] = mm.get_erengy_cost_map_feature(true_cost_map)
 
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
     o['_a_cell_energy'] = energy_map / MAX_ENERTY_PER_TILE
 
-    true_energy_map = mm.true_cell_energy.copy()
-    true_energy_map[mm.true_cell_type == CELL_NEBULA] -= energy_reduction
-    o['_b_cell_energy'] = true_energy_map / MAX_ENERTY_PER_TILE
+    if self.use_separate_base:
+      true_energy_map = mm.true_cell_energy.copy()
+      true_energy_map[mm.true_cell_type == CELL_NEBULA] -= energy_reduction
+      o['_b_cell_energy'] = true_energy_map / MAX_ENERTY_PER_TILE
 
     # print(
     # f"nebula_energy_reduction={mm.nebula_energy_reduction}, vision_reduction={mm.nebula_vision_reduction}"
@@ -547,18 +567,27 @@ class LuxS3Env(gym.Env):
 
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
-      unit_energy = np.zeros(MAP_SHAPE2)
+      min_unit_energy = np.ones(MAP_SHAPE2)
+      max_unit_energy = np.zeros(MAP_SHAPE2)
       total_energy = 0
       for i in range(MAX_UNIT_NUM):
         mask, pos, energy = mm.get_unit_info(player_id, i, t)
         if mask and energy >= 0:
-          unit_energy[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
-                                          MAX_UNIT_NUM)
           unit_pos[pos[0]][pos[1]] += (1 / MAX_UNIT_NUM)
           total_energy += energy
 
+          e = energy / MAX_UNIT_ENERGY
+          max_unit_energy[pos[0]][pos[1]] += max(
+              max_unit_energy[pos[0]][pos[1]], e)
+
+        if mask:
+          e = energy / MAX_UNIT_ENERGY
+          min_unit_energy[pos[0]][pos[1]] += min(
+              min_unit_energy[pos[0]][pos[1]], e)
+
       o[f'{prefix}_loc_t{t}'] = unit_pos
-      o[f'{prefix}_energy_t{t}'] = unit_energy
+      o[f'{prefix}_min_energy_t{t}'] = min_unit_energy
+      o[f'{prefix}_max_energy_t{t}'] = max_unit_energy
       return total_energy
 
     def add_unit_info(player_id, t):
