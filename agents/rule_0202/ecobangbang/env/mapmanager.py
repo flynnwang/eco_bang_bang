@@ -500,7 +500,7 @@ class HiddenRelicSolver:
     for pos in ob.positions:
       self.position_to_relic[pos] = is_relic
 
-  def solve(self):
+  def solve(self, remainingOverageTime):
     # First, simplify all observations to reduce search spaces
     has_determined_pos = True
     unsolved_positions = set()
@@ -543,7 +543,8 @@ class HiddenRelicSolver:
         # file=sys.stderr)
 
       now = datetime.now()
-      if (now - start_time).total_seconds() > 1.:
+      waitTime = min((remainingOverageTime - 5), 10)
+      if (now - start_time).total_seconds() > waitTime:
         raise HiddenRelicSolverTimeout
 
     solved_num = 0
@@ -557,9 +558,9 @@ class HiddenRelicSolver:
         f"Solved position: {solved_num}; undetermined: {len(positions_values) - solved_num}",
         file=sys.stderr)
 
-  def observe(self, ob):
+  def observe(self, ob, remainingOverageTime):
     self.obs.append(ob)
-    self.solve()
+    self.solve(remainingOverageTime)
 
 
 class HiddenRelicSolverTimeout(Exception):
@@ -605,7 +606,10 @@ class HiddenRelicNodeEstimator:
       self.solver.reset_with_relic_nb(new_relic_nb_positions)
 
     is_relic_nb = (is_relic_neighbour == 1)
-    relic_positions = np.argwhere(is_relic_nb & unit_positions)
+    if new_team_points > 0:
+      relic_positions = np.argwhere(is_relic_nb & unit_positions)
+    else:
+      relic_positions = np.argwhere(unit_positions)
 
     # Estimation method
     new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
@@ -618,7 +622,7 @@ class HiddenRelicNodeEstimator:
 
     ob = Observation(relic_positions, new_team_points)
     try:
-      self.solver.observe(ob)
+      self.solver.observe(ob, self.mm.remainingOverageTime)
 
       # Use solver states when possible, and random guess for unsolved ones.
       self.priori = np.zeros(MAP_SHAPE2)
@@ -863,6 +867,7 @@ class MapManager:
     self.energy_node_estimator = EnergyNodeEstimator()
 
     self.has_reset_cell_type = False
+    self.remainingOverageTime = 10
 
     if SAVE_ALL_STEPS_TP_PROB:
       self.team_point_probs = []

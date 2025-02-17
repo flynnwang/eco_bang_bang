@@ -623,7 +623,7 @@ class Agent:
 
           # if self.player == PLAYER1:
           # print(
-          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+          # f"game_step={mm.game_step}, unit={unit_id} t staction={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
           # file=sys.stderr)
 
       if len(actions):
@@ -799,6 +799,7 @@ class Agent:
             file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
     self.mm.add_sap_locations(self.last_sap_locations)
+    self.mm.remainingOverageTime = remainingOverageTime
 
     unit_to_cell = self.compute_unit_to_cell()
     unit_actions = self.encode_unit_actions(unit_to_cell)
