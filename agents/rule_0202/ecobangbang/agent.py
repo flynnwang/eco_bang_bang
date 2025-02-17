@@ -71,6 +71,10 @@ def cell_idx_to_pos(idx):
   return int(idx % MAP_WIDTH), int(idx // MAP_WIDTH)
 
 
+def pos_to_cell_idx(pos):
+  return pos[0] + pos[1] * MAP_WIDTH
+
+
 def can_attack(energy, mm, margin=3):
   return energy >= mm.unit_sap_cost + mm.unit_move_cost * margin
 
@@ -247,8 +251,10 @@ class Agent:
           dist_to_enemy = np.abs(x - pos[0]) + np.abs(y - pos[1])
           dist_to_target_cell = np.abs(x - relic_pos[0]) + np.abs(y -
                                                                   relic_pos[1])
-          mask = (dist_to_enemy == 1) & (dist_to_target_cell
-                                         < enemy_init_pos_dist)
+          mask = ((dist_to_enemy == 1) &
+                  (dist_to_target_cell < enemy_init_pos_dist) &
+                  (mm.cell_type != CELL_ASTERIOD))
+
           # hit_map[mask] += mm.unit_sap_cost * mm.unit_sap_dropoff_factor
           hit_map[mask] += mm.unit_sap_cost + 1
 
@@ -288,7 +294,12 @@ class Agent:
     fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
     fire_zone = fire_zone.astype(int) + attack_path_mask
-    return fire_zone
+
+    team_side_mask = (dist_to_init_pos <= MAP_WIDTH)
+    defense_zone = (team_point_mask & team_side_mask)
+    defense_zone = maximum_filter(defense_zone, fire_zone_range)
+
+    return fire_zone, defense_zone
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -333,7 +344,7 @@ class Agent:
     player_init_pos = get_player_init_pos(mm.player_id, self.mm.use_mirror)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    fire_zone = self.gen_fire_zone(d1)
+    fire_zone, defense_zone = self.gen_fire_zone(d1)
     d1 /= MAP_WIDTH
 
     def get_fuel_energy(upos, energy, cpos):
@@ -394,14 +405,45 @@ class Agent:
     unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
 
     def next_by_team_units(upos, energy, cpos):
+      # TODO: use energy to determine the ownership
       if not pos_equal(upos, cpos) and unit_positions_ext1[cpos[0]][cpos[1]]:
-        return -10
+        return -5
       return 0
 
-    def stay_on_relic(upos, energy, cpos):
+    def stay_on_relic(upos, energy, cpos, is_shadow_position, unit_id):
       # If the relic node has been occupied by unit but not this one, lower its score
-      if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
-        return 0
+      # if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
+      # return 0
+
+      # For a relic node with units on it.
+      uc = mm.unit_count[cpos[0]][cpos[1]]
+
+      # if mm.game_step == 53 and unit_id == 10 and pos_equal(cpos, (19, 9)):
+      # print(
+      # f" stay_on_relic: upos={upos}, cpos={cpos} uc={uc}, is_shadow_position={is_shadow_position}",
+      # file=sys.stderr)
+
+      if not is_shadow_position:
+        # Single unit on relic, but not this one, return
+        if uc == 1 and not pos_equal(upos, cpos):
+          return 0
+
+        # For mutiple units on relic, not the min energy unit
+        if (uc > 1 and pos_equal(upos, cpos)
+            and mm.min_energy_unit_id[cpos[0]][cpos[1]] != unit_id):
+          return 0
+      else:
+        # Do not call unit from other relic position
+        unit_on_relic = mm.team_point_mass[pos[0]][pos[1]]
+        if unit_on_relic:
+          return 0
+
+        # For shadow position, if unit has enough energy or more than what's on
+        # the relic, then skip
+        assert uc == 1
+        uc_energy = mm.unit_min_energy[cpos[0]][cpos[1]]
+        if (energy > uc_energy or energy >= mm.unit_sap_cost):
+          return 0
 
       # # Relic unit do not change relic position
       # p_unit = mm.team_point_mass[upos[0]][upos[1]]
@@ -459,7 +501,8 @@ class Agent:
     enemy_max_energy = maximum_filter(mm.enemy_max_energy, size=5)
     self.enemy_max_energy = enemy_max_energy
 
-    def get_unit_cell_wt(upos, energy, cpos, unit_cost_map):
+    def get_unit_cell_wt(upos, energy, cpos, unit_cost_map, is_shadow_position,
+                         unit_id):
       if cant_move_to(upos, cpos, mm):
         return -9999
 
@@ -479,7 +522,8 @@ class Agent:
 
       relic_nb_wt = get_open_relic_nb(upos, energy, cpos)
 
-      on_relic_wt = stay_on_relic(upos, energy, cpos)
+      on_relic_wt = stay_on_relic(upos, energy, cpos, is_shadow_position,
+                                  unit_id)
 
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
@@ -495,7 +539,7 @@ class Agent:
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt +
              next_by_team_wt) / mdist
 
-      score_debug[(tuple(upos), tuple(cpos))] = {
+      dbg = {
           'explore_wt': expore_wt,
           'fuel_wt': fuel_wt,
           'relic_nb_wt': relic_nb_wt,
@@ -505,36 +549,62 @@ class Agent:
           'wt': wt,
           'mdist': mdist,
       }
+      score_debug[(tuple(upos), tuple(cpos))] = dbg
+
+      if mm.game_step == 79 and unit_id in (7, 5):
+        if pos_equal(cpos, (21, 9)) or pos_equal(cpos, (22, 10)):
+          print(
+              f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
+              file=sys.stderr)
 
       # if USE_RANDOM:
       # wt += np.random.rand() / 1000
       return wt
 
-    weights = np.ones((MAX_UNIT_NUM, N_CELLS)) * -9999
     cell_index = list(range(N_CELLS))
     if USE_RANDOM:
       np.random.shuffle(cell_index)
+
+    # Adding relic positions with large energy unit, try release it
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+      if not mask:
+        continue
+      has_enough_energy = (energy >= 100 or energy
+                           >= (mm.unit_sap_cost * 2 + mm.unit_move_cost * 5))
+      uc = mm.unit_count[pos[0]][pos[1]]
+      if uc == 1 and has_enough_energy:
+        cell_index.append(pos_to_cell_idx(pos))
+
+    weights = np.ones((MAX_UNIT_NUM, len(cell_index))) * -9999
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
       if not mask:
         continue
 
-      for j in cell_index:
-        target_cell_pos = cell_idx_to_pos(j)
-        weights[i, j] = get_unit_cell_wt(pos,
-                                         energy,
-                                         target_cell_pos,
-                                         unit_cost_map=None)
+      unit_id = i
+      for cell_id, idx in enumerate(cell_index):
+        target_cell_pos = cell_idx_to_pos(idx)
+        is_shadow_position = cell_id >= N_CELLS
+        weights[i, cell_id] = get_unit_cell_wt(
+            pos,
+            energy,
+            target_cell_pos,
+            unit_cost_map=None,
+            is_shadow_position=is_shadow_position,
+            unit_id=unit_id)
 
     unit_to_cell = {}
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
-    for unit_id, target_id in zip(rows, cols):
-      wt = weights[unit_id, target_id]
+    for unit_id, cell_id in zip(rows, cols):
+      wt = weights[unit_id, cell_id]
       if wt < 1e-6:  # TODO: use 0?
         # if wt < -1:  # TODO: use 0?
         continue
-      cpos = cell_idx_to_pos(target_id)
+
+      idx = cell_index[cell_id]
+      cpos = cell_idx_to_pos(idx)
       unit_to_cell[unit_id] = cpos
       if not SUBMIT_AGENT:
         _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)

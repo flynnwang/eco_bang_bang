@@ -637,6 +637,9 @@ class HiddenRelicNodeEstimator:
         else:
           p = 1.0 if is_relic else 0.0
         self.priori[pos[0]][pos[1]] = p
+        # print(
+        # f" self.priori[{pos[0]}][{pos[1]}]={self.priori[pos[0]][pos[1]]}",
+        # file=sys.stderr)
     except HiddenRelicSolverTimeout:
       self.priori = self.priori_
 
@@ -1261,6 +1264,18 @@ class MapManager:
         self.enemy_max_energy[pos[0]][pos[1]] = max(
             self.enemy_max_energy[pos[0]][pos[1]], energy)
     # self.enemy_max_energy = maximum_filter(self.enemy_max_energy, size=3)
+
+    self.unit_count = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=int)
+    self.unit_min_energy = np.ones(
+        (MAP_WIDTH, MAP_HEIGHT), dtype=int) * MAX_UNIT_ENERGY
+    self.min_energy_unit_id = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=int)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.player_id, i, t=0)
+      if mask and energy >= 0:
+        self.unit_count[pos[0]][pos[1]] += 1
+        if energy < self.unit_min_energy[pos[0]][pos[1]]:
+          self.unit_min_energy[pos[0]][pos[1]] = energy
+          self.min_energy_unit_id[pos[0]][pos[1]] = i
 
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
