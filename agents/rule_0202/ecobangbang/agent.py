@@ -129,8 +129,8 @@ class Agent:
     # np.random.seed(0)
 
     # For testing
-    if player == PLAYER1:
-      use_mirror = True
+    # if player == PLAYER1:
+    # use_mirror = True
 
     obs_space_kwargs = {
         'use_energy_cost_map': True,
@@ -171,6 +171,7 @@ class Agent:
     return enemy_max_energy
 
   def get_sap_hit_map(self, factor):
+    mm = self.mm
 
     def predict_next_move(enemy_unit_id, pos0, unit_energy):
       mask1, pos1, _ = self.mm.get_unit_info(self.mm.enemy_id,
@@ -197,48 +198,73 @@ class Agent:
       # file=sys.stderr)
       return pos
 
+    def get_nearest_relic_position(upos):
+      min_dist = 99999
+      min_pos = None
+      # print(
+      # f' >>> relic node positions = {self.mm.hidden_relic_estimator.relic_node_positions}',
+      # file=sys.stderr)
+      for pos in self.mm.hidden_relic_estimator.relic_node_positions:
+        if not on_team_side(pos, self.mm.player_id, self.mm.use_mirror):
+          # print(f' >>> skip relic pos= {pos}', file=sys.stderr)
+          continue
+
+        d = manhatten_distance(upos, pos)
+        if d < min_dist:
+          min_pos = pos
+          min_dist = d
+      return min_pos
+
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask or energy < 0:
         continue
 
+      is_enemy_on_relic = False
+      if self.mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB:
+        is_enemy_on_relic = True
+
+      # for current enemy position
+      hit_map[pos[0]][pos[1]] += self.mm.unit_sap_cost
+      # print(
+      # f' >>> enemy[{i}] at {pos} attack current pos = {pos} = {self.mm.unit_sap_cost}, on_relic={is_enemy_on_relic}',
+      # file=sys.stderr)
+
       # For on-relic enemy, add extra score
-      if self.mm.enemy_positions[pos[0]][pos[1]]:
+      if is_enemy_on_relic:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
         if p > IS_RELIC_CELL_PROB:
           hit_map[pos[0]][pos[1]] += RELIC_SCORE
+      else:
+        # For enemy next move (guessed: dist to nearest relic position)
+        x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
 
-      # For positions around current position, add cost with dropoff
-      # (intended not using surrandings from predicted move)
-      for d in [1, 0]:
-        x0 = max(0, (pos[0] - d))
-        x1 = min(MAP_WIDTH, (pos[0] + d + 1))
-        y0 = max(0, (pos[1] - d))
-        y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+        relic_pos = get_nearest_relic_position(pos)
+        # print(f' >>> nearest relic = {relic_pos}', file=sys.stderr)
+        if relic_pos is not None:
+          enemy_init_pos_dist = manhatten_distance(pos, relic_pos)
+          dist_to_enemy = np.abs(x - pos[0]) + np.abs(y - pos[1])
+          dist_to_target_cell = np.abs(x - relic_pos[0]) + np.abs(y -
+                                                                  relic_pos[1])
+          mask = (dist_to_enemy == 1) & (dist_to_target_cell
+                                         < enemy_init_pos_dist)
+          # hit_map[mask] += mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+          hit_map[mask] += mm.unit_sap_cost + 1
 
-        h = self.mm.unit_sap_cost
-        if d == 1:
-          h *= self.mm.unit_sap_dropoff_factor
-        hit_map[x0:x1, y0:y1] += h
-
-      # For predicted next move, set hit_map to unit_sap_cost
-      # next_pos = pos
-      # if self.mm.unit_sap_dropoff_factor < 1:
-      # next_pos = predict_next_move(i, pos, energy)
-      # hit_map[next_pos[0]][next_pos[1]] += self.mm.unit_sap_cost
-
-      # TODO: Keep the current posotion
-      # hit_map[pos[0]][pos[1]] = self.mm.unit_sap_cost
-
-      # slightly favour cell for enemy next move
-      x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
-      enemy_dist = np.abs(x - pos[0]) + np.abs(y - pos[1])
-      init_pos = get_player_init_pos(self.mm.player_id, self.mm.use_mirror)
-      enemy_init_pos_dist = manhatten_distance(pos, init_pos)
-      init_pos_dist = np.abs(x - init_pos[0]) + np.abs(y - init_pos[0])
-      mask = (enemy_dist == 1) & (init_pos_dist < enemy_init_pos_dist)
-      hit_map[mask] += 1
+          # print(
+          # f' >>> attack next pos = {np.argwhere(mask)} = {mm.unit_sap_cost + 1}, nearest relic = {relic_pos}',
+          # file=sys.stderr)
+          # print(
+          # f' >>>    dist_to_enemy == 1 = {np.argwhere(dist_to_enemy == 1)}, enemy_init_pos_dist={enemy_init_pos_dist}',
+          # file=sys.stderr)
+          # print(
+          # f' >>>    dist_to_target_cell<{enemy_init_pos_dist}  = {np.argwhere(dist_to_target_cell < enemy_init_pos_dist)} ',
+          # file=sys.stderr)
+          # for pos in np.argwhere((dist_to_target_cell < enemy_init_pos_dist)):
+          # print(
+          # f' >>>   pos={pos} dist_to_target == {dist_to_target_cell[pos[0]][pos[1]]}',
+          # file=sys.stderr)
 
     return hit_map
 
@@ -276,9 +302,10 @@ class Agent:
     n = (MAP_WIDTH * MAP_HEIGHT)
     n_explore = n - match_observed.sum()
     expore_score = n * EXPLORE_CELL_SCORE / (n_explore + 1)
-    print(
-        f' +++ step={mm.game_step} to-exp-cell-num={n_explore} exp_score={expore_score} has_found_relic={has_found_relic}, last_match_found_relic={mm.last_match_found_relic}',
-        file=sys.stderr)
+
+    # print(
+    # f' +++ step={mm.game_step} to-exp-cell-num={n_explore} exp_score={expore_score} has_found_relic={has_found_relic}, last_match_found_relic={mm.last_match_found_relic}',
+    # file=sys.stderr)
 
     def get_explore_weight(upos, energy, cpos):
       if mm.game_step >= (3 * MAX_MATCH_STEPS):
@@ -364,6 +391,13 @@ class Agent:
     # blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
     self.blind_shot_targets = blind_shot_targets
 
+    unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
+
+    def next_by_team_units(upos, energy, cpos):
+      if not pos_equal(upos, cpos) and unit_positions_ext1[cpos[0]][cpos[1]]:
+        return -10
+      return 0
+
     def stay_on_relic(upos, energy, cpos):
       # If the relic node has been occupied by unit but not this one, lower its score
       if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
@@ -393,8 +427,8 @@ class Agent:
 
     hit_factor = 10
     enemy_hit_map = self.get_sap_hit_map(hit_factor)
-    enemy_hit_map[
-        blind_shot_targets] += mm.unit_sap_cost  # roughly adding 3 points
+    enemy_hit_map[blind_shot_targets] += (mm.unit_sap_cost - 1
+                                          )  # roughly adding 3 points
     self.enemy_hit_map = enemy_hit_map
 
     def get_sap_enemy_score(upos, energy, cpos):
@@ -449,13 +483,17 @@ class Agent:
 
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
+      next_by_team_wt = 0
+      # next_by_team_wt = next_by_team_units(upos, energy, cpos)
+
       # If unit do not have much energy for one sap attack
       if (not (unit_on_relic
                and on_team_side(upos, mm.player_id, mm.use_mirror))
           and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
         wt -= self.mm.unit_sap_cost / 10
 
-      wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt) / mdist
+      wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt +
+             next_by_team_wt) / mdist
 
       score_debug[(tuple(upos), tuple(cpos))] = {
           'explore_wt': expore_wt,
@@ -584,9 +622,9 @@ class Agent:
           # if not SUBMIT_AGENT and self.player == PLAYER1:
 
           # if self.player == PLAYER1:
-          print(
-              f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
-              file=sys.stderr)
+          # print(
+          # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+          # file=sys.stderr)
 
       if len(actions):
         actions.sort()
@@ -626,6 +664,11 @@ class Agent:
       enemy_pos_cost = self.get_enemy_max_energy_level(unit_energy)
       # enemy_cost = (enemy_pos_cost * 1000) + (enemy_sap_cost * 5)
       enemy_cost = (enemy_pos_cost * 1000)
+
+      # try not move onto team units
+      # up = self.mm.unit_positions
+      # unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
+      # enemy_cost[unit_positions_ext1 > 0] += (self.mm.unit_move_cost * 10)
 
       energy_cost = self.compute_energy_cost_map(cell_pos,
                                                  enemy_cost=enemy_cost)
