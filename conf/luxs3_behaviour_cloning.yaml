@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_imitation_0216
+group: luxs3_imitation_0217
 
 ## ENV params
 obs_space_kwargs:
@@ -27,8 +27,8 @@ obs_space_kwargs:
 use_separate_base: False
 
 reward_space_kwargs: {}
-#reward_schema: game_win_loss2
-reward_schema: match_explore_win_loss
+reward_schema: game_win_loss2
+#reward_schema: match_explore_win_loss
 #reward_schema: shaping_v2
 reward_shaping_params:
   use_hidden_relic_estimator: True
@@ -38,8 +38,7 @@ reward_shaping_params:
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 30
-#num_actors: 2
+num_actors: 28
 n_actor_envs: 8
 
 unroll_length: 16

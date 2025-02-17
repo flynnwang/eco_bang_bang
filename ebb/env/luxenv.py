@@ -10,7 +10,7 @@ gym.logger.set_level(40)
 
 import numpy as np
 from gym import spaces
-from luxai_s3.wrappers import LuxAIS3GymEnv
+from luxai_s3.wrappers import LuxAIS3GymEnv, RecordEpisode
 from scipy.ndimage import maximum_filter, minimum_filter
 
 from random import randint
@@ -124,7 +124,9 @@ class LuxS3Env(gym.Env):
     self.reward_schema = reward_schema
     self.obs_space_kwargs = obs_space_kwargs
     self.use_agent = obs_space_kwargs.get("use_agent")
-    self.game = game_env or LuxAIS3GymEnv(numpy_output=True)
+    self.game_env_ = game_env or LuxAIS3GymEnv(numpy_output=True)
+    self.game = self.game_env_
+    # self.game = RecordEpisode(self.game_env_, save_dir="episodes1")
     self.reward_shaping_params = reward_shaping_params
     self.mms = None
     self.raw_obs = None  # for debug
@@ -179,6 +181,9 @@ class LuxS3Env(gym.Env):
       self._seed = seed
     self._sum_r = 0.0
 
+    # if self.game is not None:
+    # self.game.close()
+
     raw_obs, info = self.game.reset(seed=self._seed)
 
     # TODO: delete
@@ -201,7 +206,10 @@ class LuxS3Env(gym.Env):
     # mirror1 = ((self._seed // 4) % 2 == 0)
     # mirror2 = ((self._seed // 8) % 2 == 0)
     tr1 = tr2 = mirror1 = False
-    mirror2 = USE_MIRROR_FOR_PLAYER1
+    if self.use_agent:
+      mirror2 = False
+    else:
+      mirror2 = USE_MIRROR_FOR_PLAYER1
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -286,14 +294,14 @@ class LuxS3Env(gym.Env):
         # print(f'sap: dx={x}, dy={y}')
 
       # Note: transpose shoud happen before mirror
-      if not self.use_agent:
-        if mm.transpose:
-          a = TRANSPOSED_ACTION[a]
-          x, y = y, x
+      if mm.transpose:
+        a = TRANSPOSED_ACTION[a]
+        x, y = y, x
 
-        if mm.use_mirror:
-          a = MIRRORED_ACTION[a]
-          x, y = -y, -x
+      if (mm.use_mirror
+          or (self.use_agent and self.agents[mm.player_1].use_mirror)):
+        a = MIRRORED_ACTION[a]
+        x, y = -y, -x
 
       return a, x, y
 
@@ -305,7 +313,17 @@ class LuxS3Env(gym.Env):
 
       # print(f' 88888888888888888 {action.shape} . {action} ')
       a = int(action[i][0])  # unbox [a] => a
+
+      # if a < 5:
+      # print(
+      # f' *** step={mm.game_step}, player={mm.player} a={ACTION_ID_TO_NAME[a]}',
+      # file=sys.stderr)
       a, x, y = encode(i, a)
+
+      # if a < 5:
+      # print(
+      # f' *** step={mm.game_step}, player={mm.player} after encode a={ACTION_ID_TO_NAME[a]}',
+      # file=sys.stderr)
 
       # Set the unit action based on its real unit info.
       unit_actions[uid][:] = (a, x, y)
@@ -334,34 +352,45 @@ class LuxS3Env(gym.Env):
           }
       ]
 
-    self._actions_taken_mask = self.compute_actions_taken(model_action)
-    action = {
-        PLAYER0:
-        self._encode_action(model_action[0], self.mms[0],
-                            self._actions_taken_mask[0]),
-        PLAYER1:
-        self._encode_action(model_action[1], self.mms[1],
-                            self._actions_taken_mask[1]),
-    }
-    # Use agent to generate action to overwrite the model action.
-    if self.use_agent:
-      action = {
-          PLAYER0: self.agent_actions[0],
-          PLAYER1: self.agent_actions[1],
-      }
-      model_action = [
-          {
-              UNITS_ACTION:
-              self.agent_action_do_model_action(self.agent_actions[0],
-                                                self.mms[0])
-          },
-          {
-              UNITS_ACTION:
-              self.agent_action_do_model_action(self.agent_actions[1],
-                                                self.mms[1])
-          },
-      ]
+    if not self.use_agent:
       self._actions_taken_mask = self.compute_actions_taken(model_action)
+      action = {
+          PLAYER0:
+          self._encode_action(model_action[0], self.mms[0],
+                              self._actions_taken_mask[0]),
+          PLAYER1:
+          self._encode_action(model_action[1], self.mms[1],
+                              self._actions_taken_mask[1]),
+      }
+    else:
+      # Use agent to generate action to overwrite the model action.
+      if self.use_agent:
+
+        def translate(agent, aa):
+          if agent.mm.use_mirror:
+            return agent.mirror_action(aa)
+          return aa
+
+        # for player 1, the unit action shoud be mirrored back before sending to env.
+        action = {
+            PLAYER0: self.agent_actions[0],
+            PLAYER1: translate(self.agents[1], self.agent_actions[1]),
+        }
+
+        # For model action, we shoud use the non-mirrored version
+        model_action = [
+            {
+                UNITS_ACTION:
+                self.agent_action_do_model_action(self.agent_actions[0],
+                                                  self.mms[0])
+            },
+            {
+                UNITS_ACTION:
+                self.agent_action_do_model_action(self.agent_actions[1],
+                                                  self.mms[1])
+            },
+        ]
+        self._actions_taken_mask = self.compute_actions_taken(model_action)
 
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
@@ -431,7 +460,8 @@ class LuxS3Env(gym.Env):
       team_energy = get_units_total_energy(env_state, mm.player_id)
       enemy_energy = get_units_total_energy(env_state, mm.enemy_id)
       extras[2] = team_energy / 4000
-      extras[3] = np.clip((team_energy - enemy_energy) / 1000, -1, 1)
+      # extras[3] = np.clip((team_energy - enemy_energy) / 1000, -1, 1)
+      extras[3] = 0
 
       relic_num = env_state.relic_nodes_mask.sum()
       extras[4] = relic_num / MAX_RELIC_NODE_NUM

@@ -978,6 +978,6 @@ class Agent:
     self.attack(unit_actions, unit_to_cell)
     self.prev_model_action = {UNITS_ACTION: unit_actions}
 
-    if self.mm.use_mirror:
-      unit_actions = self.mirror_action(unit_actions)
+    # if self.mm.use_mirror:
+    # unit_actions = self.mirror_action(unit_actions)
     return unit_actions
