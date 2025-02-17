@@ -295,9 +295,10 @@ class Agent:
 
     fire_zone = fire_zone.astype(int) + attack_path_mask
 
+    defense_zone_range = 7 * 2 + 1
     team_side_mask = (dist_to_init_pos <= MAP_WIDTH)
     defense_zone = (team_point_mask & team_side_mask)
-    defense_zone = maximum_filter(defense_zone, fire_zone_range)
+    defense_zone = maximum_filter(defense_zone, defense_zone_range)
 
     return fire_zone, defense_zone
 
@@ -352,8 +353,11 @@ class Agent:
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
 
       # Boost more net energy position without energy thresholding
-      if e > 0 and fire_zone[cpos[0]][cpos[1]]:
-        fuel += (e * d1[cpos[0]][cpos[1]])
+      if mm.match_step > 50 and e > 0 and fire_zone[cpos[0]][cpos[1]]:
+        fuel += (e * d1[cpos[0]][cpos[1]]) * 2
+
+      if mm.match_step <= 50 and e > 0 and defense_zone[cpos[0]][cpos[1]]:
+        fuel += (e * d1[cpos[0]][cpos[1]]) * 2
 
       return fuel
 
