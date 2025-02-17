@@ -129,8 +129,8 @@ class Agent:
     # np.random.seed(0)
 
     # For testing
-    # if player == PLAYER1:
-    # use_mirror = True
+    if player == PLAYER1:
+      use_mirror = True
 
     obs_space_kwargs = {
         'use_energy_cost_map': True,

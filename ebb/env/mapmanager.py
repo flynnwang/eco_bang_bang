@@ -3,6 +3,7 @@ from functools import cached_property, lru_cache
 import copy
 import random
 import sys
+from datetime import datetime
 
 import chex
 import jax
@@ -27,9 +28,14 @@ def manhatten_distance(p1, p2):
 
 
 def get_player_init_pos(player_id, use_mirror):
-  target_pos = (0, 0)
-  if player_id == 1 and not use_mirror:
-    target_pos = (23, 23)
+  if not use_mirror:
+    target_pos = (0, 0)
+    if player_id == 1:
+      target_pos = (23, 23)
+  else:
+    target_pos = (0, 0)
+    if player_id == 0:
+      target_pos = (23, 23)
   return target_pos
 
 
@@ -452,6 +458,8 @@ class Observation:
     self.relic_num = relic_num
 
   def is_determined(self):
+    if len(self.positions) == 0:
+      return True
     return self.relic_num == 0 or (self.relic_num == len(self.positions))
 
   def simplify(self, position_to_relic):
@@ -513,6 +521,7 @@ class HiddenRelicSolver:
     unsolved_positions = list(unsolved_positions)
     print(f"Solving {n} positions...", file=sys.stderr)
 
+    start_time = datetime.now()
     positions_values = defaultdict(set)
     for s in range(2**n):
       pos_to_val = {}
@@ -530,8 +539,12 @@ class HiddenRelicSolver:
       if valid:
         for pos, val in pos_to_val.items():
           positions_values[pos].add(val)
-        print(f'valid solution: s={s}, pos_to_val={pos_to_val.items()}',
-              file=sys.stderr)
+        # print(f'valid solution: s={s}, pos_to_val={pos_to_val.items()}',
+        # file=sys.stderr)
+
+      now = datetime.now()
+      if (now - start_time).total_seconds() > 1.:
+        raise HiddenRelicSolverTimeout
 
     solved_num = 0
     for pos, values in positions_values.items():
@@ -549,10 +562,16 @@ class HiddenRelicSolver:
     self.solve()
 
 
+class HiddenRelicSolverTimeout(Exception):
+  pass
+
+
 class HiddenRelicNodeEstimator:
 
-  def __init__(self, enable_anti_sym):
+  def __init__(self, mm, enable_anti_sym):
+    self.mm = mm
     self.priori = np.zeros((MAP_WIDTH, MAP_HEIGHT))
+    self.priori_ = np.zeros((MAP_WIDTH, MAP_HEIGHT))
     self.relic_node_positions = set()
     self.enable_anti_sym = enable_anti_sym
     self.solver = HiddenRelicSolver()
@@ -588,22 +607,91 @@ class HiddenRelicNodeEstimator:
     is_relic_nb = (is_relic_neighbour == 1)
     relic_positions = np.argwhere(is_relic_nb & unit_positions)
 
+    # Estimation method
+    new_relic_nb_mask = maximum_filter(new_relic_nb_mask, size=RELIC_NB_SIZE)
+    tmp_pri = self.priori_.copy()
+    tmp_pri[new_relic_nb_mask] = PRIORI
+    self.priori_ = np.maximum(self.priori_, tmp_pri)
+
+    post = self.calc_posteriori_probs(relic_positions, new_team_points)
+    self.priori_[is_relic_nb] = np.clip(post[is_relic_nb], MIN_PROB, MAX_PROB)
+
     ob = Observation(relic_positions, new_team_points)
-    self.solver.observe(ob)
+    try:
+      self.solver.observe(ob)
 
-    # Use solver states when possible, and random guess for unsolved ones.
-    self.priori = np.zeros(MAP_SHAPE2)
-    relic_nb_positions = np.argwhere(is_relic_nb)
-    for x, y in relic_nb_positions:
-      pos = (int(x), int(y))
-      is_relic = self.solver.position_to_relic.get(pos)
+      # Use solver states when possible, and random guess for unsolved ones.
+      self.priori = np.zeros(MAP_SHAPE2)
+      relic_nb_positions = np.argwhere(is_relic_nb)
+      for x, y in relic_nb_positions:
+        pos = (int(x), int(y))
+        is_relic = self.solver.position_to_relic.get(pos)
 
-      p = 0
-      if is_relic is None:
-        p = random.random() * 0.5 + 0.25
-      else:
-        p = 1.0 if is_relic else 0.0
-      self.priori[pos[0]][pos[1]] = p
+        p = 0
+        if is_relic is None:
+          p = random.random() * 0.5 + 0.25
+        else:
+          p = 1.0 if is_relic else 0.0
+        self.priori[pos[0]][pos[1]] = p
+    except HiddenRelicSolverTimeout:
+      self.priori = self.priori_
+
+      units_half = self.mm.get_player_half_mask(self.mm.player_id)
+
+      p = self.priori_
+      min_val = MIN_PROB + 1e-5
+      non_relic_point = (p <= min_val) & (p > 0) & units_half
+      for x, y in np.argwhere(non_relic_point):
+        self.solver.position_to_relic[(int(x), int(y))] = False
+
+      max_val = MAX_PROB - 1e-5
+      is_relc_point = (p >= max_val) | anti_diag_sym(p >= max_val)
+      for x, y in np.argwhere(non_relic_point):
+        self.solver.position_to_relic[(int(x), int(y))] = True
+
+  def calculate_p_data(self, obs, n, p):
+    if n < 0:
+      return 0
+
+    m = len(obs)
+
+    # represent the probability of observe k team points from the first j locations.
+    dp = np.zeros((m + 1, n + 1))
+    dp[0][0] = 1
+
+    for j in range(1, m + 1):
+      pos = obs[j - 1]
+      pj = p[pos[0]][pos[1]]
+      for k in range(n + 1):
+        dp[j][k] += dp[j - 1][k] * (1 - pj)
+        if k > 0:
+          dp[j][k] += dp[j - 1][k - 1] * pj
+    return dp[m][n]
+
+  def calc_posteriori_probs(self, observed_cells, new_team_points):
+    m = len(observed_cells)
+    n = min(new_team_points, m)
+
+    p_data = self.calculate_p_data(observed_cells, n, self.priori_)
+    if p_data <= 0:
+      return self.priori_
+    assert p_data > 0
+    # print(f'p_data = {p_data}')
+
+    post = self.priori_.copy()
+    for i in observed_cells:
+      x, y = i
+      ob_exclude = [c for c in observed_cells if not (c[0] == x and c[1] == y)]
+      # print(observed_cells, ob_exclude, new_team_points)
+      p_data_given_i = self.calculate_p_data(ob_exclude, n - 1, self.priori_)
+
+      post_prob = p_data_given_i * self.priori_[x][y] / p_data
+      post[x][y] = post_prob
+      # post[y][x] = post_prob
+      # print(
+      # f"post[{x}][{y}] = {post[x][y]}, self.priori_[x][y]={self.priori_[x][y]}, p_data_given_i={p_data_given_i}"
+      # )
+    return post
 
 
 class NebulaEnergyReduction:
@@ -759,7 +847,8 @@ class MapManager:
 
     self.use_mirror = use_mirror
     self.use_hidden_relic_estimator = use_hidden_relic_estimator
-    self.hidden_relic_estimator = HiddenRelicNodeEstimator(enable_anti_sym)
+    self.hidden_relic_estimator = HiddenRelicNodeEstimator(
+        self, enable_anti_sym)
 
     self.energy_cost_map = None
     self.units_energy_cost_change = 0
