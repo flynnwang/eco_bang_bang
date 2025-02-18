@@ -741,11 +741,11 @@ class Agent:
         unit_actions[i][0] = ACTION_CENTER
         continue
 
-      # if not SUBMIT_AGENT:
-      # if self.player == PLAYER1:
-      print(
-          f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-          file=sys.stderr)
+      if not SUBMIT_AGENT:
+        # if self.player == PLAYER1:
+        print(
+            f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+            file=sys.stderr)
 
       # sap_dead_zone = self.enemy_sap_cost >= unit_energy
       # enemy_sap_cost = self.enemy_sap_cost.copy()
