@@ -357,11 +357,12 @@ class Agent:
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
 
       # Boost for attacking
-      if (mm.match_step > 50 and e > 0 and fire_zone[cpos[0]][cpos[1]]):
+      if (defense_start_step <= mm.match_step and e > 0
+          and fire_zone[cpos[0]][cpos[1]]):
         fuel += (e * d1[cpos[0]][cpos[1]])
 
       # Boost for defense
-      if (defense_start_step <= mm.match_step <= 50 and e > 0
+      if (defense_start_step <= mm.match_step and e > 0
           and defense_zone[cpos[0]][cpos[1]]):
         fuel += (e * d1[cpos[0]][cpos[1]])
 
