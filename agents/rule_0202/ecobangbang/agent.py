@@ -399,9 +399,9 @@ class Agent:
       is_in_boost_zone = False
       if mm.match_step >= defense_start_step:
         # if mm.match_step < 50 and energy < BOOST_SAP_ENERGY_THRESHOOD:
-        if energy < BOOST_SAP_ENERGY_THRESHOOD:
-          is_in_fire_zone = False
-          is_on_attack_path = False
+        # if energy < BOOST_SAP_ENERGY_THRESHOOD:
+        # is_in_fire_zone = False
+        # is_on_attack_path = False
 
         # if mm.game_step >= 50 or energy >= BOOST_SAP_ENERGY_THRESHOOD:
         if mm.game_step >= 50 and energy >= BOOST_SAP_ENERGY_THRESHOOD:
