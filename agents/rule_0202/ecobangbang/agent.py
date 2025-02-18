@@ -348,16 +348,22 @@ class Agent:
     fire_zone, defense_zone = self.gen_fire_zone(d1)
     d1 /= MAP_WIDTH
 
+    defense_start_step = 0
+    if not has_found_relic and mm.last_match_found_relic:
+      defense_start_step = 20
+
     def get_fuel_energy(upos, energy, cpos):
       e = fuel = energy_map[cpos[0]][cpos[1]]
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
 
-      # Boost more net energy position without energy thresholding
-      if mm.match_step > 50 and e > 0 and fire_zone[cpos[0]][cpos[1]]:
-        fuel += (e * d1[cpos[0]][cpos[1]]) * 2
+      # Boost for attacking
+      if (mm.match_step > 50 and e > 0 and fire_zone[cpos[0]][cpos[1]]):
+        fuel += (e * d1[cpos[0]][cpos[1]])
 
-      if mm.match_step <= 50 and e > 0 and defense_zone[cpos[0]][cpos[1]]:
-        fuel += (e * d1[cpos[0]][cpos[1]]) * 2
+      # Boost for defense
+      if (defense_start_step <= mm.match_step <= 50 and e > 0
+          and defense_zone[cpos[0]][cpos[1]]):
+        fuel += (e * d1[cpos[0]][cpos[1]])
 
       return fuel
 
