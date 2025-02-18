@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250217_behaviour_cloning_r0
+name: run_20250218_behaviour_cloning_r0_cont0
 
 ## WANDB params
 # The wandb project name
@@ -66,16 +66,16 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 1e-5
+  lr: 1e-6
   #lr: 5e-6
   #lr: 1e-6
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #weight_decay: 0.001
   #weight_decay: 6e-4
-  #weight_decay: 1e-4
+  weight_decay: 1e-4
   #weight_decay: 1e-5
-  weight_decay: 1e-6
+  #weight_decay: 1e-6
   #weight_decay: 1e-7
   #alpha: 0.9
 min_lr_mod: 0.01
@@ -119,14 +119,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 #
-load_dir:
-checkpoint_file:
-#load_dir: /home/flynnwang/runs/ebb/02-09/13-51-53
-#checkpoint_file: 015898048.pt
-#load_dir: /home/flynnwang/runs/ebb/02-09/11-46-11
-#checkpoint_file: 015463424.pt
-#load_dir: /home/flynnwang/runs/ebb/02-08/10-31-08
-#checkpoint_file: 014363648.pt
+load_dir: /home/flynnwang/runs/ebb/02-18/11-56-54
+checkpoint_file: 001895936.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
