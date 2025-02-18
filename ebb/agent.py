@@ -250,9 +250,11 @@ class Agent:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
         if p > IS_RELIC_CELL_PROB:
           hit_map[pos[0]][pos[1]] += RELIC_SCORE
+      else:
+        # For enemy next move (guessed: dist to nearest relic position)
+        x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
 
       # For enemy next move (guessed: dist to nearest relic position)
-
       relic_pos = get_nearest_relic_position(pos)
       # print(f' >>> nearest relic = {relic_pos}', file=sys.stderr)
       if relic_pos is not None:
@@ -328,9 +330,7 @@ class Agent:
     fire_zone_range = mm.unit_sap_range * 2 + 1
     fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
-    team_side_mask = (dist_to_init_pos <= MAP_WIDTH)
-    defense_zone = (team_point_mask & team_side_mask)
-    defense_zone = maximum_filter(defense_zone, defense_zone_range)
+    fire_zone = fire_zone.astype(int) + attack_path_mask
 
     return fire_zone, defense_zone, attack_path_mask
 
@@ -340,7 +340,11 @@ class Agent:
     final_stage_start_step = 70
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
+<<<<<<< HEAD
     energy_threshold = 100
+=======
+    energy_threshold = 60 + mm.match_step
+>>>>>>> c4d73b1 (sync agent.py)
     if mm.match_step >= final_stage_start_step:
       energy_threshold = 60
 
@@ -387,6 +391,9 @@ class Agent:
     defense_start_step = 0
     if not has_found_relic and mm.last_match_found_relic:
       defense_start_step = 30
+=======
+      defense_start_step = 16
+>>>>>>> c4d73b1 (sync agent.py)
 
     def get_fuel_energy(upos, energy, cpos):
       e = fuel = energy_map[cpos[0]][cpos[1]]
@@ -394,6 +401,7 @@ class Agent:
 
       is_in_defense_zone = defense_zone[cpos[0]][cpos[1]]
       is_in_fire_zone = fire_zone[cpos[0]][cpos[1]]
+<<<<<<< HEAD
       is_on_attack_path = attack_path_mask[cpos[0]][cpos[1]]
 
       is_in_boost_zone = False
@@ -416,6 +424,21 @@ class Agent:
         if is_in_fire_zone or is_in_defense_zone:
           boost += (7 * d)  # ~5 * 3
         fuel += boost
+=======
+
+      is_in_boost_zone = False
+      if mm.match_step >= defense_start_step:
+        if mm.match_step < 50 and energy < BOOST_SAP_ENERGY_THRESHOOD:
+          is_in_fire_zone = False
+
+        if mm.game_step >= 50 or energy >= BOOST_SAP_ENERGY_THRESHOOD:
+          is_in_defense_zone = False
+
+        is_in_boost_zone = is_in_fire_zone or is_in_defense_zone
+
+      if e > 0 and is_in_boost_zone:
+        fuel += (e * d1[cpos[0]][cpos[1]])
+>>>>>>> c4d73b1 (sync agent.py)
 
       return fuel
 
@@ -464,6 +487,7 @@ class Agent:
     # blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
     self.blind_shot_targets = blind_shot_targets
 
+<<<<<<< HEAD
     # unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
     # updated by each unit's last target cell
     last_step_unit_target_mask = np.zeros(MAP_SHAPE2, dtype=bool)
@@ -473,6 +497,50 @@ class Agent:
       is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
       if is_relic_nb:
         return 0
+=======
+    unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
+
+    def next_by_team_units(upos, energy, cpos):
+      # TODO: use energy to determine the ownership
+      if not pos_equal(upos, cpos) and unit_positions_ext1[cpos[0]][cpos[1]]:
+        return -5
+      return 0
+
+    def stay_on_relic(upos, energy, cpos, is_shadow_position, unit_id):
+      # If the relic node has been occupied by unit but not this one, lower its score
+      # if (mm.unit_positions[cpos[0]][cpos[1]] and not pos_equal(upos, cpos)):
+      # return 0
+
+      # For a relic node with units on it.
+      uc = mm.unit_count[cpos[0]][cpos[1]]
+
+      # if mm.game_step == 53 and unit_id == 10 and pos_equal(cpos, (19, 9)):
+      # print(
+      # f" stay_on_relic: upos={upos}, cpos={cpos} uc={uc}, is_shadow_position={is_shadow_position}",
+      # file=sys.stderr)
+
+      if not is_shadow_position:
+        # Single unit on relic, but not this one, return
+        if uc == 1 and not pos_equal(upos, cpos):
+          return 0
+
+        # For mutiple units on relic, not the min energy unit
+        if (uc > 1 and pos_equal(upos, cpos)
+            and mm.min_energy_unit_id[cpos[0]][cpos[1]] != unit_id):
+          return 0
+      else:
+        # Do not call unit from other relic position
+        unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+        if unit_on_relic:
+          return 0
+
+        # For shadow position, if unit has enough energy or more than what's on
+        # the relic, then skip
+        assert uc == 1
+        uc_energy = mm.unit_min_energy[cpos[0]][cpos[1]]
+        if (energy > uc_energy or energy >= mm.unit_sap_cost):
+          return 0
+>>>>>>> c4d73b1 (sync agent.py)
 
       if last_step_unit_target_mask[cpos[0]][cpos[1]]:
         return -5
@@ -625,6 +693,7 @@ class Agent:
       }
       score_debug[(tuple(upos), tuple(cpos))] = dbg
 
+<<<<<<< HEAD
       # DEBUG1
       # if mm.game_step == 38 and unit_id in (9, 10, 11):
       # if mm.game_step == 74 and unit_id in (3, ):
@@ -632,6 +701,13 @@ class Agent:
       # print(
       # f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
       # file=sys.stderr)
+=======
+      if mm.game_step == 79 and unit_id in (7, 5):
+        if pos_equal(cpos, (21, 9)) or pos_equal(cpos, (22, 10)):
+          print(
+              f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
+              file=sys.stderr)
+>>>>>>> c4d73b1 (sync agent.py)
 
       # if USE_RANDOM:
       # wt += np.random.rand() / 1000
@@ -642,6 +718,8 @@ class Agent:
       np.random.shuffle(cell_index)
 
     # Adding relic positions with large energy unit, try release it
+<<<<<<< HEAD
+=======
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
       if not mask:
@@ -653,6 +731,21 @@ class Agent:
       if uc == 1 and has_enough_energy and unit_on_relic:
         cell_index.append(pos_to_cell_idx(pos))
 
+    weights = np.ones((MAX_UNIT_NUM, len(cell_index))) * -9999
+
+>>>>>>> c4d73b1 (sync agent.py)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+      if not mask:
+        continue
+      has_enough_energy = (energy >= 100 or energy
+                           >= (mm.unit_sap_cost * 2 + mm.unit_move_cost * 5))
+      uc = mm.unit_count[pos[0]][pos[1]]
+      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+      if uc == 1 and has_enough_energy and unit_on_relic:
+        cell_index.append(pos_to_cell_idx(pos))
+
+<<<<<<< HEAD
     weights = np.ones((MAX_UNIT_NUM, len(cell_index))) * -9999
 
     ordered_unit_ids = list(range(MAX_UNIT_NUM))
@@ -676,6 +769,9 @@ class Agent:
       # d=1,
       # val=True)
 
+=======
+      unit_id = i
+>>>>>>> c4d73b1 (sync agent.py)
       for cell_id, idx in enumerate(cell_index):
         target_cell_pos = cell_idx_to_pos(idx)
         is_shadow_position = cell_id >= N_CELLS
@@ -703,8 +799,8 @@ class Agent:
       if not SUBMIT_AGENT:
         _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
         wts = score_debug[(tuple(upos), tuple(cpos))]
-        # print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
-        # file=sys.stderr)
+        print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
+              file=sys.stderr)
 
     self.unit_to_cell = unit_to_cell
     self.unit_score = unit_score
@@ -790,7 +886,10 @@ class Agent:
           # if self.player == PLAYER1:
           # print(
           # f"game_step={mm.game_step}, unit={unit_id} t staction={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+<<<<<<< HEAD
           # f"game_step={mm.game_step}, unit={unit_id} action={ACTION_ID_TO_NAME[k]}, from={unit_pos} to {(nx, ny)} dir={DIRECTIONS[k]} cost={cost}",
+=======
+>>>>>>> c4d73b1 (sync agent.py)
           # file=sys.stderr)
 
       if len(actions):
@@ -820,9 +919,9 @@ class Agent:
 
       # if not SUBMIT_AGENT:
       # if self.player == PLAYER1:
-      # print(
-      # f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-      # file=sys.stderr)
+      print(
+          f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+          file=sys.stderr)
 
       # sap_dead_zone = self.enemy_sap_cost >= unit_energy
       # enemy_sap_cost = self.enemy_sap_cost.copy()
@@ -978,6 +1077,6 @@ class Agent:
     self.attack(unit_actions, unit_to_cell)
     self.prev_model_action = {UNITS_ACTION: unit_actions}
 
-    # if self.mm.use_mirror:
-    # unit_actions = self.mirror_action(unit_actions)
+    if self.mm.use_mirror:
+      unit_actions = self.mirror_action(unit_actions)
     return unit_actions
