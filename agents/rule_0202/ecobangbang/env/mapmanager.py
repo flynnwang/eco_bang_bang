@@ -1545,11 +1545,13 @@ class MapManager:
     cost_map[cell_type == CELL_NEBULA] += nebula_energy_reduction
 
     # cell energy cost change the cost map but max at 0 to prevent from loop
+    extra_step_cost = 5
+    cost_map += extra_step_cost
     cost_map -= cell_energy
     cost_map = np.maximum(cost_map, 1)
 
     # use a big value for asteriod
-    cost_map[cell_type == CELL_ASTERIOD] = 100
+    cost_map[cell_type == CELL_ASTERIOD] += 25 * 20
 
     energy_cost = np.full((MAP_WIDTH, MAP_HEIGHT), np.inf, dtype=np.float64)
 
