@@ -53,13 +53,17 @@ def generate_manhattan_mask(shape, center, range_limit):
   return mask
 
 
-def gen_sap_range(pos, d, dtype=bool, val=True):
-  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
+def set_value_by_range(arr, pos, d, val):
   x0 = max(0, (pos[0] - d))
   x1 = min(MAP_WIDTH, (pos[0] + d + 1))
   y0 = max(0, (pos[1] - d))
   y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
-  sap_range[x0:x1, y0:y1] = val
+  arr[x0:x1, y0:y1] = val
+
+
+def gen_sap_range(pos, d, dtype=bool, val=True):
+  sap_range = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=dtype)
+  set_value_by_range(sap_range, pos, d, val)
   return sap_range
 
 
