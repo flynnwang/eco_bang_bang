@@ -113,8 +113,8 @@ def left_tailed_exp(energy, val, m, v=20):
   return val
 
 
-RELIC_SCORE = 30
-RELIC_NB_SCORE = 15
+RELIC_SCORE = 100
+RELIC_NB_SCORE = 50
 
 EXPLORE_CELL_SCORE = 3
 MAX_EXPLORE_SCORE = 10
@@ -305,9 +305,11 @@ class Agent:
   def compute_unit_to_cell(self):
     mm = self.mm
 
+    final_stage_start_step = 70
+
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
     energy_threshold = 60 + mm.match_step
-    if mm.match_step >= 70:
+    if mm.match_step >= final_stage_start_step:
       energy_threshold = 60
 
     has_found_relic = mm.has_found_relic_in_match()
@@ -350,20 +352,26 @@ class Agent:
 
     defense_start_step = 0
     if not has_found_relic and mm.last_match_found_relic:
-      defense_start_step = 20
+      defense_start_step = 16
 
     def get_fuel_energy(upos, energy, cpos):
       e = fuel = energy_map[cpos[0]][cpos[1]]
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
 
-      # Boost for attacking
-      if (defense_start_step <= mm.match_step and e > 0
-          and fire_zone[cpos[0]][cpos[1]]):
-        fuel += (e * d1[cpos[0]][cpos[1]])
+      is_in_defense_zone = defense_zone[cpos[0]][cpos[1]]
+      is_in_fire_zone = fire_zone[cpos[0]][cpos[1]]
 
-      # Boost for defense
-      if (defense_start_step <= mm.match_step and e > 0
-          and defense_zone[cpos[0]][cpos[1]]):
+      is_in_boost_zone = False
+      if mm.match_step >= defense_start_step:
+        if mm.match_step < 50 and energy < BOOST_SAP_ENERGY_THRESHOOD:
+          is_in_fire_zone = False
+
+        if mm.game_step >= 50 or energy >= BOOST_SAP_ENERGY_THRESHOOD:
+          is_in_defense_zone = False
+
+        is_in_boost_zone = is_in_fire_zone or is_in_defense_zone
+
+      if e > 0 and is_in_boost_zone:
         fuel += (e * d1[cpos[0]][cpos[1]])
 
       return fuel
@@ -445,7 +453,7 @@ class Agent:
           return 0
       else:
         # Do not call unit from other relic position
-        unit_on_relic = mm.team_point_mass[pos[0]][pos[1]]
+        unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
         if unit_on_relic:
           return 0
 
@@ -584,7 +592,8 @@ class Agent:
       has_enough_energy = (energy >= 100 or energy
                            >= (mm.unit_sap_cost * 2 + mm.unit_move_cost * 5))
       uc = mm.unit_count[pos[0]][pos[1]]
-      if uc == 1 and has_enough_energy:
+      unit_on_relic = mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB
+      if uc == 1 and has_enough_energy and unit_on_relic:
         cell_index.append(pos_to_cell_idx(pos))
 
     weights = np.ones((MAX_UNIT_NUM, len(cell_index))) * -9999
