@@ -340,11 +340,7 @@ class Agent:
     final_stage_start_step = 70
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-<<<<<<< HEAD
     energy_threshold = 100
-=======
-    energy_threshold = 60 + mm.match_step
->>>>>>> c4d73b1 (sync agent.py)
     if mm.match_step >= final_stage_start_step:
       energy_threshold = 60
 
@@ -694,6 +690,7 @@ class Agent:
       score_debug[(tuple(upos), tuple(cpos))] = dbg
 
 <<<<<<< HEAD
+<<<<<<< HEAD
       # DEBUG1
       # if mm.game_step == 38 and unit_id in (9, 10, 11):
       # if mm.game_step == 74 and unit_id in (3, ):
@@ -708,6 +705,13 @@ class Agent:
               f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
               file=sys.stderr)
 >>>>>>> c4d73b1 (sync agent.py)
+=======
+      # if mm.game_step == 79 and unit_id in (7, 5):
+      # if pos_equal(cpos, (21, 9)) or pos_equal(cpos, (22, 10)):
+      # print(
+      # f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
+      # file=sys.stderr)
+>>>>>>> 0c88147 (mute agent log)
 
       # if USE_RANDOM:
       # wt += np.random.rand() / 1000
