@@ -220,6 +220,12 @@ class Agent:
       return min_pos
 
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
+
+    def add_pos(pos, dx, dy, v):
+      np = (pos[0] + dx, pos[1] + dy)
+      if is_pos_on_map(np):
+        hit_map[np[0]][np[1]] += v
+
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask or energy < 0:
@@ -240,37 +246,42 @@ class Agent:
         p = self.mm.team_point_mass[pos[0]][pos[1]]
         if p > IS_RELIC_CELL_PROB:
           hit_map[pos[0]][pos[1]] += RELIC_SCORE
-      else:
-        # For enemy next move (guessed: dist to nearest relic position)
-        x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
 
-        relic_pos = get_nearest_relic_position(pos)
-        # print(f' >>> nearest relic = {relic_pos}', file=sys.stderr)
-        if relic_pos is not None:
-          enemy_init_pos_dist = manhatten_distance(pos, relic_pos)
-          dist_to_enemy = np.abs(x - pos[0]) + np.abs(y - pos[1])
-          dist_to_target_cell = np.abs(x - relic_pos[0]) + np.abs(y -
-                                                                  relic_pos[1])
-          mask = ((dist_to_enemy == 1) &
-                  (dist_to_target_cell < enemy_init_pos_dist) &
-                  (mm.cell_type != CELL_ASTERIOD))
+      # For enemy next move (guessed: dist to nearest relic position)
 
-          # hit_map[mask] += mm.unit_sap_cost * mm.unit_sap_dropoff_factor
-          hit_map[mask] += mm.unit_sap_cost + 1
+      relic_pos = get_nearest_relic_position(pos)
+      # print(f' >>> nearest relic = {relic_pos}', file=sys.stderr)
+      if relic_pos is not None:
+        rx, ry = relic_pos
+        px, py = pos
+        dx = 0
+        if rx != px:
+          dx = +1 if px < rx else -1
 
-          # print(
-          # f' >>> attack next pos = {np.argwhere(mask)} = {mm.unit_sap_cost + 1}, nearest relic = {relic_pos}',
-          # file=sys.stderr)
-          # print(
-          # f' >>>    dist_to_enemy == 1 = {np.argwhere(dist_to_enemy == 1)}, enemy_init_pos_dist={enemy_init_pos_dist}',
-          # file=sys.stderr)
-          # print(
-          # f' >>>    dist_to_target_cell<{enemy_init_pos_dist}  = {np.argwhere(dist_to_target_cell < enemy_init_pos_dist)} ',
-          # file=sys.stderr)
-          # for pos in np.argwhere((dist_to_target_cell < enemy_init_pos_dist)):
-          # print(
-          # f' >>>   pos={pos} dist_to_target == {dist_to_target_cell[pos[0]][pos[1]]}',
-          # file=sys.stderr)
+        dy = 0
+        if ry != py:
+          dy = +1 if py < ry else -1
+
+        sap1 = mm.unit_sap_cost + 1
+        sap0 = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+        if dx != 0 and dy != 0:
+          add_pos(pos, dx, 0, sap1)
+          add_pos(pos, 0, dy, sap1)
+          add_pos(pos, dx, dy, sap0)
+
+        if (dx == 0 and dy != 0):
+          add_pos(pos, -1, 0, sap0)
+          add_pos(pos, +1, 0, sap0)
+          add_pos(pos, -1, dy, sap0)
+          add_pos(pos, 0, dy, sap1)
+          add_pos(pos, +1, dy, sap0)
+
+        if (dx != 0 and dy == 0):
+          add_pos(pos, 0, -1, sap0)
+          add_pos(pos, 0, +1, sap0)
+          add_pos(pos, dx, -1, sap0)
+          add_pos(pos, dx, 0, sap1)
+          add_pos(pos, dx, +1, sap0)
 
     return hit_map
 
@@ -283,7 +294,6 @@ class Agent:
     relic_node_positions = mm.hidden_relic_estimator.relic_node_positions
     for pos in relic_node_positions:
       draw_line(attack_path_mask, pos)
-
     attack_path_mask = maximum_filter(attack_path_mask, size=7)
 
     team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
@@ -293,14 +303,12 @@ class Agent:
     fire_zone_range = mm.unit_sap_range * 2 + 1
     fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
-    fire_zone = fire_zone.astype(int) + attack_path_mask
-
     defense_zone_range = 7 * 2 + 1
     team_side_mask = (dist_to_init_pos <= MAP_WIDTH)
     defense_zone = (team_point_mask & team_side_mask)
     defense_zone = maximum_filter(defense_zone, defense_zone_range)
 
-    return fire_zone, defense_zone
+    return fire_zone, defense_zone, attack_path_mask
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -339,6 +347,7 @@ class Agent:
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
+    # energy_map[mm.cell_type == CELL_ASTERIOD] -= 100 # adding this will make unit move away from it.
     if not SUBMIT_AGENT:
       print(
           f'>>>>>>>>>>>>>>> nebula_energy_reduction={mm.nebula_energy_reduction}',
@@ -347,12 +356,12 @@ class Agent:
     player_init_pos = get_player_init_pos(mm.player_id, self.mm.use_mirror)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    fire_zone, defense_zone = self.gen_fire_zone(d1)
+    fire_zone, defense_zone, attack_path_mask = self.gen_fire_zone(d1)
     d1 /= MAP_WIDTH
 
     defense_start_step = 0
     if not has_found_relic and mm.last_match_found_relic:
-      defense_start_step = 16
+      defense_start_step = 30
 
     def get_fuel_energy(upos, energy, cpos):
       e = fuel = energy_map[cpos[0]][cpos[1]]
@@ -360,19 +369,28 @@ class Agent:
 
       is_in_defense_zone = defense_zone[cpos[0]][cpos[1]]
       is_in_fire_zone = fire_zone[cpos[0]][cpos[1]]
+      is_on_attack_path = attack_path_mask[cpos[0]][cpos[1]]
 
       is_in_boost_zone = False
       if mm.match_step >= defense_start_step:
-        if mm.match_step < 50 and energy < BOOST_SAP_ENERGY_THRESHOOD:
+        # if mm.match_step < 50 and energy < BOOST_SAP_ENERGY_THRESHOOD:
+        if energy < BOOST_SAP_ENERGY_THRESHOOD:
           is_in_fire_zone = False
+          is_on_attack_path = False
 
-        if mm.game_step >= 50 or energy >= BOOST_SAP_ENERGY_THRESHOOD:
+        # if mm.game_step >= 50 or energy >= BOOST_SAP_ENERGY_THRESHOOD:
+        if mm.game_step >= 50 and energy >= BOOST_SAP_ENERGY_THRESHOOD:
           is_in_defense_zone = False
 
-        is_in_boost_zone = is_in_fire_zone or is_in_defense_zone
+        is_in_boost_zone = (is_in_fire_zone or is_in_defense_zone
+                            or is_on_attack_path)
 
+      d = d1[cpos[0]][cpos[1]]
       if e > 0 and is_in_boost_zone:
-        fuel += (e * d1[cpos[0]][cpos[1]])
+        boost = (e * d)
+        if is_in_fire_zone or is_in_defense_zone:
+          boost *= (3 * d)
+        fuel += boost
 
       return fuel
 
@@ -570,11 +588,11 @@ class Agent:
       }
       score_debug[(tuple(upos), tuple(cpos))] = dbg
 
-      if mm.game_step == 79 and unit_id in (7, 5):
-        if pos_equal(cpos, (21, 9)) or pos_equal(cpos, (22, 10)):
-          print(
-              f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
-              file=sys.stderr)
+      # if mm.game_step == 79 and unit_id in (7, 5):
+      # if pos_equal(cpos, (21, 9)) or pos_equal(cpos, (22, 10)):
+      # print(
+      # f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
+      # file=sys.stderr)
 
       # if USE_RANDOM:
       # wt += np.random.rand() / 1000
@@ -741,11 +759,11 @@ class Agent:
         unit_actions[i][0] = ACTION_CENTER
         continue
 
-      if not SUBMIT_AGENT:
-        # if self.player == PLAYER1:
-        print(
-            f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-            file=sys.stderr)
+      # if not SUBMIT_AGENT:
+      # if self.player == PLAYER1:
+      print(
+          f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+          file=sys.stderr)
 
       # sap_dead_zone = self.enemy_sap_cost >= unit_energy
       # enemy_sap_cost = self.enemy_sap_cost.copy()
