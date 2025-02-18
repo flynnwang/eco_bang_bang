@@ -455,7 +455,7 @@ class Observation:
 
   def __init__(self, positions, relic_num):
     self.positions = [(int(x), int(y)) for x, y in positions]
-    self.relic_num = relic_num
+    self.relic_num = min(relic_num, len(positions))
 
   def is_determined(self):
     if len(self.positions) == 0:

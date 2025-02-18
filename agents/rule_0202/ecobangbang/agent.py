@@ -1,4 +1,5 @@
 from typing import Callable, Dict, Optional, Tuple, Union, NamedTuple, Any, List
+from collections import OrderedDict, deque, defaultdict, Counter
 from argparse import Namespace
 import os
 import sys
@@ -27,6 +28,7 @@ from .env.mapmanager import (
     is_drifted_step,
     shift_map_by_sign,
     get_player_init_pos,
+    set_value_by_range,
 )
 
 # SUBMIT_AGENT = False
@@ -113,8 +115,8 @@ def left_tailed_exp(energy, val, m, v=20):
   return val
 
 
-RELIC_SCORE = 100
-RELIC_NB_SCORE = 50
+RELIC_SCORE = 30
+RELIC_NB_SCORE = 20
 
 EXPLORE_CELL_SCORE = 3
 MAX_EXPLORE_SCORE = 10
@@ -149,6 +151,8 @@ class Agent:
                          use_hidden_relic_estimator=True)
     self.prev_model_action = None
     self.last_sap_locations = []
+    self.unit_to_cell = None
+    self.unit_score = defaultdict(int)
 
   def get_enemy_sap_cost_map(self, unit_energy=None, extra_range=0):
     # TODO: exclude the position enemy can not see
@@ -290,20 +294,40 @@ class Agent:
     relic position or protect my reilc points."""
     mm = self.mm
 
+    team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
+
     attack_path_mask = mm.is_relic_node.copy()
+    defense_zone = np.zeros(MAP_SHAPE2, dtype=bool)
+
+    defense_zone_range = 7 * 2 + 1
+    enemy_init_pos = get_player_init_pos(mm.enemy_id, mm.use_mirror)
     relic_node_positions = mm.hidden_relic_estimator.relic_node_positions
     for pos in relic_node_positions:
+      if not on_team_side(pos, mm.player_id, mm.use_mirror):
+        continue
+
       draw_line(attack_path_mask, pos)
+
+      relic_defense_zone = gen_sap_range(pos, 2) & team_point_mask
+      relic_defense_zone = maximum_filter(relic_defense_zone,
+                                          size=defense_zone_range)
+
+      dist = manhatten_distance(pos, enemy_init_pos)
+      x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
+      enemy_relic_dist = (np.abs(x - enemy_init_pos[0]) +
+                          np.abs(y - enemy_init_pos[1]))
+
+      relic_defense_zone &= (enemy_relic_dist <= (dist + 1))
+      defense_zone |= relic_defense_zone
+
     attack_path_mask = maximum_filter(attack_path_mask, size=7)
 
-    team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
     enemy_side_mask = (dist_to_init_pos >= MAP_WIDTH)
     fire_zone = (team_point_mask & enemy_side_mask)
 
     fire_zone_range = mm.unit_sap_range * 2 + 1
     fire_zone = maximum_filter(fire_zone, fire_zone_range)
 
-    defense_zone_range = 7 * 2 + 1
     team_side_mask = (dist_to_init_pos <= MAP_WIDTH)
     defense_zone = (team_point_mask & team_side_mask)
     defense_zone = maximum_filter(defense_zone, defense_zone_range)
@@ -316,7 +340,7 @@ class Agent:
     final_stage_start_step = 70
 
     match_observed = mm.match_observed + anti_diag_sym(mm.match_observed)
-    energy_threshold = 60 + mm.match_step
+    energy_threshold = 100
     if mm.match_step >= final_stage_start_step:
       energy_threshold = 60
 
@@ -357,6 +381,7 @@ class Agent:
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
     fire_zone, defense_zone, attack_path_mask = self.gen_fire_zone(d1)
+    self.defense_zone = defense_zone
     d1 /= MAP_WIDTH
 
     defense_start_step = 0
@@ -387,9 +412,9 @@ class Agent:
 
       d = d1[cpos[0]][cpos[1]]
       if e > 0 and is_in_boost_zone:
-        boost = (e * d)
+        boost = (e * d) * 0.1  # defense: <5,  fire: 6-10
         if is_in_fire_zone or is_in_defense_zone:
-          boost *= (3 * d)
+          boost += (7 * d)  # ~5 * 3
         fuel += boost
 
       return fuel
@@ -439,11 +464,17 @@ class Agent:
     # blind_shot_targets = np.zeros(MAP_SHAPE2, dtype=bool)  # disable blind shot
     self.blind_shot_targets = blind_shot_targets
 
-    unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
+    # unit_positions_ext1 = maximum_filter(mm.unit_positions, size=3)
+    # updated by each unit's last target cell
+    last_step_unit_target_mask = np.zeros(MAP_SHAPE2, dtype=bool)
 
     def next_by_team_units(upos, energy, cpos):
-      # TODO: use energy to determine the ownership
-      if not pos_equal(upos, cpos) and unit_positions_ext1[cpos[0]][cpos[1]]:
+      # Do not penality cell in the relic nb
+      is_relic_nb = mm.is_relic_neighbour[cpos[0]][cpos[1]]
+      if is_relic_nb:
+        return 0
+
+      if last_step_unit_target_mask[cpos[0]][cpos[1]]:
         return -5
       return 0
 
@@ -462,7 +493,7 @@ class Agent:
 
       if not is_shadow_position:
         # Single unit on relic, but not this one, return
-        if uc == 1 and not pos_equal(upos, cpos):
+        if uc >= 1 and not pos_equal(upos, cpos):
           return 0
 
         # For mutiple units on relic, not the min energy unit
@@ -528,6 +559,12 @@ class Agent:
       # Boost unit with extra energy for SAP
       h *= min(energy / BOOST_SAP_ENERGY_THRESHOOD, 1)
 
+      # boost attacking enemy in the defense zone
+      sap_in_defense_zone = sap_range & defense_zone
+      if (sap_in_defense_zone.sum() > 0
+          and enemy_hit_map[sap_in_defense_zone].max() > 0):
+        h += self.mm.unit_sap_cost / hit_factor
+
       # sap if energy is large (and unit not on relic)
       # if self.mm.team_point_mass[pos[0]][pos[1]] < 0.6:
       # h *= max((energy / energy_threshold), 1)
@@ -588,8 +625,10 @@ class Agent:
       }
       score_debug[(tuple(upos), tuple(cpos))] = dbg
 
-      # if mm.game_step == 79 and unit_id in (7, 5):
-      # if pos_equal(cpos, (21, 9)) or pos_equal(cpos, (22, 10)):
+      # DEBUG1
+      # if mm.game_step == 38 and unit_id in (9, 10, 11):
+      # if mm.game_step == 74 and unit_id in (3, ):
+      # if pos_equal(cpos, (0, 8)) or pos_equal(cpos, (9, 9)):
       # print(
       # f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
       # file=sys.stderr)
@@ -616,12 +655,27 @@ class Agent:
 
     weights = np.ones((MAX_UNIT_NUM, len(cell_index))) * -9999
 
-    for i in range(MAX_UNIT_NUM):
-      mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+    ordered_unit_ids = list(range(MAX_UNIT_NUM))
+    # ordered_unit_ids.sort(
+    # key=lambda unit_id: (-self.unit_score[unit_id], unit_id))
+    for i in ordered_unit_ids:
+      unit_id = i
+      mask, pos, energy = self.mm.get_unit_info(self.mm.player_id,
+                                                unit_id,
+                                                t=0)
       if not mask:
         continue
 
-      unit_id = i
+      # print(f' unit_id={i}, unit_score={self.unit_score[unit_id]}',
+      # file=sys.stderr)
+      # if self.unit_to_cell:
+      # last_cpos = self.unit_to_cell.get(unit_id)
+      # if last_cpos is not None:
+      # set_value_by_range(last_step_unit_target_mask,
+      # last_cpos,
+      # d=1,
+      # val=True)
+
       for cell_id, idx in enumerate(cell_index):
         target_cell_pos = cell_idx_to_pos(idx)
         is_shadow_position = cell_id >= N_CELLS
@@ -634,6 +688,7 @@ class Agent:
             unit_id=unit_id)
 
     unit_to_cell = {}
+    unit_score = defaultdict(int)
     rows, cols = scipy.optimize.linear_sum_assignment(weights, maximize=True)
     for unit_id, cell_id in zip(rows, cols):
       wt = weights[unit_id, cell_id]
@@ -644,12 +699,15 @@ class Agent:
       idx = cell_index[cell_id]
       cpos = cell_idx_to_pos(idx)
       unit_to_cell[unit_id] = cpos
+      unit_score[unit_id] = wt
       if not SUBMIT_AGENT:
         _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
         wts = score_debug[(tuple(upos), tuple(cpos))]
         print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
               file=sys.stderr)
 
+    self.unit_to_cell = unit_to_cell
+    self.unit_score = unit_score
     return unit_to_cell
 
   def compute_energy_cost_map(self,
@@ -761,9 +819,9 @@ class Agent:
 
       # if not SUBMIT_AGENT:
       # if self.player == PLAYER1:
-      print(
-          f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
-          file=sys.stderr)
+      # print(
+      # f"pid=[{self.mm.player}] game_step={mm.game_step} sending unit={i} pos={unit_pos} to cell={cell_pos}",
+      # file=sys.stderr)
 
       # sap_dead_zone = self.enemy_sap_cost >= unit_energy
       # enemy_sap_cost = self.enemy_sap_cost.copy()
@@ -827,6 +885,11 @@ class Agent:
         h += self.mm.unit_sap_cost * self.mm.unit_sap_dropoff_factor  # lower the priority of blind shot
 
       h *= min(unit_energy / BOOST_SAP_ENERGY_THRESHOOD, 1)
+
+      # Boost attacking enemy in my defense_zone
+      is_in_defense_zone = self.defense_zone[cpos[0]][cpos[1]]
+      if is_in_defense_zone:
+        h += self.mm.unit_sap_cost
       return h
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
@@ -863,7 +926,7 @@ class Agent:
     for (unit_id, unit_pos, unit_energy), cpos, _ in attack_actions:
       sap_mask = gen_sap_range(cpos, d=1)
       is_blind_shot = self.blind_shot_targets[cpos[0]][cpos[1]]
-      if (enemy_energy[sap_mask & (enemy_energy > 0)].sum() <= 0
+      if (enemy_energy[sap_mask & (enemy_energy >= 0)].sum() <= 0
           and not is_blind_shot):
         if not SUBMIT_AGENT:
           print(f'step={mm.game_step}, unit[{unit_pos}] sap saved',
@@ -902,9 +965,9 @@ class Agent:
 
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
-    if not SUBMIT_AGENT:
-      print(f"============ game step {self.mm.game_step + 1} ========== ",
-            file=sys.stderr)
+    # if not SUBMIT_AGENT:
+    print(f"============ game step {self.mm.game_step + 1} ========== ",
+          file=sys.stderr)
     self.mm.update(raw_obs, self.prev_model_action)
     self.mm.add_sap_locations(self.last_sap_locations)
     self.mm.remainingOverageTime = remainingOverageTime
