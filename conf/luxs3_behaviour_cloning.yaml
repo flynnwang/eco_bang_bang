@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250218_behaviour_cloning_r0_cont0
+name: run_20250218_behaviour_cloning_r0_cont2
 
 ## WANDB params
 # The wandb project name
@@ -119,8 +119,10 @@ debug: False
 #disable_wandb: True
 #debug: True
 #
-load_dir: /home/flynnwang/runs/ebb/02-18/11-56-54
-checkpoint_file: 001895936.pt
+load_dir: /home/flynnwang/runs/ebb/02-18/19-36-49/
+checkpoint_file: 007673344.pt
+#load_dir: /home/flynnwang/runs/ebb/02-18/11-56-54
+#checkpoint_file: 001895936.pt
 #
 weights_only: False
 n_value_warmup_batches: 0
