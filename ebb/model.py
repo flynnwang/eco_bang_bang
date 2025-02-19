@@ -579,7 +579,7 @@ def create_model(flags, observation_space, device: torch.device) -> nn.Module:
     reward_spec = RewardSpec(
         reward_min=-1,
         reward_max=+1,
-        zero_sum=False,
+        zero_sum=True,
     )
   if flags.reward_schema in ('match_win_loss', ):
     reward_spec = RewardSpec(
