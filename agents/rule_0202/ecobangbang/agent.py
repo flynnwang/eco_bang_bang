@@ -77,7 +77,10 @@ def pos_to_cell_idx(pos):
   return pos[0] + pos[1] * MAP_WIDTH
 
 
-def can_attack(energy, mm, margin=3):
+def can_attack(pos, energy, mm):
+  margin = 3
+  if mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB:
+    margin = 0
   return energy >= mm.unit_sap_cost + mm.unit_move_cost * margin
 
 
@@ -89,6 +92,14 @@ def cant_move_to(upos, cpos, mm):
 def is_within_sap_range(upos, cpos, unit_sap_range):
   return ((abs(upos[0] - cpos[0]) <= unit_sap_range)
           and (abs(upos[1] - cpos[1]) <= unit_sap_range))
+
+
+def get_max_value_by_range(arr, pos, d):
+  x0 = max(0, (pos[0] - d))
+  x1 = min(MAP_WIDTH, (pos[0] + d + 1))
+  y0 = max(0, (pos[1] - d))
+  y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
+  return arr[x0:x1, y0:y1].max()
 
 
 def on_enemy_side(cpos, player_id, use_mirror):
@@ -165,7 +176,8 @@ class Agent:
         continue
       # add 1 for dropoff and extra_range for margin
       sap_range = gen_sap_range(pos, self.mm.unit_sap_range + 1 + extra_range)
-      enemy_sap_map[sap_range] += self.mm.unit_sap_cost
+      uc = self.mm.unit_count[sap_range].sum()
+      enemy_sap_map[sap_range] += self.mm.unit_sap_cost / uc
     return enemy_sap_map
 
   def get_enemy_max_energy_level(self, unit_energy, max_dist=3):
@@ -181,40 +193,17 @@ class Agent:
   def get_sap_hit_map(self, factor):
     mm = self.mm
 
-    def predict_next_move(enemy_unit_id, pos0, unit_energy):
-      mask1, pos1, _ = self.mm.get_unit_info(self.mm.enemy_id,
-                                             enemy_unit_id,
-                                             t=1)
-      if not mask1 or pos_equal(pos0, pos1):
-        return pos0
-
-      # Assume units will stay on relic
-      if self.mm.team_point_mass[pos0[0]][pos0[1]] > IS_RELIC_CELL_PROB:
-        return pos0
-
-      # Move is the first thing in resolusion order
-      pos = pos0
-      if unit_energy >= self.mm.unit_move_cost:
-        dx = pos0[0] - pos1[0]
-        dy = pos0[1] - pos1[1]
-        tmp_pos = (pos0[0] + dx, pos0[1] + dy)
-        if is_pos_on_map(tmp_pos):
-          pos = tmp_pos
-
-      # print(
-      # f"$$$$$$$$$$$$$$ predict enemy move from pos[t-1]={pos1}, pos[t]={pos0} to pos[t+1]={pos}",
-      # file=sys.stderr)
-      return pos
-
     def get_nearest_relic_position(upos):
       min_dist = 99999
       min_pos = None
-      # print(
-      # f' >>> relic node positions = {self.mm.hidden_relic_estimator.relic_node_positions}',
-      # file=sys.stderr)
-      for pos in self.mm.hidden_relic_estimator.relic_node_positions:
+      for pos, is_relic in (
+          self.mm.hidden_relic_estimator.solver.position_to_relic.items()):
+        if not is_relic:
+          continue
         if not on_team_side(pos, self.mm.player_id, self.mm.use_mirror):
-          # print(f' >>> skip relic pos= {pos}', file=sys.stderr)
+          continue
+        # already occupied by enemy, skip
+        if self.mm.enemy_max_energy[pos[0]][pos[1]] > 0:
           continue
 
         d = manhatten_distance(upos, pos)
@@ -225,10 +214,15 @@ class Agent:
 
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
 
-    def add_pos(pos, dx, dy, v):
+    def add_pos(pos, v):
+      hit_map[pos[0]][pos[1]] += v
+
+    def next_pos(pos, dx, dy):
       np = (pos[0] + dx, pos[1] + dy)
-      if is_pos_on_map(np):
-        hit_map[np[0]][np[1]] += v
+      valid = True
+      if not is_pos_on_map(np) or mm.cell_type[np[0]][np[1]] == CELL_ASTERIOD:
+        valid = False
+      return valid, np
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
@@ -247,9 +241,11 @@ class Agent:
 
       # For on-relic enemy, add extra score
       if is_enemy_on_relic:
-        p = self.mm.team_point_mass[pos[0]][pos[1]]
-        if p > IS_RELIC_CELL_PROB:
-          hit_map[pos[0]][pos[1]] += RELIC_SCORE
+        v = (MAX_SAP_COST + 1)
+        # For on-relic enemy on team side
+        if on_team_side(pos, mm.player_id, mm.use_mirror):
+          v *= 2
+        hit_map[pos[0]][pos[1]] += v
 
       # For enemy next move (guessed: dist to nearest relic position)
 
@@ -269,23 +265,43 @@ class Agent:
         sap1 = mm.unit_sap_cost + 1
         sap0 = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
         if dx != 0 and dy != 0:
-          add_pos(pos, dx, 0, sap1)
-          add_pos(pos, 0, dy, sap1)
-          add_pos(pos, dx, dy, sap0)
+          # add_pos(pos, dx, dy, sap0)
+          v1, posx = next_pos(pos, dx, 0)
+          v2, posy = next_pos(pos, 0, dy)
+          if v1 and not v2:
+            add_pos(posx, sap1)
+          if not v1 and v2:
+            add_pos(posy, sap1)
+          if v1 and v2:
+            e1 = mm.cell_net_energy(posx)
+            e2 = mm.cell_net_energy(posy)
+            if e1 > e2:
+              add_pos(posx, sap1)
+            elif e1 < e2:
+              add_pos(posy, sap1)
+            else:
+              r1 = np.random.rand() * 0.1
+              r2 = np.random.rand() * 0.1
+              add_pos(posx, sap0 + r1)
+              add_pos(posy, sap0 + r2)
 
         if (dx == 0 and dy != 0):
-          add_pos(pos, -1, 0, sap0)
-          add_pos(pos, +1, 0, sap0)
-          add_pos(pos, -1, dy, sap0)
-          add_pos(pos, 0, dy, sap1)
-          add_pos(pos, +1, dy, sap0)
+          # add_pos(pos, -1, 0, sap0)
+          # add_pos(pos, +1, 0, sap0)
+          # add_pos(pos, -1, dy, sap0)
+          v, py = next_pos(pos, 0, dy)
+          if v:
+            add_pos(py, sap1)
+          # add_pos(pos, +1, dy, sap0)
 
         if (dx != 0 and dy == 0):
-          add_pos(pos, 0, -1, sap0)
-          add_pos(pos, 0, +1, sap0)
-          add_pos(pos, dx, -1, sap0)
-          add_pos(pos, dx, 0, sap1)
-          add_pos(pos, dx, +1, sap0)
+          # add_pos(pos, 0, -1, sap0)
+          # add_pos(pos, 0, +1, sap0)
+          # add_pos(pos, dx, -1, sap0)
+          v, px = next_pos(pos, dx, 0)
+          if v:
+            add_pos(px, sap1)
+          # add_pos(pos, dx, +1, sap0)
 
     return hit_map
 
@@ -543,7 +559,7 @@ class Agent:
 
     def get_sap_enemy_score(upos, energy, cpos):
       """Max sap damage that could be hit from the `cpos`."""
-      if not can_attack(energy, mm):
+      if not can_attack(upos, energy, mm):
         return 0
 
       # Do not attack from negtive energy position
@@ -575,6 +591,8 @@ class Agent:
     enemy_max_energy = maximum_filter(mm.enemy_max_energy, size=5)
     self.enemy_max_energy = enemy_max_energy
 
+    ext_relic_nb = maximum_filter((mm.is_relic_node > 0), size=7)
+
     def get_unit_cell_wt(upos, energy, cpos, unit_cost_map, is_shadow_position,
                          unit_id):
       if cant_move_to(upos, cpos, mm):
@@ -604,14 +622,16 @@ class Agent:
       next_by_team_wt = 0
       # next_by_team_wt = next_by_team_units(upos, energy, cpos)
 
-      # If unit do not have much energy for one sap attack
-      if (not (unit_on_relic
-               and on_team_side(upos, mm.player_id, mm.use_mirror))
+      # If unit (not on team side relic) do not have much energy for one sap attack
+      run_away_wt = 0
+      team_side_ext_relic_nb = (ext_relic_nb[pos[0]][pos[1]] and on_team_side(
+          upos, mm.player_id, mm.use_mirror))
+      if (not (team_side_ext_relic_nb)
           and self.enemy_sap_cost[cpos[0]][cpos[1]] >= energy):
-        wt -= self.mm.unit_sap_cost / 10
+        run_away_wt = -self.mm.unit_sap_cost / 10
 
       wt += (expore_wt + fuel_wt + relic_nb_wt + on_relic_wt + sap_wt +
-             next_by_team_wt) / mdist
+             next_by_team_wt + run_away_wt) / mdist
 
       dbg = {
           'explore_wt': expore_wt,
@@ -620,15 +640,16 @@ class Agent:
           'on_relic_wt': on_relic_wt,
           'sap_wt': sap_wt,
           'energy_ratio': energy_ratio,
+          'run_away_wt': run_away_wt,
           'wt': wt,
           'mdist': mdist,
       }
       score_debug[(tuple(upos), tuple(cpos))] = dbg
 
       # DEBUG1
-      # if mm.game_step == 38 and unit_id in (9, 10, 11):
-      # if mm.game_step == 74 and unit_id in (3, ):
-      # if pos_equal(cpos, (0, 8)) or pos_equal(cpos, (9, 9)):
+      # if mm.game_step == 169 and unit_id in (14, 15):
+      # if pos_equal(cpos, (20, 9)) or pos_equal(cpos, (20, 8)):
+      # if unit_id in (14, ):
       # print(
       # f'step={mm.game_step} unit_id={unit_id}, upos={upos}, cpos={cpos} wt={wt} cpos_on_relic={mm.team_point_mass[cpos[0]][cpos[1]]}, score_debug = {dbg},',
       # file=sys.stderr)
@@ -700,11 +721,12 @@ class Agent:
       cpos = cell_idx_to_pos(idx)
       unit_to_cell[unit_id] = cpos
       unit_score[unit_id] = wt
-      if not SUBMIT_AGENT:
-        _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
-        wts = score_debug[(tuple(upos), tuple(cpos))]
-        print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
-              file=sys.stderr)
+      # if not SUBMIT_AGENT:
+
+      # _, upos, _ = self.mm.get_unit_info(self.mm.player_id, unit_id, t=0)
+      # wts = score_debug[(tuple(upos), tuple(cpos))]
+      # print(f" unit[{unit_id}]={upos} assgined to cell={cpos}, wts={wts}",
+      # file=sys.stderr)
 
     self.unit_to_cell = unit_to_cell
     self.unit_score = unit_score
@@ -852,7 +874,7 @@ class Agent:
       mask, unit_pos, unit_energy = mm.get_unit_info(mm.player_id,
                                                      unit_id,
                                                      t=0)
-      if not mask or not can_attack(unit_energy, mm):
+      if not mask or not can_attack(unit_pos, unit_energy, mm):
         continue
 
       if unit_actions[unit_id][0] != ACTION_CENTER:
@@ -874,6 +896,16 @@ class Agent:
         print(f"no attack_positions found, return", file=sys.stderr)
       return
 
+    # duplicate attack position based on number of sap cost.
+    atk_pos2 = []
+    for pos in attack_positions:
+      max_energy = get_max_value_by_range(mm.enemy_max_energy, pos, d=1)
+      num = int(np.ceil(max_energy / mm.unit_sap_cost))
+      num = max(1, num)
+      if num > 0:
+        atk_pos2.extend([pos] * num)
+    attack_positions = atk_pos2
+
     def get_sap_damage(upos, unit_energy, cpos):
       if not is_within_sap_range(upos, cpos, self.mm.unit_sap_range):
         return -1
@@ -884,13 +916,15 @@ class Agent:
           and self.blind_shot_targets[cpos[0]][cpos[1]]):
         h += self.mm.unit_sap_cost * self.mm.unit_sap_dropoff_factor  # lower the priority of blind shot
 
-      h *= min(unit_energy / BOOST_SAP_ENERGY_THRESHOOD, 1)
+      # h *= min(unit_energy / BOOST_SAP_ENERGY_THRESHOOD, 1)
 
       # Boost attacking enemy in my defense_zone
       is_in_defense_zone = self.defense_zone[cpos[0]][cpos[1]]
       if is_in_defense_zone:
         h += self.mm.unit_sap_cost
-      return h
+
+      dist = manhatten_distance(upos, cpos) + 1
+      return h / dist
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
     for i, (unit_id, unit_pos, unit_energy) in enumerate(attackers):
@@ -904,7 +938,8 @@ class Agent:
       if wt <= 0:
         continue
 
-      attack_actions.append((attackers[i], attack_positions[j], wt))
+      dist = manhatten_distance(attackers[i][1], attack_positions[j])
+      attack_actions.append((attackers[i], attack_positions[j], dist))
 
       unit_id, unit_pos, unit_energy = attackers[i]
       if not SUBMIT_AGENT:
@@ -917,9 +952,10 @@ class Agent:
           print(f"blind shot from unit[{unit_id}]={unit_pos} at pos={atk_pos}",
                 file=sys.stderr)
 
-    # use attack with larger energy
-    attack_actions.sort(key=lambda a:
-                        (-a[2], -a[0][-1], a[0][0]))  # (unit_energy, unit_id)
+    # use attack with longer range
+    attack_actions.sort(
+        key=(lambda a:
+             (-a[2], -a[0][-1], a[0][0])))  # (dist, unit_energy, unit_id)
     enemy_energy = mm.enemy_max_energy.copy()
     self.last_sap_locations.clear()
     self.last_sap_units_info = []

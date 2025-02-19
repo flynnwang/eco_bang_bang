@@ -547,10 +547,11 @@ class HiddenRelicSolver:
         # file=sys.stderr)
 
       now = datetime.now()
-      waitTime = min((remainingOverageTime - 5), 10)
+      waitTime = min((remainingOverageTime - 5), 5)
 
-      print(f" remainingOverageTime = {remainingOverageTime}", file=sys.stderr)
       if (now - start_time).total_seconds() > waitTime:
+        print(f" remainingOverageTime = {remainingOverageTime}",
+              file=sys.stderr)
         raise HiddenRelicSolverTimeout
 
     # import time
@@ -641,8 +642,8 @@ class HiddenRelicNodeEstimator:
 
         p = 0
         if is_relic is None:
-          # p = random.random() * 0.5 + 0.25
-          p = self.priori_[pos[0]][pos[1]]
+          p = random.random() * 0.5 + 0.25
+          # p = self.priori_[pos[0]][pos[1]]
         else:
           p = 1.0 if is_relic else 0.0
         self.priori[pos[0]][pos[1]] = p
@@ -883,6 +884,12 @@ class MapManager:
 
     if SAVE_ALL_STEPS_TP_PROB:
       self.team_point_probs = []
+
+  def cell_net_energy(self, pos):
+    e = self.cell_energy[pos[0]][pos[1]]
+    if self.cell_type[pos[0]][pos[1]] == CELL_NEBULA:
+      e -= self.nebula_energy_reduction
+    return e
 
   def has_found_relic_in_match(self):
     return self.is_relic_node.sum() > self.last_match_relic_cell_num
