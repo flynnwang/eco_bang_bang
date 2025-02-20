@@ -436,6 +436,8 @@ class BaselineLayer(nn.Module):
     self.reward_max = reward_space.reward_max
     hidden_channles = in_channels + N_BASELINE_EXTRA_DIM
     self.linear = nn.Linear(hidden_channles, hidden_channles)
+    self.linear_activation = torch.nn.ReLU()
+
     self.linear2 = nn.Linear(hidden_channles, 1)
     if reward_space.zero_sum:
       self.activation = nn.Softmax(dim=-1)
@@ -451,14 +453,19 @@ class BaselineLayer(nn.Module):
 
     # Project and reshape input
     x = self.linear(x)
+    # print(f'x0={x}')
     # Rescale to [0, 1], and then to the desired reward space
-    x = self.activation(x)
+    x = self.linear_activation(x)
+    # print(f'x1={x}')
     x = self.linear2(x)
+    # print(f'x2={x}')
     x = self.activation(x)
+    # print(f'x3={x}')
     v = x * (self.reward_max - self.reward_min) + self.reward_min
     # print(
     # f'v={v}, x={x}, reward_max={self.reward_max} reward_min={self.reward_min}'
     # )
+    # print(f'v={v}, max={self.reward_max}, min={self.reward_min}')
     return v
 
 
@@ -579,7 +586,7 @@ def create_model(flags, observation_space, device: torch.device) -> nn.Module:
     reward_spec = RewardSpec(
         reward_min=-1,
         reward_max=+1,
-        zero_sum=True,
+        zero_sum=False,
     )
   if flags.reward_schema in ('match_win_loss', ):
     reward_spec = RewardSpec(

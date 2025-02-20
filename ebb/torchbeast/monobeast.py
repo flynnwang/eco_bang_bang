@@ -945,8 +945,8 @@ def train(flags):
       start_time = timer()
 
       sleep_time = 30
-      # if flags.disable_wandb:
-      # sleep_time = 300
+      if flags.disable_wandb:
+        sleep_time = 300
       time.sleep(sleep_time)
 
       # Save every checkpoint_freq minutes
