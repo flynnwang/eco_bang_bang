@@ -923,8 +923,9 @@ class Agent:
       if is_in_defense_zone:
         h += self.mm.unit_sap_cost
 
-      dist = manhatten_distance(upos, cpos) + 1
-      return h / dist
+      # dist = manhatten_distance(upos, cpos) + 1
+      # return h / dist
+      return h
 
     weights = np.ones((len(attackers), len(attack_positions))) * -9999
     for i, (unit_id, unit_pos, unit_energy) in enumerate(attackers):
