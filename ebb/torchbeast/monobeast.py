@@ -129,9 +129,6 @@ def combine_policy_entropy(
     entropies_masked = entropies * am.float()
 
   r = entropies_masked.sum(dim=-1).sum(dim=-1)
-  # if torch.isnan(r).any():
-  # __import__('ipdb').set_trace()
-  # print()
   return r
 
 
