@@ -969,9 +969,10 @@ class Agent:
                 file=sys.stderr)
         continue
 
-      dropoff_sap_cost = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+      # dropoff_sap_cost = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+      dropoff_sap_cost = mm.unit_sap_cost
       sap_cost = gen_sap_range(cpos, d=1, dtype=int, val=dropoff_sap_cost)
-      sap_cost[cpos[0]][cpos[1]] = mm.unit_sap_cost
+      # sap_cost[cpos[0]][cpos[1]] = mm.unit_sap_cost
       enemy_energy -= sap_cost
 
       unit_actions[unit_id][0] = ACTION_SAP
