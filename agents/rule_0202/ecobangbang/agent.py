@@ -908,10 +908,10 @@ class Agent:
         return -1
 
       # ignore enemy with energy lower than me, is it ok?
-      enemy_energy = mm.enemy_max_energy[cpos[0]][cpos[1]]
-      if (enemy_energy < unit_energy and enemy_energy > mm.unit_sap_cost
-          and on_enemy_side(cpos, mm.player_id, mm.use_mirror)):
-        return -1
+      # enemy_energy = mm.enemy_max_energy[cpos[0]][cpos[1]]
+      # if (enemy_energy < unit_energy and enemy_energy > mm.unit_sap_cost
+      # and on_enemy_side(cpos, mm.player_id, mm.use_mirror)):
+      # return -1
 
       h = self.enemy_hit_map[cpos[0]][cpos[1]]
 
