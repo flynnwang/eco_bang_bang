@@ -132,7 +132,6 @@ class LuxS3Env(gym.Env):
     self.raw_obs = None  # for debug
     self._seed = None
     self.last_sap_locations = [[], []]
-    self.agent_actions = [None, None]
     self.use_separate_base = use_separate_base
 
   @property
@@ -255,10 +254,6 @@ class LuxS3Env(gym.Env):
         UNITS_ACTION:
         np.zeros(EXT_ACTION_SHAPE, dtype=bool)
     }]
-    self.agent_actions = [
-        np.zeros((MAX_UNIT_NUM, 3), dtype=int),
-        np.zeros((MAX_UNIT_NUM, 3), dtype=int),
-    ]
     model_action = [{
         UNITS_ACTION: np.zeros((MAX_UNIT_NUM, 1), dtype=int)
     }, {
@@ -363,34 +358,40 @@ class LuxS3Env(gym.Env):
                               self._actions_taken_mask[1]),
       }
     else:
+
+      def translate(agent, aa):
+        aa = aa.copy()  # just to copy again, in case
+        if agent.mm.use_mirror:
+          return agent.mirror_action(aa)
+        return aa
+
       # Use agent to generate action to overwrite the model action.
       if self.use_agent:
-
-        def translate(agent, aa):
-          if agent.mm.use_mirror:
-            return agent.mirror_action(aa)
-          return aa
-
-        # for player 1, the unit action shoud be mirrored back before sending to env.
-        action = {
-            PLAYER0: self.agent_actions[0],
-            PLAYER1: translate(self.agents[1], self.agent_actions[1]),
-        }
+        agent_actions = [
+            self.agents[0].act(self.mms[0].game_step, self.raw_obs[PLAYER0]),
+            self.agents[1].act(self.mms[1].game_step, self.raw_obs[PLAYER1])
+        ]
 
         # For model action, we shoud use the non-mirrored version
         model_action = [
             {
                 UNITS_ACTION:
-                self.agent_action_do_model_action(self.agent_actions[0],
+                self.agent_action_to_model_action(agent_actions[0],
                                                   self.mms[0])
             },
             {
                 UNITS_ACTION:
-                self.agent_action_do_model_action(self.agent_actions[1],
+                self.agent_action_to_model_action(agent_actions[1],
                                                   self.mms[1])
             },
         ]
         self._actions_taken_mask = self.compute_actions_taken(model_action)
+
+        # for player 1, the unit action shoud be mirrored back before sending to env.
+        action = {
+            PLAYER0: agent_actions[0],
+            PLAYER1: translate(self.agents[1], agent_actions[1]),
+        }
 
     raw_obs, step_reward, terminated, truncated, info = self.game.step(action)
     final_state = info['final_state']
@@ -411,7 +412,7 @@ class LuxS3Env(gym.Env):
     self.raw_obs = raw_obs
     return obs, reward, done, info
 
-  def agent_action_do_model_action(self, agent_action, mm):
+  def agent_action_to_model_action(self, agent_action, mm):
     units_action = np.zeros((MAX_UNIT_NUM, 1), dtype=int)
     for i in range(MAX_UNIT_NUM):
       a = agent_action[i][0]
@@ -1026,10 +1027,8 @@ class LuxS3Env(gym.Env):
 
       info['actions_taken_mask'] = self._actions_taken_mask[mm.player_id]
       if self.use_agent:
-        # match with actions mask
-        units_action = self.agent_action_do_model_action(
-            self.agent_actions[mm.player_id], mm)
-        info['agent_action'] = units_action
+        # agent_action is UNITS_ACTION in model_action for that player
+        info['agent_action'] = agent_action[UNITS_ACTION]
 
       # action mask for current state, (for sample action)
       info['available_action_mask'] = self._get_available_action_mask(mm)
@@ -1119,10 +1118,6 @@ class LuxS3Env(gym.Env):
                     self._actions_taken_mask[mm.player_id][UNITS_ACTION], mm)
       add_unit_total_energy(info, mm)
 
-      if self.use_agent:
-        agent_action = self.agents[mm.player_id].act(mm.game_step,
-                                                     raw_obs[mm.player])
-        self.agent_actions[mm.player_id] = agent_action
       return info
 
     if model_action is None:

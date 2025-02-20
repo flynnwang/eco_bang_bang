@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250218_behaviour_cloning_r0_cont2
+name: run_20250220_behaviour_cloning_r0
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,8 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_imitation_0217
+group: luxs3_exp_0220
+
 
 ## ENV params
 obs_space_kwargs:
@@ -119,8 +120,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 #
-load_dir: /home/flynnwang/runs/ebb/02-18/19-36-49/
-checkpoint_file: 007673344.pt
+load_dir:
+checkpoint_file:
 #load_dir: /home/flynnwang/runs/ebb/02-18/11-56-54
 #checkpoint_file: 001895936.pt
 #
