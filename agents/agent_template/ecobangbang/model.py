@@ -427,6 +427,7 @@ class BaselineLayer(nn.Module):
     self.reward_max = reward_space.reward_max
     hidden_channles = in_channels + N_BASELINE_EXTRA_DIM
     self.linear = nn.Linear(hidden_channles, hidden_channles)
+    self.linear_activation = torch.nn.ReLU()
     self.linear2 = nn.Linear(hidden_channles, 1)
     if reward_space.zero_sum:
       self.activation = nn.Softmax(dim=-1)
@@ -443,7 +444,7 @@ class BaselineLayer(nn.Module):
     # Project and reshape input
     x = self.linear(x)
     # Rescale to [0, 1], and then to the desired reward space
-    x = self.activation(x)
+    x = self.linear_activation(x)
     x = self.linear2(x)
     x = self.activation(x)
     v = x * (self.reward_max - self.reward_min) + self.reward_min

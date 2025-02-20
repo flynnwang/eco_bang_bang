@@ -6,6 +6,8 @@ import sys
 import numpy as np
 import torch
 
+torch.set_printoptions(precision=4, sci_mode=False)
+
 from .env.const import *
 from .env.luxenv import (
     MapManager,
@@ -146,11 +148,14 @@ class Agent:
 
     obs_space_kwargs = {'use_energy_cost_map': True}
 
+    if player == PLAYER1:
+      use_mirror = True
+
     self.mm = MapManager(player,
                          env_cfg,
                          transpose=False,
                          sap_indexer=SapIndexer(),
-                         use_mirror=False,
+                         use_mirror=use_mirror,
                          use_hidden_relic_estimator=True)
     self.env = LuxS3Env("", obs_space_kwargs=obs_space_kwargs,
                         game_env=1)  # for calling _convert_observation
@@ -161,10 +166,10 @@ class Agent:
     self.md = self.load_model()
 
   def load_model(self):
-    flags = dict(n_blocks=8,
+    flags = dict(n_blocks=16,
                  hidden_dim=128,
-                 base_out_channels=128,
-                 embedding_dim=16,
+                 base_out_channels=256,
+                 embedding_dim=32,
                  kernel_size=5,
                  use_separate_base=False,
                  reward_schema="game_win_loss2")
@@ -246,6 +251,17 @@ class Agent:
     actions = torch.multinomial(action_probs, num_samples=1, replacement=False)
     return actions
 
+  def mirror_action(self, unit_actions):
+    for i in range(MAX_UNIT_NUM):
+      a, x, y = unit_actions[i]
+
+      if self.mm.use_mirror:
+        a = MIRRORED_ACTION[a]
+        x, y = -y, -x
+
+      unit_actions[i][:] = (a, x, y)
+    return unit_actions
+
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
 
@@ -259,16 +275,25 @@ class Agent:
 
     model_output = self.md(model_input, sample=DO_SAMPLE, probs_output=True)
     self.model_output = model_output
-    action_probs = self.get_avg_model_action(model_output["probs"])
 
-    model_action = {UNITS_ACTION: action_probs}
+    action_probs = model_output["probs"]
+    print(f"step={self.mm.game_step}, b={model_output['baseline']}",
+          file=sys.stderr)
+    print(action_probs[0, :], file=sys.stderr)
+    # print(f"use_mirror={self.mm.use_mirror}", file=sys.stderr)
+    unit_actions = self.get_avg_model_action(action_probs)
+
+    model_action = {UNITS_ACTION: unit_actions}
     self.prev_model_action = model_action
 
     # print(
-    # f'model_action.shape={model_action[UNITS_ACTION].shape}, model_probs={action_probs.shape}',
+    # f'model_action.shape={model_action[UNITS_ACTION].shape}, model_probs={unit_actions.shape}',
     # file=sys.stderr)
 
     # model_action[UNITS_ACTION] = model_action[UNITS_ACTION].squeeze(0)
     action_taken_mask = self.env.get_actions_taken_mask(model_action, self.mm)
     action = self.env._encode_action(model_action, self.mm, action_taken_mask)
+
+    # if self.mm.use_mirror:
+    # action = self.mirror_action(action)
     return action
