@@ -23,7 +23,7 @@ obs_space_kwargs:
   use_single_player: False
   use_agent: True
 
-
+use_separate_base: False
 reward_space_kwargs: {}
 reward_schema: shaping_v2
 #reward_schema: match_explore_win_loss

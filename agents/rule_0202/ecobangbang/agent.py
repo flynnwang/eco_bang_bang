@@ -479,7 +479,7 @@ class Agent:
         return 0
 
       if last_step_unit_target_mask[cpos[0]][cpos[1]]:
-        return -5
+        return -10
       return 0
 
     def stay_on_relic(upos, energy, cpos, is_shadow_position, unit_id):
@@ -594,6 +594,9 @@ class Agent:
       mdist = dd(manhatten_distance(upos, cpos) + 1)
       wt = 0.0001
 
+      # unit_scatter_wt = 0
+      # if unit_position_ext[cpos[0]][]
+
       energy_ratio = energy / energy_threshold
 
       expore_wt = get_explore_weight(upos, energy, cpos)
@@ -608,7 +611,7 @@ class Agent:
       sap_wt = get_sap_enemy_score(upos, energy, cpos)
 
       next_by_team_wt = 0
-      # next_by_team_wt = next_by_team_units(upos, energy, cpos)
+      next_by_team_wt = next_by_team_units(upos, energy, cpos)
 
       # If unit (not on team side relic) + energy low + can't sap => run away
       run_away_wt = 0
@@ -679,14 +682,6 @@ class Agent:
 
       # print(f' unit_id={i}, unit_score={self.unit_score[unit_id]}',
       # file=sys.stderr)
-      # if self.unit_to_cell:
-      # last_cpos = self.unit_to_cell.get(unit_id)
-      # if last_cpos is not None:
-      # set_value_by_range(last_step_unit_target_mask,
-      # last_cpos,
-      # d=1,
-      # val=True)
-
       for cell_id, idx in enumerate(cell_index):
         target_cell_pos = cell_idx_to_pos(idx)
         is_shadow_position = cell_id >= N_CELLS
@@ -697,6 +692,14 @@ class Agent:
             unit_cost_map=None,
             is_shadow_position=is_shadow_position,
             unit_id=unit_id)
+
+      if self.unit_to_cell:
+        last_cpos = self.unit_to_cell.get(unit_id)
+        if last_cpos is not None:
+          set_value_by_range(last_step_unit_target_mask,
+                             last_cpos,
+                             d=3,
+                             val=True)
 
     unit_to_cell = {}
     unit_score = defaultdict(int)
