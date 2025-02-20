@@ -950,6 +950,7 @@ class Agent:
             file=sys.stderr)
 
   def mirror_action(self, unit_actions):
+    unit_actions = unit_actions.copy()
     for i in range(MAX_UNIT_NUM):
       a, x, y = unit_actions[i]
 
