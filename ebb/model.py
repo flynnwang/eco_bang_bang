@@ -109,7 +109,9 @@ class ConvEmbeddingInputLayer(nn.Module):
       if key.startswith('_') and not key.startswith(self._prefix):
         continue
 
-      assert val.shape == (1, MAP_WIDTH, MAP_HEIGHT), f"{key}={val.shape}"
+      # for 2 players
+      assert val.shape == (2, MAP_WIDTH, MAP_HEIGHT), f"{key}={val.shape}"
+
       if isinstance(val, gym.spaces.MultiBinary) or isinstance(
           val, gym.spaces.MultiDiscrete):
         if isinstance(val, gym.spaces.MultiBinary):
@@ -180,9 +182,8 @@ class ConvEmbeddingInputLayer(nn.Module):
         ) == 4, f"Expect embedding to have 5 dims, get {len(out.shape)}: in_shape={in_tensor.shape}{out.shape}"
         embedding_outs[key] = out
       elif op == "continuous":
-        # __import__('ipdb').set_trace()
-        b, x, y = in_tensor.shape
-        # b*p, 1, x, y; where 1 is a channel of dim 1
+        # 2*p, w, h
+        b, x, y = in_tensor.shape  # for testing dim
         out = in_tensor.view(b, x, y).unsqueeze(1)
 
         # out = in_tensor
@@ -193,20 +194,25 @@ class ConvEmbeddingInputLayer(nn.Module):
       else:
         raise RuntimeError(f"Unknown operation: {op}")
 
+    # continuous_out_combined: (n_actor_envs*2, hidden_dim, w, h)
     continuous_out_combined = self.continuous_space_embedding(
         torch.cat(continuous_outs, dim=1))
+
+    # embedding_outs: (n_actor_envs*2, hidden_dim, w, h)
     embedding_outs_combined = self.embedding_merger(
         torch.cat([v for v in embedding_outs.values()], dim=1))
 
     # print('continuous_out_combined shape, ', continuous_out_combined.shape)
     # print('embedding_outs_combined shape, ', embedding_outs_combined.shape)
-    # print('continuous_outs', continuous_outs)
-    # print('embedding_outs', embedding_outs)
+    # print('continuous_outs[0].shape=', continuous_outs[0].shape)
+    # print('embedding_outs[0].shape', embedding_outs[0].shape)
     # print('continuous_out_combined', continuous_out_combined)
     # print('embedding_outs_combined', embedding_outs_combined)
+
+    # merged_outs: (n_actor_envs*2, hidden_dim, w, h)
     merged_outs = self.merger(
         torch.cat([continuous_out_combined, embedding_outs_combined], dim=1))
-    # print('merged_outs', merged_outs)
+    # print('merged_outs.shape', merged_outs.shape)
     return merged_outs
 
 
@@ -373,14 +379,16 @@ class DictActor(nn.Module):
               probs_output: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     policy_logits_out = {}
     actions_out = {}
+
+    b2, _, w, h = x.shape
     for key, space in self.action_space.spaces.items():
       n_actions = space.shape[0]
       action_dim = space.nvec.max()
 
       actor = self.actors[key]
-      logits = actor(x, origin_input_x)
-      assert logits.shape[1] == n_actions
-      assert logits.shape[2] == action_dim
+
+      # reshape actor output
+      logits = actor(x, origin_input_x).view(b2 // 2, 2, n_actions, action_dim)
 
       # print(key, type(actions_mask), actions_mask)
       aam = actions_mask[key]
@@ -453,14 +461,13 @@ class BaselineLayer(nn.Module):
 
     # Project and reshape input
     x = self.linear(x)
-    # print(f'x0={x}')
+
     # Rescale to [0, 1], and then to the desired reward space
     x = self.linear_activation(x)
-    # print(f'x1={x}')
-    x = self.linear2(x)
-    # print(f'x2={x}')
+
+    # reshape the baseline output into 2
+    x = self.linear2(x).view(-1, 2)
     x = self.activation(x)
-    # print(f'x3={x}')
     v = x * (self.reward_max - self.reward_min) + self.reward_min
     # print(
     # f'v={v}, x={x}, reward_max={self.reward_max} reward_min={self.reward_min}'
@@ -586,13 +593,13 @@ def create_model(flags, observation_space, device: torch.device) -> nn.Module:
     reward_spec = RewardSpec(
         reward_min=-1,
         reward_max=+1,
-        zero_sum=False,
+        zero_sum=True,
     )
   if flags.reward_schema in ('match_win_loss', ):
     reward_spec = RewardSpec(
         reward_min=-5,
         reward_max=+5,
-        zero_sum=False,
+        zero_sum=True,
     )
   if flags.reward_schema in ('match_explore_win_loss', ):
     reward_spec = RewardSpec(

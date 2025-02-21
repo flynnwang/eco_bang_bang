@@ -11,11 +11,10 @@ from ebb.env.luxenv import ACTION_SPACE
 
 class VecEnv(gym.Env):
 
-  def __init__(self, envs: List[gym.Env], use_single_player=False):
+  def __init__(self, envs: List[gym.Env]):
     assert len(envs) > 0
     self.envs = envs
     self.last_outs = [() for _ in range(len(self.envs))]
-    self.use_single_player = use_single_player
 
   @staticmethod
   def _stack_dict(x: List[Union[Dict, np.ndarray]],
@@ -39,13 +38,7 @@ class VecEnv(gym.Env):
       "For each env_out of [x1, x2], flatten it to x1, x2 ..."
       for env_out in env_outs:
         obs, reward, done, info = env_out
-        if self.use_single_player:
-          yield obs[0], reward[0], done, info[0]
-          continue
-
-        done = [done] * 2
-        for out in zip(obs, reward, done, info):
-          yield out
+        yield obs, reward, done, info
 
     obs_list, reward_list, done_list, info_list = zip(*_unzip_env_out())
 
@@ -54,11 +47,10 @@ class VecEnv(gym.Env):
     done_stacked = np.array(done_list)
     info_stacked = VecEnv._stack_dict(info_list)
 
-    if not self.use_single_player:
-      assert len(obs_list) == 2 * len(env_outs)
-      assert len(reward_list) == 2 * len(env_outs)
-      assert len(done_list) == 2 * len(env_outs)
-      assert len(info_list) == 2 * len(env_outs)
+    assert len(obs_list) == len(env_outs)
+    assert len(reward_list) == len(env_outs)
+    assert len(done_list) == len(env_outs)
+    assert len(info_list) == len(env_outs)
 
     return obs_stacked, reward_stacked, done_stacked, info_stacked
 
@@ -81,46 +73,20 @@ class VecEnv(gym.Env):
     # assert len(actions) == len(
     # ACTION_SPACE), 'number of  actions match len(ACTION_SPACE)'
 
-    def groupby(iterable, n):
-      """
-      for x in groupby(range(9), 3):
-        print(x)
-
-      (0, 1, 2)
-      (3, 4, 5)
-      (6, 7, 8)
-      """
-      a = iter(iterable)
-      return zip(*[a] * n)
-
     def _d(x):
       return x.detach().cpu().numpy()
 
     def merged_actions(actions):
       action_keys = list(ACTION_SPACE.keys())
-
-      groups = [groupby(_d(actions[k]), 2) for k in action_keys]
-      for g in zip(*groups):
-        x = {key: g[i][0] for i, key in enumerate(action_keys)}
-        y = {key: g[i][1] for i, key in enumerate(action_keys)}
+      g = [_d(actions[k]) for k in action_keys]
+      for env_id in range(len(self.envs)):
+        x = {key: g[i][env_id][0] for i, key in enumerate(action_keys)}
+        y = {key: g[i][env_id][1] for i, key in enumerate(action_keys)}
         yield x, y
 
-    def single_player_actions(actions):
-      action_keys = list(ACTION_SPACE.keys())
-      groups = [groupby(_d(actions[k]), 1) for k in action_keys]
-      for g in zip(*groups):
-        x = {key: g[i][0] for i, key in enumerate(action_keys)}
-        yield x
-
-    if self.use_single_player:
-      self.last_outs = [
-          env.step(a)
-          for env, a in zip(self.envs, single_player_actions(actions))
-      ]
-    else:
-      self.last_outs = [
-          env.step(a) for env, a in zip(self.envs, merged_actions(actions))
-      ]
+    self.last_outs = [
+        env.step(a) for env, a in zip(self.envs, merged_actions(actions))
+    ]
     return self._vectorize_env_outs(self.last_outs)
 
   def render(self, idx: int, mode: str = None, **kwargs):

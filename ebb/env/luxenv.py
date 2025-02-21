@@ -1,4 +1,5 @@
 from collections import OrderedDict, deque, defaultdict, Counter
+from typing import Dict, List, NoReturn, Optional, Tuple, Union
 from functools import cached_property
 import copy
 import random
@@ -111,6 +112,19 @@ def get_ob_sapce(obs_space_kwargs):
     ob['_a_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
     ob['_b_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
   return spaces.Dict(ob)
+
+
+def stack_dict(x: List[Union[Dict, np.ndarray]],
+               is_observation=False) -> Union[Dict, np.ndarray]:
+  if isinstance(x[0], dict):
+    return {
+        key: stack_dict([i[key] for i in x], is_observation)
+        for key in x[0].keys()
+    }
+  else:
+    if is_observation:
+      return np.concatenate([arr for arr in x], axis=0)
+    return np.stack([arr for arr in x], axis=0)
 
 
 class LuxS3Env(gym.Env):
@@ -664,11 +678,12 @@ class LuxS3Env(gym.Env):
           self._convert_observation(raw_obs[PLAYER0], self.mms[0], final_state)
       ]  # single player
     else:
-      return [
-          self._convert_observation(raw_obs[PLAYER0], self.mms[0],
-                                    final_state),
-          self._convert_observation(raw_obs[PLAYER1], self.mms[1], final_state)
-      ]
+      ob0 = self._convert_observation(raw_obs[PLAYER0], self.mms[0],
+                                      final_state)
+      ob1 = self._convert_observation(raw_obs[PLAYER1], self.mms[1],
+                                      final_state)
+      ob = stack_dict([ob0, ob1], is_observation=True)
+      return ob
 
   def _convert_shaping_reward(self, raw_obs, env_state):
     wt = self.reward_shaping_params
@@ -1132,8 +1147,9 @@ class LuxS3Env(gym.Env):
                     reward[0], self.mms[0], env_state)
       ]  # single player
     else:
-      return [
+      infos = [
           _get_info(model_action[i], raw_obs[player], self.mms[i].past_obs[1],
                     reward[i], self.mms[i], env_state)
           for i, player in enumerate([PLAYER0, PLAYER1])
       ]
+      return stack_dict(infos)

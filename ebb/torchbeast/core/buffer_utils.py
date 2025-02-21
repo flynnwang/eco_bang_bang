@@ -7,8 +7,6 @@ import torch
 
 from ebb.env.const import *
 
-from .selfplay import split_env_output_by_player
-
 Buffers = List[Dict[str, Union[Dict, torch.Tensor]]]
 
 
@@ -20,6 +18,8 @@ def fill_buffers_inplace(buffers: Union[Dict, torch.Tensor],
     for key, val in copy(fill_vals).items():
       fill_buffers_inplace(buffers[key], val, step, key_hint=key)
   else:
+    # if key_hint == "unit_move_cost":
+    # __import__('ipdb').set_trace()
     buffers[step, ...] = fill_vals[:]
 
 
@@ -99,9 +99,11 @@ def create_buffers(
     flags, obs_space, example_info: Dict[str, Union[Dict, np.ndarray,
                                                     torch.Tensor]]) -> Buffers:
   t = flags.unroll_length
-  # n = flags.n_actor_envs * 2  # two players
+  n = flags.n_actor_envs
+  p = 2
+  # n = flags.n_actor_envs * p  # two players
   # n = flags.batch_size * 2  # two players
-  n = flags.n_actor_envs  # single player mode
+  # n = flags.n_actor_envs  # single player mode
 
   # observation_space is expected to be a dict of simple spaces.
   obs_specs = {}
@@ -117,8 +119,8 @@ def create_buffers(
           f"{type(spec)} is not an accepted observation space.")
     shape = spec.shape[1:]  # drop first dimension of size 1
     # shape = spec.shape
-    obs_specs[key] = dict(size=(t + 1, n, *shape), dtype=dtype)
-    print(key, '(t + 1, n, *shape)=', (t + 1, n, *shape))
+    obs_specs[key] = dict(size=(t + 1, n * p, *shape), dtype=dtype)
+    print(key, '(t + 1, n, *shape)=', (t + 1, n * p, *shape))
 
   # TODO: create state-action also by example?
   # create_buffers is related to action space is sutle ways, move it to env?
@@ -127,32 +129,24 @@ def create_buffers(
       #
       # action needs to be int64 for torch.gather
       actions={
-          UNITS_ACTION: dict(size=(t + 1, n, MAX_UNIT_NUM, 1),
-                             dtype=torch.int64),
+          UNITS_ACTION:
+          dict(size=(t + 1, n, p, MAX_UNIT_NUM, 1), dtype=torch.int64),
       },
       policy_logits={
           UNITS_ACTION:
-          dict(size=(t + 1, n, MAX_UNIT_NUM, ALL_ACTION_NUM),
+          dict(size=(t + 1, n, p, MAX_UNIT_NUM, ALL_ACTION_NUM),
                dtype=torch.float32),
       },
       #
-      baseline=dict(size=(t + 1, n, 1), dtype=torch.float32),
+      baseline=dict(size=(t + 1, n, p), dtype=torch.float32),
       #
-      reward=dict(size=(t + 1, n), dtype=torch.float32),
+      reward=dict(size=(t + 1, n, p), dtype=torch.float32),
       done=dict(size=(t + 1, n), dtype=torch.bool),
   )
-
-  # for self-play, we will expand env output into two buffer, that's why we need
-  # to split it into half here.
-  use_single_player = flags.obs_space_kwargs['use_single_player']
-  if not use_single_player:
-    _, splited_info = split_env_output_by_player(example_info)
-  else:
-    splited_info = example_info
 
   buffers: Buffers = []
   for _ in range(flags.num_buffers):
     new_buffer = _create_buffers_from_specs(specs)
-    new_buffer["info"] = _create_buffers_like(splited_info, t + 1)
+    new_buffer["info"] = _create_buffers_like(example_info, t + 1)
     buffers.append(new_buffer)
   return buffers

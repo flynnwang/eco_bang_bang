@@ -23,6 +23,7 @@ obs_space_kwargs:
   use_single_player: False
   use_agent: True
 
+use_separate_base: False
 
 reward_space_kwargs: {}
 reward_schema: shaping_v2
@@ -48,9 +49,9 @@ discounting: 0.999
 ## MODEL params
 model_arch: conv_model
 n_blocks: 4
-hidden_dim: 32
-base_out_channels: 32
-embedding_dim: 16
+hidden_dim: 64
+base_out_channels: 64
+embedding_dim: 8
 n_merge_layers: 1
 normalize: False
 sum_player_embeddings: False
@@ -68,7 +69,7 @@ optimizer_kwargs:
   # See https://arxiv.org/pdf/2105.05246.pdf
   eps: 0.0003
   #alpha: 0.9
-  weight_decay: 0.0001
+  #weight_decay: 0.0001
 min_lr_mod: 0.01
 
 ## LOSS params

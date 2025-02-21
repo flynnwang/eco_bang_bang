@@ -35,7 +35,6 @@ from torch.nn import functional as F
 from .core import prof, td_lambda, upgo, vtrace
 from .core.buffer_utils import (Buffers, create_buffers, fill_buffers_inplace,
                                 stack_buffers, split_buffers, buffers_apply)
-from .core.selfplay import split_env_output_by_player, pair_env_output_for_players
 
 from ..env import create_env
 from ..env.luxenv import ACTION_SPACE, get_ob_sapce
@@ -177,19 +176,6 @@ def compute_policy_gradient_loss(action_log_probs: torch.Tensor,
   return reduce(cross_entropy * advantages.detach(), reduction)
 
 
-def get_merged_actions(env_agent_out):
-  # [(lef_env_out, lef_agent_out), (rig_env_out, rig_agent_out)]
-
-  # TODO: delete
-  # lef = env_agent_out[0][0]
-  # rig = env_agent_out[1 ][0]
-  # pair_env_output_for_players(lef, rig)
-
-  lef_actions = env_agent_out[0][1]['actions']
-  rig_actions = env_agent_out[1][1]['actions']
-  return pair_env_output_for_players(lef_actions, rig_actions)
-
-
 @torch.no_grad()
 def act(
     flags: SimpleNamespace,
@@ -220,56 +206,25 @@ def act(
     else:
       env.seed()
 
-    def actor_mode_apply(env_output):
-      if use_single_player:
-        agent_out = actor_model(env_output)
-        return [(env_output, agent_out)]
-
-      lef_env_out, rig_env_out = split_env_output_by_player(env_output)
-      lef_agent_out = actor_model(lef_env_out)
-      rig_agent_out = actor_model(rig_env_out)
-      return [(lef_env_out, lef_agent_out), (rig_env_out, rig_agent_out)]
-
-    def _fill_buffers(indices, env_agent_output, step):
-      for i, idx in enumerate(indices):
-        env_out, agent_out = env_agent_output[i]
-        fill_buffers_inplace(buffers[idx], dict(**env_out, **agent_out), step)
-
     env_output = env.reset(force=True)
-    env_agent_output = actor_mode_apply(env_output)
-
+    agent_output = actor_model(env_output)
     while True:
       left_index = free_queue.get()
       if left_index is None:
         break
 
-      buffer_indices = [left_index]
-
-      if not use_single_player:
-        right_index = free_queue.get()
-        if right_index is None:
-          break
-        buffer_indices.append(right_index)
-
       # Write old rollout end.
-      _fill_buffers(buffer_indices, env_agent_output, 0)
+      fill_buffers_inplace(buffers[left_index],
+                           dict(**env_output, **agent_output), 0)
 
       # Do new rollout.
       for t in range(flags.unroll_length):
         timings.reset()
 
-        # agent_output = actor_model(env_output)
-        env_agent_output = actor_mode_apply(env_output)
+        agent_output = actor_model(env_output)
         timings.time("model")
 
-        # TODO: merge actions to step env
-        if not use_single_player:
-          actions = get_merged_actions(env_agent_output)
-        else:
-          actions = env_agent_output[0][1]['actions']
-
-        env_output = env.step(actions)
-        # env_output = env.step(agent_output["actions"])
+        env_output = env.step(agent_output["actions"])
         if env_output["done"].any():
           # Cache reward, done and info from the terminal step
           cached_reward = env_output["reward"]
@@ -290,12 +245,12 @@ def act(
 
         timings.time("step")
 
-        _fill_buffers(buffer_indices, env_agent_output, t + 1)
+        fill_buffers_inplace(buffers[left_index],
+                             dict(**env_output, **agent_output), t + 1)
 
         timings.time("write")
 
-      for idx in buffer_indices:
-        full_queue.put(idx)
+      full_queue.put(left_index)
 
     if actor_index == 0:
 
@@ -382,7 +337,7 @@ def learn(
         teacher_outputs = buffers_apply(teacher_outputs, lambda x: x[:-1])
 
       combined_behavior_action_log_probs = torch.zeros(
-          (flags.unroll_length, learner_batch_size),
+          (flags.unroll_length, learner_batch_size, 2),
           device=flags.learner_device)
       combined_learner_action_log_probs = torch.zeros_like(
           combined_behavior_action_log_probs)
@@ -430,6 +385,8 @@ def learn(
         combined_learner_entropy = combined_learner_entropy + learner_policy_entropy
 
       discounts = (~batch["done"]).float() * flags.discounting
+      discounts = discounts.unsqueeze(-1).expand_as(
+          combined_behavior_action_log_probs)
 
       values = learner_outputs["baseline"].squeeze(dim=-1)
       vtrace_returns = vtrace.from_action_log_probs(
@@ -946,7 +903,7 @@ def train(flags):
 
       sleep_time = 30
       if flags.disable_wandb:
-        sleep_time = 300
+        sleep_time = 30
       time.sleep(sleep_time)
 
       # Save every checkpoint_freq minutes
