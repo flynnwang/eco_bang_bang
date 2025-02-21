@@ -278,9 +278,9 @@ class Agent:
     self.model_output = model_output
 
     action_probs = model_output["probs"]
-    print(f"step={self.mm.game_step}, b={model_output['baseline']}",
-          file=sys.stderr)
-    print(action_probs[0, :], file=sys.stderr)
+    # print(f"step={self.mm.game_step}, b={model_output['baseline']}",
+    # file=sys.stderr)
+    # print(action_probs[0, :], file=sys.stderr)
     # print(f"use_mirror={self.mm.use_mirror}", file=sys.stderr)
     unit_actions = self.get_avg_model_action(action_probs)
 
