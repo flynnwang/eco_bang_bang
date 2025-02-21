@@ -2,6 +2,7 @@ from collections import OrderedDict, deque, defaultdict, Counter
 from typing import Dict, List, NoReturn, Optional, Tuple, Union
 from functools import cached_property
 import copy
+import functools
 import random
 import sys
 
@@ -92,6 +93,9 @@ OB = OrderedDict([
     ('enemy_loc_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_min_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
     ('enemy_max_energy_t1', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    #
+    ('dist_from_center_x', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
+    ('dist_from_center_y', spaces.Box(low=0, high=1, shape=MAP_SHAPE)),
 
     # Extra baseline mode feature
     ("_baseline_extras",
@@ -170,6 +174,19 @@ class LuxS3Env(gym.Env):
 
   def seed(self, seed):
     self._seed = seed
+
+  @staticmethod
+  @functools.lru_cache(maxsize=None)
+  def get_dist_from_center_x(map_height: int, map_width: int) -> np.ndarray:
+    pos = np.linspace(0, 2, map_width,
+                      dtype=np.float32)[None, :].repeat(map_height, axis=0)
+    return np.abs(1 - pos)[:, :]
+
+  @staticmethod
+  @functools.lru_cache(maxsize=None)
+  def get_dist_from_center_y(map_height: int, map_width: int) -> np.ndarray:
+    pos = np.linspace(0, 2, map_height)[:, None].repeat(map_width, axis=1)
+    return np.abs(1 - pos)[:, :]
 
   def _update_mms(self, obs, model_actions, env_state=None):
     a0, a1 = None, None
@@ -660,6 +677,11 @@ class LuxS3Env(gym.Env):
 
     o['_baseline_extras'] = extract_baseline_extras(mm, final_state)
 
+    o['dist_from_center_x'] = self.get_dist_from_center_x(
+        MAP_WIDTH, MAP_HEIGHT)
+    o['dist_from_center_y'] = self.get_dist_from_center_y(
+        MAP_WIDTH, MAP_HEIGHT)
+
     # if not skip_check:
     # assert len(o) == len(OB), f"len(o)={len(o)}, len(OB)={len(OB)}"
 
@@ -729,7 +751,7 @@ class LuxS3Env(gym.Env):
 
       # match end reward
       r_match = 0
-      prev_team_wins = mm.past_ob[1][mm.player]['team_wins']
+      prev_team_wins = mm.past_obs[1]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
         r_match = wt['match_result']
@@ -767,7 +789,7 @@ class LuxS3Env(gym.Env):
 
       # match end reward
       r_match = 0
-      prev_team_wins = mm.past_ob[1][mm.player]['team_wins']
+      prev_team_wins = mm.past_obs[1]['team_wins']
       diff = team_wins - prev_team_wins
       if diff[mm.player_id] > 0:
         r_match = wt['match_result']
@@ -1143,7 +1165,7 @@ class LuxS3Env(gym.Env):
 
     if self.use_single_player:
       return [
-          _get_info(model_action[0], raw_obs[PLAYER0], mm.past_obs[1][PLAYER0],
+          _get_info(model_action[0], raw_obs[PLAYER0], mm.past_obs[1],
                     reward[0], self.mms[0], env_state)
       ]  # single player
     else:

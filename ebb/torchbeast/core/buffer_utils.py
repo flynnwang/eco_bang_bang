@@ -51,7 +51,9 @@ def split_buffers(
 
     if buffers_split is None:
       buffers_split = [{} for _ in range(len(bufs))]
-    assert len(bufs) == len(buffers_split)
+    assert len(bufs) == len(
+        buffers_split
+    ), f"len(bufs)={len(bufs)},  len(buffers_split)={len(buffers_split)}"
     buffers_split = [
         dict(**{key: buf}, **d) for buf, d in zip(bufs, buffers_split)
     ]
