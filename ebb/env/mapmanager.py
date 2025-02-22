@@ -165,6 +165,27 @@ def compute_energy_features(state: EnvState2):
   return energy_field
 
 
+@lru_cache(maxsize=None)
+def compute_energy_features_cached(pos):
+  if pos is not None:
+    energy_nodes_mask_ = jnp.array([True, False, False, True, False, False],
+                                   dtype=jnp.bool)
+    pos2 = anti_diag_sym_i(pos)
+    energy_nodes = jnp.array([pos, [0, 0], [0, 0], pos2, [0, 0], [0, 0]],
+                             dtype=jnp.int16)
+  else:
+    # Case of no energy field
+    energy_nodes_mask_ = jnp.array([False, False, False, False, False, False],
+                                   dtype=jnp.bool)
+    energy_nodes = jnp.array([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+                             dtype=jnp.int16)
+
+  env_state = EnvState2(energy_node_fns=energy_node_fns,
+                        energy_nodes_mask=energy_nodes_mask_,
+                        energy_nodes=energy_nodes)
+  return compute_energy_features(env_state)
+
+
 class EnergyNodeEstimator:
 
   ENERGY_NODE_DRIFT_SPEED_VALUSE = [0.01, 0.02, 0.03, 0.04, 0.05]
@@ -182,23 +203,13 @@ class EnergyNodeEstimator:
 
   def is_energy_filed_match(self, pos, filtered_energy_field, step_visible):
     if pos is not None:
-      energy_nodes_mask_ = jnp.array([True, False, False, True, False, False],
-                                     dtype=jnp.bool)
       pos2 = anti_diag_sym_i(pos)
-      energy_nodes = jnp.array([pos, [0, 0], [0, 0], pos2, [0, 0], [0, 0]],
-                               dtype=jnp.int16)
-    else:
-      # Case of no energy field
-      energy_nodes_mask_ = jnp.array(
-          [False, False, False, False, False, False], dtype=jnp.bool)
-      energy_nodes = jnp.array(
-          [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], dtype=jnp.int16)
+      if pos2[0] < pos[0]:
+        pos = pos2
 
-    env_state = EnvState2(energy_node_fns=energy_node_fns,
-                          energy_nodes_mask=energy_nodes_mask_,
-                          energy_nodes=energy_nodes)
+      pos = (int(pos[0]), int(pos[1]))
 
-    test_energy_field = compute_energy_features(env_state)
+    test_energy_field = compute_energy_features_cached(pos)
     test_energy_field2 = test_energy_field[step_visible]
     matched = (test_energy_field2 == filtered_energy_field).all()
     return matched, test_energy_field
