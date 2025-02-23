@@ -19,7 +19,7 @@ from .model import create_model
 
 SUBMIT_AGENT = True
 
-MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
+MODEL_FILE_NAME = "067472064_weights.pt"
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = False
@@ -260,9 +260,9 @@ class Agent:
         """
     self.mm.update(raw_obs, self.prev_model_action)
     self._available_action_mask = self.env._get_available_action_mask(self.mm)
-    print(f'-- game_step={self.mm.game_step}', file=sys.stderr)
 
     model_input = self.convert_observation(raw_obs)
+    # print(model_input, file=sys.stderr)
 
     model_output = self.md(model_input, sample=DO_SAMPLE, probs_output=True)
     self.model_output = model_output

@@ -560,9 +560,6 @@ class HiddenRelicSolver:
       if (now - start_time).total_seconds() > waitTime:
         raise HiddenRelicSolverTimeout
 
-      if remainingOverageTime < 5:
-        raise HiddenRelicSolverTimeout
-
     solved_num = 0
     for pos, values in positions_values.items():
       if len(values) == 1:
