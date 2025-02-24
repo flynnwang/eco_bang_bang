@@ -950,6 +950,7 @@ class LuxS3Env(gym.Env):
 
     def update_move_action_mask(i, pos, energy):
       # has enough energy to move
+      can_move = False
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
         # print(
@@ -959,18 +960,22 @@ class LuxS3Env(gym.Env):
           continue
         if mm.cell_type[nx][ny] == CELL_ASTERIOD:
           continue
+
         actions_mask[i][k] = 1
+        can_move = True
 
-      # if self.game == 1:
-      # team_point_prob = mm.team_point_mass[pos[0]][pos[1]]
-      # if team_point_prob >= MIN_TP_VAL:
+      if can_move:
+        # Only one units can stay
+        if pos in action_centered_positions:
+          actions_mask[i][ACTION_CENTER] = 0
 
-      # # Only one units can stay
-      # if pos not in action_centered_positions:
-      # actions_mask[i][ACTION_CENTER] = 1
-      # action_centered_positions.add(pos)
-      # else:
-      # actions_mask[i][ACTION_CENTER] = 0
+        # If the unit has enough energy
+        if (mm.team_point_mass[pos[0]][pos[1]] < 0.1 and energy >= 350):
+          actions_mask[i][ACTION_CENTER] = 0
+
+      # If the unit can stay
+      if actions_mask[i][ACTION_CENTER] > 0:
+        action_centered_positions.add(pos)
 
     sap_hit_map = mm.get_global_sap_hit_map()
 

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250222_match_win_loss_r4.1
+name: run_20250222_match_win_loss_r6-v2
 
 ## WANDB params
 # The wandb project name
@@ -99,8 +99,12 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/02-23/15-15-43
-teacher_checkpoint_file: 083356864.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/02-24/09-38-25
+teacher_checkpoint_file: 111129536.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-23/23-51-33
+#teacher_checkpoint_file: 102062720.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-23/15-15-43
+#teacher_checkpoint_file: 083356864.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/02-23/04-36-01
 #teacher_checkpoint_file: 064696192.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/02-22/16-41-15
@@ -126,8 +130,11 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir: /home/flynnwang/runs/ebb/02-23/23-51-33
-checkpoint_file: 102779456.pt
+
+load_dir: /home/flynnwang/runs/ebb/02-24/09-38-25
+checkpoint_file: 111129536.pt
+#load_dir: /home/flynnwang/runs/ebb/02-23/23-51-33
+#checkpoint_file: 102779456.pt
 #load_dir: /home/flynnwang/runs/ebb/02-23/15-15-43
 #checkpoint_file: 083657728.pt
 #load_dir: /home/flynnwang/runs/ebb/02-23/04-36-01
