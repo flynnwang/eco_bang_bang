@@ -369,8 +369,8 @@ class LuxS3Env(gym.Env):
   def is_game_done(self, raw_obs, player):
     team_wins = raw_obs[player]['team_wins']
     game_step = raw_obs[player]['steps']
-    # return (game_step >= MAX_GAME_STEPS) or (max(team_wins) >= MIN_TEAM_WINS)
-    return (game_step >= MAX_GAME_STEPS)
+    return (game_step >= MAX_GAME_STEPS) or (max(team_wins) >= MIN_TEAM_WINS)
+    # return (game_step >= MAX_GAME_STEPS)
 
   def step(self, model_action):
     if self.use_single_player:
