@@ -851,6 +851,7 @@ class MapManager:
     self._nebula_energy_reduction = NebulaEnergyReduction()
     self.nebula_vision_reduction = 0
     self.vision_map = VisionMap(self.unit_sensor_range)
+    self.enemy_vision_map = VisionMap(self.unit_sensor_range)
     self.sap_indexer = sap_indexer or SapIndexer()
 
     self.total_team_points = 0
@@ -1217,6 +1218,9 @@ class MapManager:
     self.vision_map.update(ob['units_mask'][self.player_id],
                            ob['units']['position'][self.player_id],
                            ob['units']['energy'][self.player_id])
+    self.enemy_vision_map.update(ob['units_mask'][self.enemy_id],
+                                 ob['units']['position'][self.enemy_id],
+                                 ob['units']['energy'][self.enemy_id])
 
     self.game_step = ob['steps']
     self.match_step = ob['match_steps']

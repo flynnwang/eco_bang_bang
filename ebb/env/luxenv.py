@@ -115,6 +115,18 @@ def get_ob_sapce(obs_space_kwargs):
   if obs_space_kwargs.get('use_energy_cost_map'):
     ob['_a_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
     ob['_b_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+  else:
+    ob.pop('_a_energy_cost_map')
+    ob.pop('_b_energy_cost_map')
+
+  if obs_space_kwargs.get('use_unit_energy_sum'):
+    ob['units_energy_sum_t0'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['units_energy_sum_t1'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['enemy_energy_sum_t0'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['enemy_energy_sum_t1'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+
+  if obs_space_kwargs.get('use_enemy_vision_map'):
+    ob['enemy_vision_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
   return spaces.Dict(ob)
 
 
@@ -575,6 +587,12 @@ class LuxS3Env(gym.Env):
     o['visible'] = mm.visible.astype(np.float32)
     ob_age = np.minimum((mm.game_step - mm.last_observed_step),
                         MAX_MATCH_STEPS)
+
+    if self.obs_space_kwargs.get('use_enemy_vision_map'):
+      v = mm.enemy_vision_map.vision.copy()
+      v[mm.cell_type == CELL_NEBULA] -= mm.nebula_vision_reduction
+      o['enemy_vision_map'] = (v > 0).astype(float)
+
     o['last_observed_age'] = ob_age / MAX_MATCH_STEPS
     visit_age = np.minimum((mm.game_step - mm.last_observed_step),
                            MAX_MATCH_STEPS)
@@ -594,7 +612,6 @@ class LuxS3Env(gym.Env):
       is_relic = mm.hidden_relic_estimator.solver.position_to_relic.get(pos)
       if is_relic is not None and is_relic:
         solved_relic[x][y] = 1.0
-
     o['solved_relic'] = solved_relic
 
     # places need unit stay
@@ -631,8 +648,9 @@ class LuxS3Env(gym.Env):
 
     def add_unit_feature(prefix, player_id, t):
       unit_pos = np.zeros(MAP_SHAPE2)
-      min_unit_energy = np.ones(MAP_SHAPE2)
+      min_unit_energy = np.ones(MAP_SHAPE2) * -1
       max_unit_energy = np.zeros(MAP_SHAPE2)
+      unit_energy_sum = np.zeros(MAP_SHAPE2)
       total_energy = 0
       for i in range(MAX_UNIT_NUM):
         mask, pos, energy = mm.get_unit_info(player_id, i, t)
@@ -641,17 +659,24 @@ class LuxS3Env(gym.Env):
           total_energy += energy
 
           e = energy / MAX_UNIT_ENERGY
-          max_unit_energy[pos[0]][pos[1]] += max(
+          max_unit_energy[pos[0]][pos[1]] = max(
               max_unit_energy[pos[0]][pos[1]], e)
 
         if mask:
           e = energy / MAX_UNIT_ENERGY
-          min_unit_energy[pos[0]][pos[1]] += min(
-              min_unit_energy[pos[0]][pos[1]], e)
+          if min_unit_energy[pos[0]][pos[1]] == -1:
+            min_unit_energy[pos[0]][pos[1]] = e
+          else:
+            min_unit_energy[pos[0]][pos[1]] = min(
+                min_unit_energy[pos[0]][pos[1]], e)
+
+          unit_energy_sum[pos[0]][pos[1]] += (energy / MAX_UNIT_ENERGY /
+                                              MAX_UNIT_NUM)
 
       o[f'{prefix}_loc_t{t}'] = unit_pos
       o[f'{prefix}_min_energy_t{t}'] = min_unit_energy
       o[f'{prefix}_max_energy_t{t}'] = max_unit_energy
+      o[f'{prefix}_energy_sum_t{t}'] = unit_energy_sum
       return total_energy
 
     def add_unit_info(player_id, t):
