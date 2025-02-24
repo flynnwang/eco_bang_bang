@@ -803,6 +803,88 @@ class SapIndexer:
       self.idx_to_position[i] = (x, y)
 
 
+class EnergyVoidFieldFactorEstimator:
+
+  VALID_VALUES = [0.0625, 0.125, 0.25, 0.375]
+
+  def __init__(self, mm):
+    self.mm = mm
+    self.passby_counter = 0
+    self._counter = Counter()
+
+  def best_guess(self):
+    if len(self._counter) <= 0:
+      return self.VALID_VALUES[2]  # default 0.25
+    return self._counter.most_common(1)[0][0]
+
+  def _add_guess(self, factor):
+    for v in self.VALID_VALUES:
+      if abs(factor - v) < 1e-5:
+        self._counter[v] += 1
+
+  def estimate(self):
+    """Estimate energy void field factor based on known nebula energy reduction
+    and ignore enemy sap.
+
+    Note: Furthermore, each unit generates an "energy void" field around itself
+    that affects all cardinally (up, right, down left) adjacent opposition units.
+    """
+    # at t=0, infer from t=1
+
+    enemy_energy_sum = np.zeros(MAP_SHAPE2, dtype=int)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=1)
+      if not mask or energy < 0:
+        continue
+
+      for k in range(4):
+        nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+        if not is_pos_on_map((nx, ny)):
+          continue
+        enemy_energy_sum[pos[0]][pos[1]] += energy
+
+    for i in range(MAX_UNIT_NUM):
+      mask0, pos0, energy0 = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+      if not mask0 or energy0 < 0:
+        continue
+
+      mask1, pos1, energy1 = self.mm.get_unit_info(self.mm.player_id, i, t=1)
+      if not mask1 or energy1 < 0:
+        continue
+
+      nearby_enemy_energy = 0
+      for k in range(4):
+        nx, ny = (pos0[0] + DIRECTIONS[k][0], pos0[1] + DIRECTIONS[k][1])
+        if not is_pos_on_map((nx, ny)):
+          continue
+        nearby_enemy_energy += enemy_energy_sum[nx][ny]
+
+      if nearby_enemy_energy <= 0:
+        continue
+
+      # Remove unit move cost
+      if not pos_equal(pos0, pos1):
+        energy0 -= self.mm.unit_move_cost
+
+      # Remove unit sap cost
+      p = (int(pos0[0]), int(pos0[1]))
+      if p in self.mm.last_sap_locations:
+        energy0 -= self.mm.unit_sap_cost
+
+      # Add cell energy
+      energy0 += self.mm.cell_energy[pos1[0]][pos[1]]
+
+      if self.mm.cell_type[pos1[0], pos1[1]] == CELL_NEBULA:
+        energy0 -= self.mm.nebula_energy_reduction
+
+      f = (energy1 - energy0) / nearby_enemy_energy
+      self._add_guess(f)
+      print(f"add void factor={f},  counter: {self._counter}", file=sys.stderr)
+
+    print(f" -- energy void factor best_guess: {self.best_guess()}",
+          file=sys.stderr)
+
+
 class MapManager:
 
   MAX_PAST_OB_NUM = 3
@@ -891,10 +973,15 @@ class MapManager:
     if SAVE_ALL_STEPS_TP_PROB:
       self.team_point_probs = []
 
+    self.last_sap_locations = set()
+    self.energy_void_field_factor_estimator = EnergyVoidFieldFactorEstimator(
+        self)
+
   def has_found_relic_in_match(self):
     return self.is_relic_node.sum() > self.last_match_relic_cell_num
 
   def add_sap_locations(self, sap_locations):
+    self.last_sap_locations = {(int(p[0]), int(p[1])) for p in sap_locations}
     self.sap_dropoff_factor_estimator.estimate(sap_locations)
     # self.sap_dropoff_factor_estimator.update_unit_energy_lost_map()
 
@@ -1252,10 +1339,9 @@ class MapManager:
     self.energy_cost_map = self.compute_energy_cost_map(
         self.cell_type, self.cell_energy, self.is_relic_node,
         self.nebula_energy_reduction)
+    self.energy_void_field_factor_estimator.estimate()
     self.prev_team_point = ob['team_points'][self.player_id]
-    # print(
-    # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
-    # )
+
   def update_sap_position_by_enemy_position(self):
     """Enemy position for sap action"""
     self.enemy_position_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)

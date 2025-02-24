@@ -475,7 +475,9 @@ class BaselineLayer(nn.Module):
     # reshape the baseline output into 2
     x = self.linear2(x).view(-1, self.n_players)
     x = self.activation(x)
+    print(f'before softmax = {x}')
     v = x * (self.reward_max - self.reward_min) + self.reward_min
+    print(f'after softmax = {v}')
     # print(
     # f'v={v}, x={x}, reward_max={self.reward_max} reward_min={self.reward_min}'
     # )
