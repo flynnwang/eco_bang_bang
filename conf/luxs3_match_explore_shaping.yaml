@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250222_match_win_loss_r0
+name: run_20250222_match_win_loss_r5
 
 ## WANDB params
 # The wandb project name
@@ -41,12 +41,12 @@ reward_shaping_params:
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 2
-n_actor_envs: 8
+num_actors: 20
+n_actor_envs: 4
 
 unroll_length: 16
 # Batch must be multiple of `n_actor_envs`
-batch_size: 8
+batch_size: 4
 
 discounting: 0.999
 
@@ -84,10 +84,10 @@ min_lr_mod: 0.01
 entropy_cost: 1e-3
 #entropy_cost: 5e-3
 baseline_cost: 1.
-teacher_kl_cost: 0
+#teacher_kl_cost: 0
 #teacher_kl_cost: 1e-2
 #teacher_kl_cost: 5e-3
-#teacher_kl_cost: 1e-3
+teacher_kl_cost: 1e-3
 #teacher_kl_cost: 5e-4
 #teacher_kl_cost: 1e-4
 teacher_baseline_cost: 0.0
@@ -98,11 +98,15 @@ reduction: sum
 
 
 # Pretrained model for KL loss
-use_teacher: False
-#teacher_load_dir:
-#teacher_checkpoint_file:
-teacher_load_dir: /home/flynnwang/runs/ebb/02-13/09-49-49
-teacher_checkpoint_file: 069918208_weights.pt
+use_teacher: True
+teacher_load_dir: /home/flynnwang/runs/ebb/02-23/23-51-33
+teacher_checkpoint_file: 102062720.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-23/15-15-43
+#teacher_checkpoint_file: 083356864.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-23/04-36-01
+#teacher_checkpoint_file: 064696192.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-22/16-41-15
+#teacher_checkpoint_file: 042049280.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -115,17 +119,25 @@ learner_device: cuda:1
 model_log_freq: 100
 
 # in minutes
-checkpoint_freq: 20
+checkpoint_freq: 30
 # file_descriptor or file_system
 sharing_strategy: file_system
 
-#disable_wandb: False
+disable_wandb: False
 debug: False
-disable_wandb: True
+#disable_wandb: True
 #debug: True
 
-load_dir:
-checkpoint_file:
+load_dir: /home/flynnwang/runs/ebb/02-23/23-51-33
+checkpoint_file: 102779456.pt
+#load_dir: /home/flynnwang/runs/ebb/02-23/15-15-43
+#checkpoint_file: 083657728.pt
+#load_dir: /home/flynnwang/runs/ebb/02-23/04-36-01
+#checkpoint_file: 065306880.pt
+#load_dir: /home/flynnwang/runs/ebb/02-22/16-41-15
+#checkpoint_file: 042241600.pt
+#load_dir: /home/flynnwang/runs/ebb/02-22/02-20-48
+#checkpoint_file: 016719488.pt
 #
 weights_only: False
 n_value_warmup_batches: 0

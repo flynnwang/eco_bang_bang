@@ -428,7 +428,7 @@ def learn(
           combined_teacher_kl_loss, reduction=flags.reduction)
       if flags.use_teacher:
         # (unroll, batch size, 1) => (unroll, batch size)
-        teacher_baseline = teacher_outputs["baseline"][:, :, 0]
+        teacher_baseline = teacher_outputs["baseline"]
         teacher_baseline_loss = flags.teacher_baseline_cost * compute_baseline_loss(
             values, teacher_baseline, reduction=flags.reduction)
       else:
