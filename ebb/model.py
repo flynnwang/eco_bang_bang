@@ -485,21 +485,21 @@ class BaselineLayer(nn.Module):
 
 class BasicActorCriticNetwork(nn.Module):
 
-  def __init__(
-      self,
-      actor_base_model: nn.Module,
-      critic_base_model: nn.Module,
-      hidden_dim: int,
-      base_out_channels: int,
-      reward_space: RewardSpec,
-      actor_critic_activation: Callable = nn.ReLU,
-      n_action_value_layers: int = 2,
-      n_players: int = 2,
-  ):
+  def __init__(self,
+               actor_base_model: nn.Module,
+               critic_base_model: nn.Module,
+               hidden_dim: int,
+               base_out_channels: int,
+               reward_space: RewardSpec,
+               actor_critic_activation: Callable = nn.ReLU,
+               n_action_value_layers: int = 2,
+               n_players: int = 2,
+               skip_baseline=False):
     super(BasicActorCriticNetwork, self).__init__()
     self.dict_input_layer = DictInputLayer()
     self.actor_base_model = actor_base_model
     self.critic_base_model = critic_base_model
+    self.skip_baseline = skip_baseline
     # print(f"self.critic_base_model = {self.critic_base_model}")
     self.hidden_dim = hidden_dim
     self.base_out_channels = base_out_channels
@@ -549,10 +549,16 @@ class BasicActorCriticNetwork(nn.Module):
       critic_base_out = actor_base_out
     else:
       critic_base_out = self.critic_base_model(x)
-    baseline = self.baseline(
-        self.baseline_base(critic_base_out),
-        # baseline = self.baseline(self.baseline_base(actor_base_out),
-        baseline_extras)
+
+    if not self.skip_baseline:
+      baseline = self.baseline(
+          self.baseline_base(critic_base_out),
+          # baseline = self.baseline(self.baseline_base(actor_base_out),
+          baseline_extras)
+    else:
+      actions = ret[1][UNITS_ACTION]
+      b, p, _, _ = actions.shape
+      baseline = torch.zeros((b, p))
 
     if probs_output:
       policy_logits, actions, probs = ret
@@ -596,7 +602,8 @@ class BasicActorCriticNetwork(nn.Module):
 def create_model(flags,
                  observation_space,
                  device: torch.device,
-                 n_players=2) -> nn.Module:
+                 n_players=2,
+                 skip_baseline=False) -> nn.Module:
   reward_spec = None
   if flags.reward_schema == 'shaping':
     reward_spec = RewardSpec(
@@ -639,7 +646,8 @@ def create_model(flags,
                      device=device,
                      reward_spec=reward_spec,
                      use_separate_base=flags.use_separate_base,
-                     n_players=n_players)
+                     n_players=n_players,
+                     skip_baseline=skip_baseline)
   return md
 
 
@@ -652,7 +660,8 @@ def _create_model(observation_space,
                   device: torch.device = torch.device('cpu'),
                   reward_spec: RewardSpec = None,
                   use_separate_base=False,
-                  n_players=2):
+                  n_players=2,
+                  skip_baseline=False):
   actor_base_model = nn.Sequential(
       ConvEmbeddingInputLayer(observation_space,
                               embedding_dim,
@@ -686,5 +695,6 @@ def _create_model(observation_space,
                                   hidden_dim,
                                   base_out_channels,
                                   reward_spec,
-                                  n_players=n_players)
+                                  n_players=n_players,
+                                  skip_baseline=skip_baseline)
   return model.to(device=device)

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250224_game_win_loss_r2
+name: run_20250224_game_win_loss_r3
 
 ## WANDB params
 # The wandb project name
@@ -43,7 +43,7 @@ reward_shaping_params:
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 20
+num_actors: 18
 n_actor_envs: 4
 
 unroll_length: 16
@@ -102,8 +102,10 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/02-25/10-40-26
-teacher_checkpoint_file: 028270272.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/02-25/13-58-44
+teacher_checkpoint_file: 053481344.pt
+#teacher_load_dir: /home/flynnwang/runs/ebb/02-25/10-40-26
+#teacher_checkpoint_file: 028270272.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/02-25/07-47-29
 #teacher_checkpoint_file: 023269824.pt
 #teacher_load_dir: /home/flynnwang/runs/ebb/02-24/23-23-43
@@ -124,14 +126,16 @@ checkpoint_freq: 30
 # file_descriptor or file_system
 sharing_strategy: file_system
 
-disable_wandb: False
+#disable_wandb: False
 debug: False
-#disable_wandb: True
+disable_wandb: True
 #debug: True
 
 
-load_dir: /home/flynnwang/runs/ebb/02-25/10-40-26
-checkpoint_file: 028838976.pt
+load_dir: /home/flynnwang/runs/ebb/02-25/13-58-44
+checkpoint_file: 053697536.pt
+#load_dir: /home/flynnwang/runs/ebb/02-25/10-40-26
+#checkpoint_file: 028838976.pt
 #load_dir: /home/flynnwang/runs/ebb/02-25/07-47-29
 #checkpoint_file: 023991296.pt
 #load_dir: /home/flynnwang/runs/ebb/02-24/23-23-43

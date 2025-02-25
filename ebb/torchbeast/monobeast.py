@@ -426,7 +426,7 @@ def learn(
       #print(f'values={values}, td_lambda_returns={td_lambda_returns.vs}')
       teacher_kl_loss = flags.teacher_kl_cost * reduce(
           combined_teacher_kl_loss, reduction=flags.reduction)
-      if flags.use_teacher:
+      if flags.use_teacher and flags.teacher_baseline_cost > 0:
         # (unroll, batch size, 1) => (unroll, batch size)
         teacher_baseline = teacher_outputs["baseline"]
         teacher_baseline_loss = flags.teacher_baseline_cost * compute_baseline_loss(
@@ -674,7 +674,7 @@ def train(flags):
     checkpoint_state = None
 
   def _make_actor_model(device):
-    a = create_model(flags, ob_space, device)
+    a = create_model(flags, ob_space, device, skip_baseline=True)
     if checkpoint_state is not None:
       logging.info("Loading model parameters from checkpoint state...")
 
@@ -767,8 +767,10 @@ def train(flags):
           "It does not make sense to use teacher when teacher_kl_cost <= 0 "
           "and teacher_baseline_cost <= 0")
     teacher_ob_space = get_ob_sapce(teacher_flags.obs_space_kwargs)
-    teacher_model = create_model(teacher_flags, teacher_ob_space,
-                                 flags.learner_device)
+    teacher_model = create_model(teacher_flags,
+                                 teacher_ob_space,
+                                 flags.learner_device,
+                                 skip_baseline=True)
     if flags.teacher_load_dir:
       logging.info(f"Load teacher_model from {flags.teacher_checkpoint_file}")
 
