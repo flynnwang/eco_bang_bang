@@ -550,8 +550,8 @@ class HiddenRelicSolver:
       waitTime = min((remainingOverageTime - 5), 5)
 
       if (now - start_time).total_seconds() > waitTime:
-        print(f" remainingOverageTime = {remainingOverageTime}",
-              file=sys.stderr)
+        # print(f" remainingOverageTime = {remainingOverageTime}",
+        # file=sys.stderr)
         raise HiddenRelicSolverTimeout
 
     # import time
