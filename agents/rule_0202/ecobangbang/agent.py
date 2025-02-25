@@ -363,10 +363,12 @@ class Agent:
     has_found_relic = mm.has_found_relic_in_match()
     n = (MAP_WIDTH * MAP_HEIGHT)
     n_explore = n - match_observed.sum()
-    expore_score = n * EXPLORE_CELL_SCORE / (n_explore + 1)
+    explore_score = n * EXPLORE_CELL_SCORE / (n_explore + 1)
+
+    # print(f'explore_score = {explore_score}', file=sys.stderr)
 
     # print(
-    # f' +++ step={mm.game_step} to-exp-cell-num={n_explore} exp_score={expore_score} has_found_relic={has_found_relic}, last_match_found_relic={mm.last_match_found_relic}',
+    # f' +++ step={mm.game_step} to-exp-cell-num={n_explore} exp_score={explore_score} has_found_relic={has_found_relic}, last_match_found_relic={mm.last_match_found_relic}',
     # file=sys.stderr)
 
     def get_explore_weight(upos, energy, cpos):
@@ -379,10 +381,14 @@ class Agent:
       if has_found_relic:
         return 0
 
-      if match_observed[cpos[0]][cpos[1]]:
+      if mm.match_step <= 50 and match_observed[cpos[0]][cpos[1]]:
         return 0
 
-      return min(expore_score, MAX_EXPLORE_SCORE)
+      score = min(explore_score, MAX_EXPLORE_SCORE)
+      if mm.match_relic_hints[cpos[0]][cpos[1]]:
+        score += 100
+        # print(f'boost by relic hints: {cpos}, score={score}', file=sys.stderr)
+      return score
 
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_energy != CELL_UNKONWN] -= mm.unit_move_cost
