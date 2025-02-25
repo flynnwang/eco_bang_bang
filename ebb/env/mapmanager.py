@@ -556,13 +556,18 @@ class HiddenRelicSolver:
         # print(f'valid solution: s={s}, pos_to_val={pos_to_val.items()}',
         # file=sys.stderr)
       now = datetime.now()
-      waitTime = min((remainingOverageTime - 5), 10)
+      waitTime = min((remainingOverageTime - 5), 5)
+
       if (now - start_time).total_seconds() > waitTime:
+        # print(f" remainingOverageTime = {remainingOverageTime}",
+        # file=sys.stderr)
         raise HiddenRelicSolverTimeout
 
       if remainingOverageTime < 5:
         raise HiddenRelicSolverTimeout
 
+    # import time
+    # time.sleep(5)
     solved_num = 0
     for pos, values in positions_values.items():
       if len(values) == 1:
@@ -650,6 +655,7 @@ class HiddenRelicNodeEstimator:
         p = 0
         if is_relic is None:
           p = random.random() * 0.5 + 0.25
+          # p = self.priori_[pos[0]][pos[1]]
         else:
           p = 1.0 if is_relic else 0.0
         self.priori[pos[0]][pos[1]] = p
@@ -823,6 +829,7 @@ class MapManager:
     self.cell_type = np.zeros((MAP_WIDTH, MAP_HEIGHT), np.int32)
     self.visible = np.zeros((MAP_WIDTH, MAP_HEIGHT), bool)
     self.match_observed = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    self.match_relic_hints = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
     self.last_observed_step = np.ones(
         (MAP_WIDTH, MAP_HEIGHT), dtype=np.int32) * -100
     self.last_visited_step = np.ones(
@@ -891,6 +898,12 @@ class MapManager:
 
     if SAVE_ALL_STEPS_TP_PROB:
       self.team_point_probs = []
+
+  def cell_net_energy(self, pos):
+    e = self.cell_energy[pos[0]][pos[1]]
+    if self.cell_type[pos[0]][pos[1]] == CELL_NEBULA:
+      e -= self.nebula_energy_reduction
+    return e
 
   def has_found_relic_in_match(self):
     return self.is_relic_node.sum() > self.last_match_relic_cell_num
@@ -971,6 +984,13 @@ class MapManager:
     # set last observed time
     self.last_observed_step[self.visible] = self.game_step
     self.last_observed_step[anti_diag_sym(self.visible)] = self.game_step
+
+    # Activate relic hint layer if no relic node found in first 50 matches
+    if (self.game_step <= 303 and self.match_step == 50
+        and self.last_match_found_relic
+        and not self.has_found_relic_in_match()):
+      self.match_relic_hints[:, :] = 1
+      print(f'relic hint activated', file=sys.stderr)
 
   @cached_property
   def anti_main_diag_area(self):
@@ -1200,6 +1220,7 @@ class MapManager:
       self.total_units_frozen_count = 0
       self.match_visited[:, :] = 0
       self.match_observed[:, :] = 0
+      self.match_relic_hints[:, :] = 0
       self.prev_units_on_relic_num = self.units_on_relic_num = 0
       self.prev_units_dead_count = self.units_dead_count = 0
       self.prev_units_frozen_count = self.units_frozen_count = 0
@@ -1393,6 +1414,16 @@ class MapManager:
 
     self.is_relic_neighbour = maximum_filter(
         (self.is_relic_node == 1).astype(np.int32), size=RELIC_NB_SIZE)
+
+    if self.match_step >= 50 and self.game_step <= 303:
+      # From 50 match steps onwards, if relic node found, reset relic hint layers
+      if self.has_found_relic_in_match():
+        self.match_relic_hints[:, :] = 0
+      else:
+        match_observed = self.visible | anti_diag_sym(self.visible)
+        self.match_relic_hints[match_observed] = 0
+        # print(f" s={self.game_step}, hints={self.match_relic_hints.sum() / 2}",
+        # file=sys.stderr)
 
   def update_cell_energy(self, ob):
     energy = ob['map_features']['energy']
