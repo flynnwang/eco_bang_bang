@@ -112,13 +112,6 @@ OB = OrderedDict([
 
 def get_ob_sapce(obs_space_kwargs):
   ob = copy.copy(OB)
-  if obs_space_kwargs.get('use_energy_cost_map'):
-    ob['_a_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
-    ob['_b_energy_cost_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
-  else:
-    ob.pop('_a_energy_cost_map')
-    ob.pop('_b_energy_cost_map')
-
   if obs_space_kwargs.get('use_unit_energy_sum'):
     ob['units_energy_sum_t0'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
     ob['units_energy_sum_t1'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
@@ -619,19 +612,19 @@ class LuxS3Env(gym.Env):
     if self.use_separate_base:
       o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
 
-    if self.obs_space_kwargs.get('use_energy_cost_map'):
-      o['_a_energy_cost_map'] = mm.get_erengy_cost_map_feature(
-          mm.energy_cost_map)
+    # o['_a_energy_cost_map'] = mm.get_erengy_cost_map_feature(
+    # mm.energy_cost_map)
+    o['_a_energy_cost_map'] = np.zeros(MAP_SHAPE2)
 
-      if self.use_separate_base:
-        energy_reduction = mm.nebula_energy_reduction
-        if mm.full_params:
-          energy_reduction = mm.full_params['nebula_tile_energy_reduction']
-        true_cost_map = mm.compute_energy_cost_map(mm.true_cell_type,
-                                                   mm.true_cell_energy,
-                                                   mm.true_relic_map,
-                                                   energy_reduction)
-        o['_b_energy_cost_map'] = mm.get_erengy_cost_map_feature(true_cost_map)
+    # if self.use_separate_base:
+    # energy_reduction = mm.nebula_energy_reduction
+    # if mm.full_params:
+    # energy_reduction = mm.full_params['nebula_tile_energy_reduction']
+    # true_cost_map = mm.compute_energy_cost_map(mm.true_cell_type,
+    # mm.true_cell_energy,
+    # mm.true_relic_map,
+    # energy_reduction)
+    # o['_b_energy_cost_map'] = mm.get_erengy_cost_map_feature(true_cost_map)
 
     energy_map = mm.cell_energy.copy()
     energy_map[mm.cell_type == CELL_NEBULA] -= mm.nebula_energy_reduction
