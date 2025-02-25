@@ -120,6 +120,10 @@ def get_ob_sapce(obs_space_kwargs):
 
   if obs_space_kwargs.get('use_enemy_vision_map'):
     ob['enemy_vision_map'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+
+  if obs_space_kwargs.get('use_match_relic_hints'):
+    ob['match_relic_hints'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['need_match_explore'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
   return spaces.Dict(ob)
 
 
@@ -590,6 +594,17 @@ class LuxS3Env(gym.Env):
     visit_age = np.minimum((mm.game_step - mm.last_observed_step),
                            MAX_MATCH_STEPS)
     o['last_visited_age'] = visit_age / MAX_MATCH_STEPS
+
+    if self.obs_space_kwargs.get('use_match_relic_hints'):
+      o['match_relic_hints'] = mm.match_relic_hints.astype(float)
+
+      match_explore = np.zeros(MAP_SHAPE2, dtype=bool)
+      need_explore = (mm.game_step < (3 * MAX_MATCH_STEPS)
+                      and mm.last_match_found_relic
+                      and not mm.has_found_relic_in_match())
+      if need_explore:
+        match_explore[:, :] = True
+      o['need_match_explore'] = match_explore.astype(float)
 
     o['_a_is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
     true_relic_neighbour = maximum_filter((mm.true_relic_map == 1),

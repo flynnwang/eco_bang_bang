@@ -25,6 +25,7 @@ obs_space_kwargs:
   use_agent: False
   use_unit_energy_sum: True
   use_enemy_vision_map: True
+  use_match_relic_hints: True
 
 
 reward_space_kwargs: {}
