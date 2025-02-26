@@ -386,7 +386,7 @@ class Agent:
 
       score = min(explore_score, MAX_EXPLORE_SCORE)
       if mm.match_relic_hints[cpos[0]][cpos[1]]:
-        score += 100
+        score += RELIC_NB_SCORE
         # print(f'boost by relic hints: {cpos}, score={score}', file=sys.stderr)
       return score
 
@@ -910,6 +910,11 @@ class Agent:
       num = max(1, num)
       if num > 0:
         atk_pos2.extend([pos] * num)
+
+      # assert num <= 1, num
+      # print(f"num = ", file=sys.stderr)
+
+    # assert len(atk_pos2) <= len(attack_positions)
     attack_positions = atk_pos2
 
     def get_sap_damage(upos, unit_energy, cpos):
