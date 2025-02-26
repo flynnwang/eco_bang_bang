@@ -23,9 +23,11 @@ obs_space_kwargs:
   use_energy_cost_map: False
   use_single_player: False
   use_agent: False
+
   use_unit_energy_sum: True
   use_enemy_vision_map: True
   use_match_relic_hints: True
+  use_more_game_params: True
 
 
 reward_space_kwargs: {}

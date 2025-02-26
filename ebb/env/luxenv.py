@@ -123,7 +123,16 @@ def get_ob_sapce(obs_space_kwargs):
 
   if obs_space_kwargs.get('use_match_relic_hints'):
     ob['match_relic_hints'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
-    ob['need_match_explore'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['exploration_required'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+
+  if obs_space_kwargs.get('use_more_game_params'):
+    ob['nebula_tile_drift_speed'] = (
+        spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_NEBULA_DRIFT_SPPED))
+    ob['unit_energy_void_factor'] = (
+        spaces.MultiDiscrete(np.zeros(MAP_SHAPE) + N_ENERGY_VOID_FIELD))
+    # ob['energy_node_location'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['enemy_energy_void_field'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['units_energy_void_field'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
   return spaces.Dict(ob)
 
 
@@ -599,12 +608,28 @@ class LuxS3Env(gym.Env):
       o['match_relic_hints'] = mm.match_relic_hints.astype(float)
 
       match_explore = np.zeros(MAP_SHAPE2, dtype=bool)
-      need_explore = (mm.game_step < (3 * MAX_MATCH_STEPS)
-                      and mm.last_match_found_relic
-                      and not mm.has_found_relic_in_match())
-      if need_explore:
+      if mm.exploration_required:
         match_explore[:, :] = True
-      o['need_match_explore'] = match_explore.astype(float)
+      o['exploration_required'] = match_explore.astype(float)
+
+    if self.obs_space_kwargs.get('use_more_game_params'):
+      o['nebula_tile_drift_speed'] = game_params(
+          mm.nebula_drift_estimator.index())
+      o['unit_energy_void_factor'] = game_params(
+          mm.energy_void_field_factor_estimator.index())
+
+      # energy_node_pos = np.zeros(MAP_SHAPE2)
+      # energy_node = mm.energy_node_estimator.energy_node
+      # if energy_node is not None:
+      # energy_node_pos[energy_node[0]][energy_node[1]] = 1
+      # e2 = anti_diag_sym_i(energy_node)
+      # energy_node_pos[e2[0]][e2[1]] = 1
+      # o['energy_node_location'] = energy_node_pos
+
+      o['enemy_energy_void_field'] = mm.player_energy_sum(
+          mm.enemy_id) / MAX_UNIT_ENERGY
+      o['units_energy_void_field'] = mm.player_energy_sum(
+          mm.player_id) / MAX_UNIT_ENERGY
 
     o['_a_is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
     true_relic_neighbour = maximum_filter((mm.true_relic_map == 1),
