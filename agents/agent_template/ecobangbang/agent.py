@@ -148,7 +148,11 @@ class Agent:
     if player == PLAYER1:
       use_mirror = True
 
-    obs_space_kwargs = {'use_energy_cost_map': True}
+    obs_space_kwargs = {
+        'use_energy_cost_map': True,
+        'use_unit_energy_sum': True,
+        'use_enemy_vision_map': True,
+    }
 
     self.mm = MapManager(player,
                          env_cfg,
