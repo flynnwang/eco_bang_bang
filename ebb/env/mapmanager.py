@@ -814,13 +814,8 @@ class EnergyVoidFieldFactorEstimator:
 
   def best_guess(self):
     if len(self._counter) <= 0:
-      return self.VALID_VALUES[2]  # default 0.25
+      return self.VALID_VALUES[1]  # default 0.125
     return self._counter.most_common(1)[0][0]
-
-  def _add_guess(self, factor):
-    for v in self.VALID_VALUES:
-      if abs(factor - v) < 1e-5:
-        self._counter[v] += 1
 
   def estimate(self):
     """Estimate energy void field factor based on known nebula energy reduction
@@ -833,56 +828,100 @@ class EnergyVoidFieldFactorEstimator:
 
     enemy_energy_sum = np.zeros(MAP_SHAPE2, dtype=int)
     for i in range(MAX_UNIT_NUM):
-      mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=1)
+      mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
       if not mask or energy < 0:
+        # print(
+        # f'skip for enemy[{i}]={pos} because of mask0={mask}, energy0={energy}',
+        # file=sys.stderr)
         continue
 
+      mask1, pos1, energy1 = self.mm.get_unit_info(self.mm.enemy_id, i, t=1)
+      if not mask1 or energy1 < 0:
+        # print(
+        # f'skip for enemy[{i}]={pos1} because of mask1={mask1}, energy1={energy1}',
+        # file=sys.stderr)
+        continue
+
+      # Use position from current step, but energy from last step
       for k in range(4):
         nx, ny = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
         if not is_pos_on_map((nx, ny)):
           continue
-        enemy_energy_sum[pos[0]][pos[1]] += energy
+        enemy_energy_sum[nx][ny] += energy1
+
+    unit_pos_num = np.zeros(MAP_SHAPE2, dtype=int)
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.player_id, i, t=0)
+      if mask and energy > 0:
+        unit_pos_num[pos[0]][pos[1]] += 1
 
     for i in range(MAX_UNIT_NUM):
       mask0, pos0, energy0 = self.mm.get_unit_info(self.mm.player_id, i, t=0)
       if not mask0 or energy0 < 0:
+        # print(
+        # f'skip for unit[{i}]={pos0} because of mask0={mask0}, energy0={energy0}',
+        # file=sys.stderr)
         continue
 
       mask1, pos1, energy1 = self.mm.get_unit_info(self.mm.player_id, i, t=1)
       if not mask1 or energy1 < 0:
+        # print(
+        # f'skip for unit[{i}]={pos1} because of mask1={mask1}, energy1={energy1}',
+        # file=sys.stderr)
         continue
 
-      nearby_enemy_energy = 0
-      for k in range(4):
-        nx, ny = (pos0[0] + DIRECTIONS[k][0], pos0[1] + DIRECTIONS[k][1])
-        if not is_pos_on_map((nx, ny)):
-          continue
-        nearby_enemy_energy += enemy_energy_sum[nx][ny]
+      # print(
+      # f"unit[{i}] mask0={mask0}, pos0={pos0} energy0={energy0}, mask1={mask1}, pos1={pos1} e1={energy1}",
+      # file=sys.stderr)
 
+      nearby_enemy_energy = enemy_energy_sum[pos0[0]][pos0[1]]
       if nearby_enemy_energy <= 0:
+        # print(
+        # f'skip for unit[{i}]={pos0} e={energy0} because of nearby_enemy_energy == 0',
+        # file=sys.stderr)
         continue
 
+      e = 0
       # Remove unit move cost
+      move_cost = 0
       if not pos_equal(pos0, pos1):
-        energy0 -= self.mm.unit_move_cost
+        move_cost = -self.mm.unit_move_cost
+      e += move_cost
 
       # Remove unit sap cost
+      unit_sap = 0
       p = (int(pos0[0]), int(pos0[1]))
       if p in self.mm.last_sap_locations:
-        energy0 -= self.mm.unit_sap_cost
+        unit_sap = -self.mm.unit_sap_cost
+      e -= unit_sap
 
       # Add cell energy
-      energy0 += self.mm.cell_energy[pos1[0]][pos[1]]
+      cell_energy = self.mm.cell_energy[pos0[0]][pos0[1]]
+      e += cell_energy
 
-      if self.mm.cell_type[pos1[0], pos1[1]] == CELL_NEBULA:
-        energy0 -= self.mm.nebula_energy_reduction
+      nebula = 0
+      if self.mm.cell_type[pos0[0], pos0[1]] == CELL_NEBULA:
+        nebula = -self.mm.nebula_energy_reduction
+      e += nebula
 
-      f = (energy1 - energy0) / nearby_enemy_energy
-      self._add_guess(f)
-      print(f"add void factor={f},  counter: {self._counter}", file=sys.stderr)
+      delta = energy0 - (energy1 + e)
+      uc = unit_pos_num[pos0[0]][pos0[1]]
+      v = self._add_guess(delta, nearby_enemy_energy, uc)
+      # print((
+      # f"s={self.mm.game_step} void_factor_test={v} use_sap={use_sap_cost}, delta={delta} unit[{i}] delta={delta} e[{pos1}]={energy1}, e[{pos0}]={energy0} unit_sap={unit_sap}, "
+      # f"unit_move={move_cost}, cell_energy={cell_energy} nebula={nebula}, enemy_nearby={nearby_enemy_energy} "
+      # f"uc={uc}, unit_sap_cost={self.mm.unit_sap_cost}"),
+      # file=sys.stderr)
+    # print(
+    # f" -- energy void factor best_guess: {self.best_guess()}, counter: {self._counter}",
+    # file=sys.stderr)
 
-    print(f" -- energy void factor best_guess: {self.best_guess()}",
-          file=sys.stderr)
+  def _add_guess(self, delta, nearby_enemy_energy, nc):
+    delta = abs(delta)
+    for v in self.VALID_VALUES:
+      if delta * nc == int(nearby_enemy_energy * v):
+        self._counter[v] += 1
+    return None
 
 
 class MapManager:
