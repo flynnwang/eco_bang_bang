@@ -501,6 +501,8 @@ class Observation:
 
 class HiddenRelicSolver:
 
+  MAX_OB_NUM = 5
+
   def __init__(self):
     self.position_to_relic = {}
     self.obs = []
@@ -512,18 +514,10 @@ class HiddenRelicSolver:
       if is_relic == False:
         del self.position_to_relic[pos]
 
-  def add_determined_observation(self, ob):
-    is_relic = True
-    if ob.relic_num == 0:
-      is_relic = False
-    for pos in ob.positions:
-      self.position_to_relic[pos] = is_relic
-
-  def solve(self, remainingOverageTime):
-    # First, simplify all observations to reduce search spaces
+  def simplify_obs(self):
     has_determined_pos = True
-    unsolved_positions = set()
     while has_determined_pos:
+      unsolved_positions = set()
       has_determined_pos = False
       next_obs = []
       for ob in reversed(self.obs):
@@ -535,7 +529,18 @@ class HiddenRelicSolver:
           next_obs.append(ob)
           unsolved_positions.update(ob.positions)
       self.obs = next_obs
+    return unsolved_positions
 
+  def add_determined_observation(self, ob):
+    is_relic = True
+    if ob.relic_num == 0:
+      is_relic = False
+    for pos in ob.positions:
+      self.position_to_relic[pos] = is_relic
+
+  def solve(self, remainingOverageTime):
+    # First, simplify all observations to reduce search spaces
+    unsolved_positions = self.simplify_obs()
     n = len(unsolved_positions)
     unsolved_positions = list(unsolved_positions)
     # print(f"Solving {n} positions...", file=sys.stderr)
@@ -587,6 +592,10 @@ class HiddenRelicSolver:
   def observe(self, ob, remainingOverageTime):
     self.obs.append(ob)
     self.solve(remainingOverageTime)
+
+    self.simplify_obs()
+    if len(self.obs) > self.MAX_OB_NUM:
+      self.obs = self.obs[-self.MAX_OB_NUM:]
 
 
 class HiddenRelicSolverTimeout(Exception):
@@ -659,8 +668,8 @@ class HiddenRelicNodeEstimator:
 
         p = 0
         if is_relic is None:
-          p = random.random() * 0.5 + 0.25
-          # p = self.priori_[pos[0]][pos[1]]
+          # p = random.random() * 0.5 + 0.25
+          p = self.priori_[pos[0]][pos[1]]
         else:
           p = 1.0 if is_relic else 0.0
         self.priori[pos[0]][pos[1]] = p
