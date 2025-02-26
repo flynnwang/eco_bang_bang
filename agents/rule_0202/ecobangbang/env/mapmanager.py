@@ -904,6 +904,11 @@ class MapManager:
       e -= self.nebula_energy_reduction
     return e
 
+  def cell_net_energy_map(self):
+    e = self.cell_energy.copy()
+    e[self.cell_type == CELL_NEBULA] -= self.nebula_energy_reduction
+    return e
+
   def has_found_relic_in_match(self):
     return self.is_relic_node.sum() > self.last_match_relic_cell_num
 

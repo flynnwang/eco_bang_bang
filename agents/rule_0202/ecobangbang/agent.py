@@ -311,9 +311,36 @@ class Agent:
     mm = self.mm
 
     team_point_mask = (mm.team_point_mass > IS_RELIC_CELL_PROB)
-
-    attack_path_mask = mm.is_relic_node.copy()
     defense_zone = np.zeros(MAP_SHAPE2, dtype=bool)
+
+    noise = np.random.random((24, 24)) * 0.01
+    cell_energy = mm.cell_net_energy_map()
+
+    local_max = maximum_filter(cell_energy, size=3)
+    local_max_mask = (cell_energy == local_max)
+
+    fire_zone = np.zeros(MAP_SHAPE2, dtype=float)
+
+    enemy_init_pos = get_player_init_pos(mm.enemy_id, mm.use_mirror)
+    relic_node_positions = mm.hidden_relic_estimator.relic_node_positions
+    for pos in relic_node_positions:
+      if on_team_side(pos, mm.player_id, mm.use_mirror):
+        continue
+
+      relic_range = gen_sap_range(pos, d=2)
+      num_relic = team_point_mask[relic_range].sum()
+
+      x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
+      dist_to_relic = (np.abs(x - pos[0]) + np.abs(y - pos[1]))
+      relic_wt = num_relic / (dist_to_relic + 1)
+
+      fire_zone[local_max_mask] += relic_wt[local_max_mask]
+
+    mx = fire_zone.max()
+    if mx < 1e-6:
+      mx = 1
+
+    fire_zone /= mx
 
     defense_zone_range = 7 * 2 + 1
     enemy_init_pos = get_player_init_pos(mm.enemy_id, mm.use_mirror)
@@ -321,8 +348,6 @@ class Agent:
     for pos in relic_node_positions:
       if not on_team_side(pos, mm.player_id, mm.use_mirror):
         continue
-
-      draw_line(attack_path_mask, pos)
 
       relic_defense_zone = gen_sap_range(pos, 2) & team_point_mask
       relic_defense_zone = maximum_filter(relic_defense_zone,
@@ -336,19 +361,7 @@ class Agent:
       relic_defense_zone &= (enemy_relic_dist <= (dist + 1))
       defense_zone |= relic_defense_zone
 
-    attack_path_mask = maximum_filter(attack_path_mask, size=7)
-
-    enemy_side_mask = (dist_to_init_pos >= MAP_WIDTH)
-    fire_zone = (team_point_mask & enemy_side_mask)
-
-    fire_zone_range = mm.unit_sap_range * 2 + 1
-    fire_zone = maximum_filter(fire_zone, fire_zone_range)
-
-    team_side_mask = (dist_to_init_pos <= MAP_WIDTH)
-    defense_zone = (team_point_mask & team_side_mask)
-    defense_zone = maximum_filter(defense_zone, defense_zone_range)
-
-    return fire_zone, defense_zone, attack_path_mask
+    return fire_zone, defense_zone
 
   def compute_unit_to_cell(self):
     mm = self.mm
@@ -386,7 +399,7 @@ class Agent:
 
       score = min(explore_score, MAX_EXPLORE_SCORE)
       if mm.match_relic_hints[cpos[0]][cpos[1]]:
-        score += RELIC_NB_SCORE
+        score += 5
         # print(f'boost by relic hints: {cpos}, score={score}', file=sys.stderr)
       return score
 
@@ -402,7 +415,7 @@ class Agent:
     player_init_pos = get_player_init_pos(mm.player_id, self.mm.use_mirror)
     d1 = generate_manhattan_dist(MAP_SHAPE2,
                                  player_init_pos).astype(np.float32)
-    fire_zone, defense_zone, attack_path_mask = self.gen_fire_zone(d1)
+    fire_zone, defense_zone = self.gen_fire_zone(d1)
     self.defense_zone = defense_zone
     d1 /= MAP_WIDTH
 
@@ -414,30 +427,15 @@ class Agent:
       e = fuel = energy_map[cpos[0]][cpos[1]]
       fuel = right_tailed_exp(energy, fuel, energy_threshold)
 
-      is_in_defense_zone = defense_zone[cpos[0]][cpos[1]]
-      is_in_fire_zone = fire_zone[cpos[0]][cpos[1]]
-      is_on_attack_path = attack_path_mask[cpos[0]][cpos[1]]
+      fire_zone_wt = fire_zone[cpos[0]][cpos[1]]
 
       is_in_boost_zone = False
       if mm.match_step >= defense_start_step:
-        # if mm.match_step < 50 and energy < BOOST_SAP_ENERGY_THRESHOOD:
-        # if energy < BOOST_SAP_ENERGY_THRESHOOD:
-        # is_in_fire_zone = False
-        # is_on_attack_path = False
-
-        # if mm.game_step >= 50 or energy >= BOOST_SAP_ENERGY_THRESHOOD:
-        if mm.game_step >= 50 and energy >= BOOST_SAP_ENERGY_THRESHOOD:
-          is_in_defense_zone = False
-
-        is_in_boost_zone = (is_in_fire_zone or is_in_defense_zone
-                            or is_on_attack_path)
+        is_in_boost_zone = (fire_zone_wt > 0)
 
       d = d1[cpos[0]][cpos[1]]
       if e > 0 and is_in_boost_zone:
-        boost = (e * d) * 0.1  # defense: <5,  fire: 6-10
-        if is_in_fire_zone or is_in_defense_zone:
-          boost += (7 * d)  # ~5 * 3
-        fuel += boost
+        fuel += 3 * fire_zone_wt
 
       return fuel
 
