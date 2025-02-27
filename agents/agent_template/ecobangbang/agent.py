@@ -22,7 +22,7 @@ SUBMIT_AGENT = True
 MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
 
 DO_SAMPLE = True
-USE_MIRROR_TRANS = False
+USE_MIRROR_TRANS = True
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
@@ -59,14 +59,15 @@ def _stack_dict(x: List[Union[Dict, np.ndarray]],
     return np.stack([arr for arr in x], axis=0)
 
 
-def mirror_transpose_obs(x, mirror, transpose):
+def mirror_transpose_obs(x, mirror, transpose, key_hint=None):
   if isinstance(x, dict):
     return {
-        key: mirror_transpose_obs(val, mirror, transpose)
+        key: mirror_transpose_obs(val, mirror, transpose, key_hint=key)
         for key, val in x.items()
     }
   else:
 
+    # print(f"key_hint={key_hint}, x.shape={x.shape}", file=sys.stderr)
     if x.shape == (1, MAP_WIDTH, MAP_HEIGHT):
       assert x.shape[0] == 1
 
@@ -152,6 +153,8 @@ class Agent:
         'use_energy_cost_map': True,
         'use_unit_energy_sum': True,
         'use_enemy_vision_map': True,
+        "use_match_relic_hints": True,
+        "use_more_game_params": True,
     }
 
     self.mm = MapManager(player,
@@ -168,6 +171,13 @@ class Agent:
     self.prev_model_action = None
     self.md = self.load_model()
 
+  @property
+  def n_players(self):
+    n_players = 1
+    if USE_MIRROR_TRANS:
+      n_players = 2
+    return n_players
+
   def load_model(self):
     flags = dict(n_blocks=16,
                  hidden_dim=128,
@@ -180,7 +190,7 @@ class Agent:
     model = create_model(flags,
                          self.env.observation_space,
                          device=DEVICE,
-                         n_players=1)
+                         n_players=self.n_players)
     # print(f"Model created", file=sys.stderr)
 
     model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -202,30 +212,48 @@ class Agent:
     action_mask = self.env._get_available_action_mask(self.mm)
 
     if USE_MIRROR_TRANS:
-      ob3 = mirror_transpose_obs(obs, mirror=True, transpose=True)
-      am3 = mirror_transpose_action_masks(action_mask,
-                                          mirror=True,
-                                          transpose=True,
-                                          sap_indexer=self.mm.sap_indexer)
-      ob2 = mirror_transpose_obs(obs, mirror=True, transpose=False)
-      am2 = mirror_transpose_action_masks(action_mask,
-                                          mirror=True,
-                                          transpose=False,
-                                          sap_indexer=self.mm.sap_indexer)
       ob1 = mirror_transpose_obs(obs, mirror=False, transpose=True)
+
+      # transpose unit position
+      units_info = ob1['_units_info'].copy()
+      assert units_info.shape == (1, MAX_UNIT_NUM, 3)
+      for i in range(MAX_UNIT_NUM):
+        x = units_info[0, i, 0]
+        y = units_info[0, i, 1]
+        units_info[0, i, 0] = y
+        units_info[0, i, 1] = x
+
+      ob1['_units_info'] = units_info
+      # print(f"units_info={units_info.shape}", file=sys.stderr)
+
       am1 = mirror_transpose_action_masks(action_mask,
                                           mirror=False,
                                           transpose=True,
                                           sap_indexer=self.mm.sap_indexer)
+      # print(f"obs1.keys() = {ob1.keys()}", file=sys.stderr)
+      # print(f"obs1[nebula] = {ob1['nebula_tile_drift_speed']}",
+      # file=sys.stderr)
+      drift = ob1['nebula_tile_drift_speed'].max()
+      if drift != N_NEBULA_DRIFT_SPPED - 1:
+        tmp = (N_NEBULA_DRIFT_SPPED - 1) - ob1['nebula_tile_drift_speed']
+        ob1['nebula_tile_drift_speed'] = tmp
+      # print(f"obs1[nebula].T = {ob1['nebula_tile_drift_speed']}",
+      # file=sys.stderr)
 
-      obs_list = [obs, ob1, ob2, ob3]
-      am_list = [action_mask, am1, am2, am2]
+      obs_list = [obs, ob1]
+      am_list = [action_mask, am1]
     else:
       obs_list = [obs]
       am_list = [action_mask]
 
     o = _stack_dict(obs_list, is_observation=True)
     a = _stack_dict(am_list)
+
+    # print(f"obs-all[nebula] = {o['nebula_tile_drift_speed'].shape}",
+    # file=sys.stderr)
+    # print(f"am1 = {am1['units_action'].shape}", file=sys.stderr)
+    # print(f"am0 = {action_mask['units_action'].shape}", file=sys.stderr)
+    # print(f"a(merged) = {a['units_action'].shape}", file=sys.stderr)
 
     dev = torch.device(DEVICE)
     model_input = {
@@ -238,22 +266,17 @@ class Agent:
 
   def get_avg_model_action(self, action_probs):
     """model_probs=torch.Size([64, 118])"""
+    # print(f"action_probs1.shape={action_probs.shape}", file=sys.stderr)
     if USE_MIRROR_TRANS:
-      action_probs = action_probs.reshape(4, MAX_UNIT_NUM, -1)
+      action_probs = action_probs.reshape(self.n_players, MAX_UNIT_NUM, -1)
       action_probs[1] = restore_action_probs(action_probs[1],
                                              mirror=False,
                                              transpose=True,
                                              sap_indexer=self.mm.sap_indexer)
-      action_probs[2] = restore_action_probs(action_probs[2],
-                                             mirror=True,
-                                             transpose=False,
-                                             sap_indexer=self.mm.sap_indexer)
-      action_probs[3] = restore_action_probs(action_probs[3],
-                                             mirror=True,
-                                             transpose=True,
-                                             sap_indexer=self.mm.sap_indexer)
       action_probs = action_probs.mean(dim=0)
+      # action_probs = action_probs[0]
 
+    # print(f'action_probs2.shape={action_probs.shape}', file=sys.stderr)
     actions = torch.multinomial(action_probs, num_samples=1, replacement=False)
     return actions
 
