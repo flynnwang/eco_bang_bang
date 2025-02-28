@@ -259,6 +259,7 @@ class LuxS3Env(gym.Env):
       mirror2 = False
     else:
       mirror2 = USE_MIRROR_FOR_PLAYER1
+
       # make two player mirror to the right down corner
       use_conner23 = (self._seed % 2 == 0)
       if use_conner23:
@@ -937,7 +938,48 @@ class LuxS3Env(gym.Env):
         for i, p in enumerate([PLAYER0, PLAYER1])
     ]
 
+  def _convert_win_loss_reward3(self, raw_obs, env_state):
+    wt = self.reward_shaping_params
+
+    unit_killed_num = [
+        self.mms[0].step_unit_killed_num(),
+        self.mms[1].step_unit_killed_num(),
+    ]
+
+    def _convert(mm, ob):
+      team_wins = raw_obs[mm.player]['team_wins'][mm.player_id]
+      enemy_wins = raw_obs[mm.player]['team_wins'][mm.enemy_id]
+
+      # game end reward
+      r_game = 0
+      if self.is_game_done(raw_obs, mm.player):
+        if team_wins > enemy_wins:
+          r_game = 1
+        else:
+          r_game = -1
+        print(
+            f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}, team_wins={team_wins}, enemy_wins={enemy_wins}'
+        )
+
+      r_kill = (unit_killed_num[mm.enemy_id] - unit_killed_num[mm.player_id])
+      r_kill *= wt['unit_kill']
+
+      # if r_kill != 0:
+      # print(
+      # f'step={mm.game_step} match-step={mm.match_step}, r_kill={r_kill} '
+      # f'enemy-killed={unit_killed_num[mm.enemy_id]}, unit-killed={unit_killed_num[mm.player_id]}'
+      # )
+
+      r = r_kill + r_game
+      return r
+
+    return [
+        _convert(self.mms[i], raw_obs[p])
+        for i, p in enumerate([PLAYER0, PLAYER1])
+    ]
+
   def _convert_win_loss_reward2(self, raw_obs, env_state):
+    wt = self.reward_shaping_params
 
     def _convert(mm, ob):
       team_wins = raw_obs[mm.player]['team_wins'][mm.player_id]
@@ -965,10 +1007,13 @@ class LuxS3Env(gym.Env):
   def _convert_reward(self, raw_obs, env_state):
     """Use the match win-loss reward for now."""
     assert self.reward_schema in ('shaping', 'game_win_loss2',
-                                  'match_win_loss', 'match_explore_win_loss',
-                                  'shaping_v2')
+                                  'game_win_loss3', 'match_win_loss',
+                                  'match_explore_win_loss', 'shaping_v2')
     if self.reward_schema == 'game_win_loss2':
       reward = self._convert_win_loss_reward2(raw_obs, env_state)
+
+    if self.reward_schema == 'game_win_loss3':
+      reward = self._convert_win_loss_reward3(raw_obs, env_state)
 
     if self.reward_schema == 'shaping':
       reward = self._convert_shaping_reward(raw_obs, env_state)

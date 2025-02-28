@@ -1042,6 +1042,17 @@ class MapManager:
     self.energy_void_field_factor_estimator = EnergyVoidFieldFactorEstimator(
         self)
 
+  def get_valid_unit_mask(self, pid, t):
+    ob = self.past_obs[t]
+    unit_mask = ob['units_mask'][pid]
+    unit_energy = ob['units']['energy'][pid]
+    return unit_mask & (unit_energy >= 0)
+
+  def step_unit_killed_num(self):
+    m0 = self.get_valid_unit_mask(self.player_id, t=0)
+    m1 = self.get_valid_unit_mask(self.player_id, t=1)
+    return (m1 & ~m0).sum()
+
   def player_energy_sum(self, pid):
     energy_sum = np.zeros(MAP_SHAPE2, dtype=int)
     for i in range(MAX_UNIT_NUM):
@@ -1442,9 +1453,7 @@ class MapManager:
         self.nebula_energy_reduction)
     self.energy_void_field_factor_estimator.estimate()
     self.prev_team_point = ob['team_points'][self.player_id]
-    # print(
-    # f'step={self.game_step}, step_ob_corner: {self.step_observe_corner_cells_num}'
-    # )
+
   def update_sap_position_by_enemy_position(self):
     """Enemy position for sap action"""
     self.enemy_position_mask = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
