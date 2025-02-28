@@ -27,7 +27,7 @@ import wandb
 import warnings
 
 import torch
-from torch import amp
+from torch.cuda import amp
 from torch import multiprocessing as mp
 from torch import nn
 from torch.nn import functional as F
@@ -310,8 +310,7 @@ def learn(
   learner_batch_size = flags.batch_size  # for game of 2 teams self-play
   # learner_batch_size = flags.batch_size  # for game of single player
   with lock:
-    with amp.autocast(flags.learner_device.type,
-                      enabled=flags.use_mixed_precision):
+    with amp.autocast(enabled=flags.use_mixed_precision):
       flattened_batch = buffers_apply(
           batch, lambda x: torch.flatten(x, start_dim=0, end_dim=1))
       learner_outputs = learner_model(flattened_batch)
@@ -806,7 +805,7 @@ def train(flags):
     scaled_pct_complete = pct_complete * (1. - min_pct)
     return 1. - scaled_pct_complete
 
-  grad_scaler = amp.GradScaler(flags.learner_device.type)
+  grad_scaler = torch.amp.GradScaler(flags.learner_device.type)
   scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
   if checkpoint_state is not None and not flags.weights_only:
     scheduler.load_state_dict(checkpoint_state["scheduler_state_dict"])
