@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250226_game_win_loss_r0
+name: run_20250226_game_win_loss_r1_corner2
 
 ## WANDB params
 # The wandb project name
@@ -46,7 +46,7 @@ reward_shaping_params:
 
 ## TRAINING params
 total_steps: 2e8
-num_actors: 18
+num_actors: 14
 n_actor_envs: 4
 
 unroll_length: 16
@@ -129,8 +129,8 @@ debug: False
 #disable_wandb: True
 #debug: True
 
-load_dir:
-checkpoint_file:
+load_dir: /home/flynnwang/runs/ebb/02-26/23-20-33
+checkpoint_file: 074610432.pt
 
 weights_only: False
 n_value_warmup_batches: 0

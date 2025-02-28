@@ -259,6 +259,12 @@ class LuxS3Env(gym.Env):
       mirror2 = False
     else:
       mirror2 = USE_MIRROR_FOR_PLAYER1
+      # make two player mirror to the right down corner
+      use_conner23 = (self._seed % 2 == 0)
+      if use_conner23:
+        mirror1 = (not mirror1)
+        mirror2 = (not mirror2)
+
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']
     self.mms = [
@@ -613,8 +619,11 @@ class LuxS3Env(gym.Env):
       o['exploration_required'] = match_explore.astype(float)
 
     if self.obs_space_kwargs.get('use_more_game_params'):
-      o['nebula_tile_drift_speed'] = game_params(
-          mm.nebula_drift_estimator.index())
+      nebula_idx = mm.nebula_drift_estimator.index()
+      if mm.transpose and nebula_idx != N_NEBULA_DRIFT_SPPED - 1:
+        nebula_idx = (N_NEBULA_DRIFT_SPPED - 1) - nebula_idx
+      o['nebula_tile_drift_speed'] = game_params(nebula_idx)
+
       o['unit_energy_void_factor'] = game_params(
           mm.energy_void_field_factor_estimator.index())
 
