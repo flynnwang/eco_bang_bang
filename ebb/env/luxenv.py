@@ -261,10 +261,10 @@ class LuxS3Env(gym.Env):
       mirror2 = USE_MIRROR_FOR_PLAYER1
 
       # make two player mirror to the right down corner
-      use_conner23 = (self._seed % 2 == 0)
-      if use_conner23:
-        mirror1 = (not mirror1)
-        mirror2 = (not mirror2)
+      # use_conner23 = (self._seed % 2 == 0)
+      # if use_conner23:
+      # mirror1 = (not mirror1)
+      # mirror2 = (not mirror2)
 
     use_hidden_relic_estimator = self.reward_shaping_params[
         'use_hidden_relic_estimator']

@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250226_game_win_loss3_r0
+name: run_20250301_game_win_loss_r1
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_rl_exp_0228_winloss3
+group: luxs3_rl_exp_0301
 
 ## ENV params
 obs_space_kwargs:
@@ -31,7 +31,7 @@ obs_space_kwargs:
 
 
 reward_space_kwargs: {}
-reward_schema: game_win_loss3
+reward_schema: game_win_loss2
 #reward_schema: match_win_loss
 use_separate_base: False
 
@@ -75,7 +75,8 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 1e-5
+  lr: 5e-5
+  #lr: 1e-5
   #lr: 5e-6
   #lr: 1e-6
   # See https://arxiv.org/pdf/2105.05246.pdf
@@ -87,9 +88,9 @@ min_lr_mod: 0.01
 #entropy_cost: 2e-6
 #entropy_cost: 1e-5
 #entropy_cost: 1e-4
-#entropy_cost: 2e-4
+entropy_cost: 2e-4
 #entropy_cost: 5e-4
-entropy_cost: 1e-3
+#entropy_cost: 1e-3
 #entropy_cost: 5e-3
 baseline_cost: 1.
 #teacher_kl_cost: 0
@@ -107,8 +108,8 @@ reduction: sum
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /home/flynnwang/runs/ebb/02-28/23-42-41
-teacher_checkpoint_file: 000000000_weights.pt
+teacher_load_dir: /home/flynnwang/runs/ebb/02-26/23-20-33
+teacher_checkpoint_file: 074610432.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -131,8 +132,8 @@ debug: False
 #debug: True
 
 
-load_dir:
-checkpoint_file:
+load_dir: /home/flynnwang/runs/ebb/02-26/23-20-33
+checkpoint_file: 074610432.pt
 
 weights_only: False
 n_value_warmup_batches: 0
