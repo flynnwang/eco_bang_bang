@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /home/flynnwang/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250301_game_win_loss_r1
+name: run_20250301_game_win_loss_restart_r1
 
 ## WANDB params
 # The wandb project name
@@ -46,7 +46,7 @@ reward_shaping_params:
   unit_kill: 0.01
 
 ## TRAINING params
-total_steps: 2e8
+total_steps: 1e8
 num_actors: 14
 n_actor_envs: 4
 
@@ -109,7 +109,7 @@ reduction: sum
 # Pretrained model for KL loss
 use_teacher: True
 teacher_load_dir: /home/flynnwang/runs/ebb/02-26/23-20-33
-teacher_checkpoint_file: 074610432.pt
+teacher_checkpoint_file: 039125696.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -132,8 +132,10 @@ debug: False
 #debug: True
 
 
-load_dir: /home/flynnwang/runs/ebb/02-26/23-20-33
-checkpoint_file: 074610432.pt
+load_dir: /home/flynnwang/runs/ebb/03-01/16-42-31
+checkpoint_file: 005980672.pt
+#load_dir: /home/flynnwang/runs/ebb/02-26/23-20-33
+#checkpoint_file: 039125696.pt
 
-weights_only: False
+weights_only: True
 n_value_warmup_batches: 0
