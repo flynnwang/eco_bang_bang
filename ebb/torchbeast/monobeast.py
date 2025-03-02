@@ -401,24 +401,26 @@ def learn(
                                               bootstrap_value=bootstrap_value,
                                               discounts=discounts,
                                               lmb=flags.lmb)
-      upgo_returns = upgo.upgo(rewards=batch["reward"],
-                               values=values,
-                               bootstrap_value=bootstrap_value,
-                               discounts=discounts,
-                               lmb=flags.lmb)
+      if not flags.disable_upgo_pg_loss:
+        upgo_returns = upgo.upgo(rewards=batch["reward"],
+                                 values=values,
+                                 bootstrap_value=bootstrap_value,
+                                 discounts=discounts,
+                                 lmb=flags.lmb)
 
       vtrace_pg_loss = compute_policy_gradient_loss(
           combined_learner_action_log_probs,
           vtrace_returns.pg_advantages,
           reduction=flags.reduction)
 
-      upgo_clipped_importance = torch.minimum(
-          vtrace_returns.log_rhos.exp(),
-          torch.ones_like(vtrace_returns.log_rhos)).detach()
-      upgo_pg_loss = compute_policy_gradient_loss(
-          combined_learner_action_log_probs,
-          upgo_clipped_importance * upgo_returns.advantages,
-          reduction=flags.reduction)
+      if not flags.disable_upgo_pg_loss:
+        upgo_clipped_importance = torch.minimum(
+            vtrace_returns.log_rhos.exp(),
+            torch.ones_like(vtrace_returns.log_rhos)).detach()
+        upgo_pg_loss = compute_policy_gradient_loss(
+            combined_learner_action_log_probs,
+            upgo_clipped_importance * upgo_returns.advantages,
+            reduction=flags.reduction)
 
       baseline_loss = compute_baseline_loss(values,
                                             td_lambda_returns.vs,
@@ -440,8 +442,10 @@ def learn(
         vtrace_pg_loss, upgo_pg_loss, teacher_kl_loss, entropy_loss = torch.zeros(
             4) + float("nan")
       else:
-        total_loss = (vtrace_pg_loss + upgo_pg_loss + baseline_loss +
-                      teacher_kl_loss + teacher_baseline_loss + entropy_loss)
+        total_loss = (vtrace_pg_loss + baseline_loss + teacher_kl_loss +
+                      teacher_baseline_loss + entropy_loss)
+        if not flags.disable_upgo_pg_loss:
+          total_loss += upgo_pg_loss
 
       last_lr = lr_scheduler.get_last_lr()
       assert len(last_lr) == 1, 'Logging per-parameter LR still needs support'
@@ -523,7 +527,6 @@ def learn(
               "td_lambda_returns_mean": td,
               "baseline_values_mean": baseline_values,
               "vtrace_pg_loss": vtrace_pg_loss.detach().item(),
-              "upgo_pg_loss": upgo_pg_loss.detach().item(),
               "baseline_loss": baseline_loss.detach().item(),
               "teacher_kl_loss": teacher_kl_loss.detach().item(),
               #"teacher_baseline_loss": teacher_baseline_loss.detach().item(),
@@ -540,6 +543,8 @@ def learn(
               "total_games_played": total_games_played,
           },
       }
+      if not flags.disable_upgo_pg_loss:
+        stats['Loss']["upgo_pg_loss"] = upgo_pg_loss.detach().item()
 
       hidden_relics_num = batch["info"]['_game_total_hidden_relic_nodes_num']
       if match_played > 0:
