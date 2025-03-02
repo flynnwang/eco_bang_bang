@@ -641,23 +641,33 @@ class LuxS3Env(gym.Env):
           mm.player_id) / MAX_UNIT_ENERGY
 
     o['_a_is_relic_neighbour'] = mm.is_relic_neighbour.astype(np.float32)
-    true_relic_neighbour = maximum_filter((mm.true_relic_map == 1),
-                                          size=RELIC_NB_SIZE)
     if self.use_separate_base:
+      true_relic_neighbour = maximum_filter((mm.true_relic_map == 1),
+                                            size=RELIC_NB_SIZE)
       o['_b_is_relic_neighbour'] = true_relic_neighbour.astype(np.float32)
 
     # Turn off relic nb
-    solved_relic = np.zeros(MAP_SHAPE2)
-    relic_nb_positions = np.argwhere(mm.is_relic_neighbour > 0)
-    for x, y in relic_nb_positions:
-      pos = (int(x), int(y))
-      is_relic = mm.hidden_relic_estimator.solver.position_to_relic.get(pos)
-      if is_relic is not None and is_relic:
-        solved_relic[x][y] = 1.0
-    o['solved_relic'] = solved_relic
+    # solved_relic = np.zeros(MAP_SHAPE2)
+    # relic_nb_positions = np.argwhere(mm.is_relic_neighbour > 0)
+    # for x, y in relic_nb_positions:
+    # pos = (int(x), int(y))
+    # is_relic = mm.hidden_relic_estimator.solver.position_to_relic.get(pos)
+    # if is_relic is not None and is_relic:
+    # solved_relic[x][y] = 1.0
+
+    mass = np.zeros(MAP_SHAPE2)
+    for pos in mm.hidden_relic_estimator.relic_node_positions:
+      relic_mask = gen_sap_range(pos, d=2)
+      team_point_mask = (mm.team_point_mass > 0.8) & (relic_mask)
+      relic_num = team_point_mask.sum()
+      mass[relic_mask] += (relic_num / 25)
+    o['solved_relic'] = mass
 
     # places need unit stay
-    o['_a_team_point_prob'] = mm.team_point_mass.astype(np.float32)
+    # o['_a_team_point_prob'] = mm.team_point_mass.astype(np.float32)
+
+    o['_a_team_point_prob'] = np.zeros(MAP_SHAPE2)
+
     if self.use_separate_base:
       o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
 
