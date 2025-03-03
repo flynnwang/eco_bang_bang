@@ -488,6 +488,9 @@ def learn(
       def match_done_mean(v):
         return v[match_played_mask > 0].to(torch.float).mean().detach().item()
 
+      def per_match_done_mean(mask, v):
+        return v[mask > 0].to(torch.float).mean().detach().item()
+
       def match_done_sum(v):
         return v[match_played_mask > 0].to(torch.float).sum().detach().item()
 
@@ -556,15 +559,20 @@ def learn(
         stats['Env']['winner_match_team_points'] = match_done_mean(
             _winner_match_team_points)
 
-        stats['Env']['winner_match_team_points0'] = match_done_mean(
+        stats['Env']['winner_match_team_points0'] = per_match_done_mean(
+            batch["info"]['_match_played_0'],
             batch["info"]['_match_total_team_points_0'])
-        stats['Env']['winner_match_team_points1'] = match_done_mean(
+        stats['Env']['winner_match_team_points1'] = per_match_done_mean(
+            batch["info"]['_match_played_1'],
             batch["info"]['_match_total_team_points_1'])
-        stats['Env']['winner_match_team_points2'] = match_done_mean(
+        stats['Env']['winner_match_team_points2'] = per_match_done_mean(
+            batch["info"]['_match_played_2'],
             batch["info"]['_match_total_team_points_2'])
-        stats['Env']['winner_match_team_points3'] = match_done_mean(
+        stats['Env']['winner_match_team_points3'] = per_match_done_mean(
+            batch["info"]['_match_played_3'],
             batch["info"]['_match_total_team_points_3'])
-        stats['Env']['winner_match_team_points4'] = match_done_mean(
+        stats['Env']['winner_match_team_points4'] = per_match_done_mean(
+            batch["info"]['_match_played_4'],
             batch["info"]['_match_total_team_points_4'])
 
         total_hidden_relics_num = match_done_sum(hidden_relics_num)
