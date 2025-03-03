@@ -45,6 +45,9 @@ reward_shaping_params:
   match_result: 1
   unit_kill: 0.01
 
+  match_sap_num: 1
+  game_win: 0.1
+
 ## TRAINING params
 total_steps: 2e8
 num_actors: 18

@@ -40,7 +40,10 @@ reward_shaping_params:
   use_hidden_relic_estimator: True
   energy_cost_change: 0
   match_observed: 0.5
-  match_win: 1
+  match_win: 0.1
+
+  match_sap_num: 1
+  game_win: 0.1
 
 
 ## TRAINING params
