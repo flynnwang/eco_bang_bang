@@ -1228,6 +1228,12 @@ class LuxS3Env(gym.Env):
       info['_match_total_team_points_2'] = 0
       info['_match_total_team_points_3'] = 0
       info['_match_total_team_points_4'] = 0
+
+      info['_match_played_0'] = 0
+      info['_match_played_1'] = 0
+      info['_match_played_2'] = 0
+      info['_match_played_3'] = 0
+      info['_match_played_4'] = 0
       if match_step == MAX_MATCH_STEPS:
         info['_match_observed_node_num'] = mm.match_observed.sum()
         info['_match_visited_node_num'] = mm.match_visited.sum()
@@ -1239,14 +1245,19 @@ class LuxS3Env(gym.Env):
         w = max(tp0, tp1)
         if mm.game_step < 110:
           info['_match_total_team_points_0'] = w
+          info['_match_played_0'] += 1
         elif mm.game_step < 210:
           info['_match_total_team_points_1'] = w
+          info['_match_played_1'] += 1
         elif mm.game_step < 320:
           info['_match_total_team_points_2'] = w
+          info['_match_played_2'] += 1
         elif mm.game_step < 420:
           info['_match_total_team_points_3'] = w
+          info['_match_played_3'] += 1
         elif mm.game_step < 520:
           info['_match_total_team_points_4'] = w
+          info['_match_played_4'] += 1
 
         info['_match_played'] = 1
         if team_win > enemy_win:
