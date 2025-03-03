@@ -1,7 +1,9 @@
 from typing import Callable, Dict, Optional, Tuple, Union, NamedTuple, Any, List
 from argparse import Namespace
+from types import SimpleNamespace
 import os
 import sys
+import yaml
 
 import numpy as np
 import torch
@@ -20,10 +22,13 @@ from .model import create_model
 SUBMIT_AGENT = True
 
 MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
+CONFIG_FILE_NAME = "config.yaml"
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = True
 USE_ARGMAX = True
+
+USE_B26 = True
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
@@ -180,14 +185,11 @@ class Agent:
     return n_players
 
   def load_model(self):
-    flags = dict(n_blocks=16,
-                 hidden_dim=128,
-                 base_out_channels=128,
-                 embedding_dim=8,
-                 kernel_size=5,
-                 use_separate_base=False,
-                 reward_schema="game_win_loss2")
-    flags = Namespace(**flags)
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               CONFIG_FILE_NAME)
+    with open(config_path, 'r') as f:
+      flags = SimpleNamespace(**yaml.safe_load(f))
+
     model = create_model(flags,
                          self.env.observation_space,
                          device=DEVICE,
