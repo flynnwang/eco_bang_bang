@@ -23,6 +23,7 @@ MODEL_FILE_NAME = "WEIGHTS_FILE_NAME"
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = True
+USE_ARGMAX = True
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
@@ -276,8 +277,12 @@ class Agent:
       action_probs = action_probs.mean(dim=0)
       # action_probs = action_probs[0]
 
-    # print(f'action_probs2.shape={action_probs.shape}', file=sys.stderr)
-    actions = torch.multinomial(action_probs, num_samples=1, replacement=False)
+    if USE_ARGMAX:
+      actions = action_probs.argsort(dim=-1, descending=True)[..., :1]
+    else:
+      actions = torch.multinomial(action_probs,
+                                  num_samples=1,
+                                  replacement=False)
     return actions
 
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
