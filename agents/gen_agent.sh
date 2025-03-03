@@ -10,6 +10,8 @@ fi
 # Assign the argument to a variable
 AGENT_NAME="$1"
 WEIGHTS_PATH="$2"
+CONFIG_PATH="$(dirname "${WEIGHTS_PATH}")/config.yaml"
+echo $CONFIG_PATH
 
 AGENT_TEMPLATE=agent_template
 
@@ -21,6 +23,7 @@ cp ../ebb/env/luxenv.py ${AGENT_NAME}/ecobangbang/env/
 cp ../ebb/env/mapmanager.py ${AGENT_NAME}/ecobangbang/env/
 cp ../ebb/model.py ${AGENT_NAME}/ecobangbang/
 cp ${WEIGHTS_PATH} ${AGENT_NAME}/ecobangbang
+cp ${CONFIG_PATH} ${AGENT_NAME}/ecobangbang
 
 # Update weights file name
 WEIGHTS_NAME=$(basename "$WEIGHTS_PATH")

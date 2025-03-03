@@ -32,7 +32,8 @@ obs_space_kwargs:
 use_separate_base: False
 
 reward_space_kwargs: {}
-reward_schema: shaping_v2
+reward_schema: game_win_loss4  # sap reward
+#reward_schema: shaping_v2
 #reward_schema: match_explore_win_loss
 #reward_schema: game_win_loss2
 reward_shaping_params:
