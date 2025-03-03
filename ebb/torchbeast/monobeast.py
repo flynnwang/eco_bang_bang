@@ -556,6 +556,17 @@ def learn(
         stats['Env']['winner_match_team_points'] = match_done_mean(
             _winner_match_team_points)
 
+        stats['Env']['winner_match_team_points0'] = match_done_mean(
+            batch["info"]['_match_total_team_points_0'])
+        stats['Env']['winner_match_team_points1'] = match_done_mean(
+            batch["info"]['_match_total_team_points_1'])
+        stats['Env']['winner_match_team_points2'] = match_done_mean(
+            batch["info"]['_match_total_team_points_2'])
+        stats['Env']['winner_match_team_points3'] = match_done_mean(
+            batch["info"]['_match_total_team_points_3'])
+        stats['Env']['winner_match_team_points4'] = match_done_mean(
+            batch["info"]['_match_total_team_points_4'])
+
         total_hidden_relics_num = match_done_sum(hidden_relics_num)
         stats['Env']['match_team_points_per_relic'] = (
             match_done_sum(_match_team_points) / total_hidden_relics_num)
