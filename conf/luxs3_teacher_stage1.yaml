@@ -8,7 +8,7 @@ hydra:
   run:
     dir: /autodl-tmp/runs/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250228_game_win_loss_r0
+name: run_20250301_game_win_loss_r1
 
 ## WANDB params
 # The wandb project name
@@ -16,7 +16,7 @@ project: lux_s3
 # The wandb user to log to
 entity: pyflynn
 # The wandb group for the run
-group: luxs3_rl_exp_0228
+group: luxs3_rl_exp_0301_v3_no_upgo
 
 ## ENV params
 obs_space_kwargs:
@@ -43,6 +43,7 @@ reward_shaping_params:
   match_observed: 0
   match_win: 0.2
   match_result: 1
+  unit_kill: 0.01
 
 ## TRAINING params
 total_steps: 2e8
@@ -74,7 +75,8 @@ kernel_size: 5
 ## OPTIMIZER params
 optimizer_class: Adam
 optimizer_kwargs:
-  lr: 1e-5
+  lr: 5e-5
+  #lr: 1e-5
   #lr: 5e-6
   #lr: 1e-6
   # See https://arxiv.org/pdf/2105.05246.pdf
@@ -86,10 +88,11 @@ min_lr_mod: 0.01
 #entropy_cost: 2e-6
 #entropy_cost: 1e-5
 #entropy_cost: 1e-4
-#entropy_cost: 2e-4
+entropy_cost: 2e-4
 #entropy_cost: 5e-4
-entropy_cost: 1e-3
+#entropy_cost: 1e-3
 #entropy_cost: 5e-3
+#entropy_cost: 1e-2
 baseline_cost: 1.
 #teacher_kl_cost: 0
 #teacher_kl_cost: 1e-4
@@ -102,6 +105,7 @@ teacher_baseline_cost: 0.0
 #lmb: 0.8
 lmb: 0.9
 reduction: sum
+disable_upgo_pg_loss: True
 
 
 # Pretrained model for KL loss
@@ -133,4 +137,5 @@ load_dir:
 checkpoint_file:
 
 weights_only: False
+#weights_only: True
 n_value_warmup_batches: 0

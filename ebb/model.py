@@ -617,6 +617,12 @@ def create_model(flags,
         reward_max=+1,
         zero_sum=True,
     )
+  if flags.reward_schema == 'game_win_loss3':
+    reward_spec = RewardSpec(
+        reward_min=-1.5,
+        reward_max=+1.5,
+        zero_sum=True,
+    )
   if flags.reward_schema in ('match_win_loss', ):
     reward_spec = RewardSpec(
         reward_min=-5,
