@@ -292,9 +292,15 @@ class Agent:
 
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
+    if remainingOverageTime < 5:
+      global USE_MIRROR_TRANS
+      USE_MIRROR_TRANS = False
+
     self.mm.update(raw_obs, self.prev_model_action)
     self._available_action_mask = self.env._get_available_action_mask(self.mm)
-    print(f'-- game_step={self.mm.game_step}', file=sys.stderr)
+    print(
+        f'-- game_step={self.mm.game_step}, remaining={remainingOverageTime} mirror={USE_MIRROR_TRANS}',
+        file=sys.stderr)
 
     model_input = self.convert_observation(raw_obs)
 
