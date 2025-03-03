@@ -991,9 +991,9 @@ class LuxS3Env(gym.Env):
       r_game = 0
       if self.is_game_done(raw_obs, mm.player):
         if team_wins > enemy_wins:
-          r_game = 1
+          r_game = wt['game_win']
         else:
-          r_game = -1
+          r_game = -wt['game_win']
         print(
             f'step={mm.game_step} match-step={mm.match_step}, r_game={r_game}, team_wins={team_wins}, enemy_wins={enemy_wins}'
         )
@@ -1001,16 +1001,18 @@ class LuxS3Env(gym.Env):
       # At each step, reward agent for more unit kill num
       r_sap = 0
       if mm.match_step == MAX_MATCH_STEPS:
-        team_kill_num = self.mms[mm.enemy_id].total_units_dead_count
-        enemy_kill_num = self.mms[mm.player_id].total_units_dead_count
+        team_match_sap_num = self.mms[mm.enemy_id].match_unit_sap_count
+        enemy_match_sap_num = self.mms[mm.player_id].match_unit_sap_count
 
-        if team_kill_num > enemy_kill_num:
-          r_sap = 0.2
-        elif team_kill_num < enemy_kill_num:
-          r_sap = -0.2
+        if team_match_sap_num > enemy_match_sap_num:
+          r_sap = wt['match_sap_num']
+        elif team_match_sap_num < enemy_match_sap_num:
+          r_sap = -wt['match_sap_num']
 
-        print(f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
-              f'team-kill={team_kill_num}, enemy-kill={enemy_kill_num}')
+        print(
+            f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
+            f'team-sap-num={team_match_sap_num}, enemy-sap-num={enemy_match_sap_num}'
+        )
 
       r = r_sap + r_game
       return r
