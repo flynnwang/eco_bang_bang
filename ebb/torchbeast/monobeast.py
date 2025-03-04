@@ -599,6 +599,10 @@ def learn(
         stats['Env']['match_frozen_units'] = match_done_mean(
             _match_frozen_units)
         stats['Env']['match_dead_units'] = match_done_mean(_match_dead_units)
+        stats['Env']['match_collision_units'] = match_done_mean(
+            batch["info"]['_match_collision_units'])
+        stats['Env']['match_sap_killed_units'] = match_done_mean(
+            batch["info"]['_match_sap_killed_units'])
 
       if games_played > 0:
         found_relics_num = batch["info"]['_game_total_found_relic_nodes_num']

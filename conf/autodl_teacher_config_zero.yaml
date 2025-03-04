@@ -42,8 +42,8 @@ reward_shaping_params:
   match_observed: 0.5
   match_win: 0.1
 
-  match_sap_num: 1
-  game_win: 0.1
+  match_sap_num: 0.2
+  game_win: 1
 
 
 ## TRAINING params
@@ -58,9 +58,9 @@ discounting: 0.999
 
 ## MODEL params
 model_arch: conv_model
-n_blocks: 4
-hidden_dim: 64
-base_out_channels: 64
+n_blocks: 16
+hidden_dim: 128
+base_out_channels: 128
 embedding_dim: 8
 n_merge_layers: 1
 normalize: False
@@ -94,8 +94,8 @@ disable_upgo_pg_loss: True
 
 # Pretrained model for KL loss
 use_teacher: False
-teacher_load_dir: /Users/flynnwang/repo/flynn/runs/12-29/00-18-10/
-teacher_checkpoint_file: 000000000.pt
+teacher_load_dir:
+teacher_checkpoint_file:
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -117,8 +117,8 @@ sharing_strategy: file_system
 disable_wandb: True
 debug: True
 
-load_dir:
-checkpoint_file:
+load_dir: /Users/flynnwang/repo/flynn/runs/new_md/luxs3_rl_exp_0301_v3_no_upgo/
+checkpoint_file: 145409408.pt
 #load_dir:
 #checkpoint_file:
 #

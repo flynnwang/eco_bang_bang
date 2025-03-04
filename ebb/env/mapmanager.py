@@ -1018,6 +1018,9 @@ class MapManager:
     self.last_match_relic_cell_num = -1
     self.last_match_found_relic = True
 
+    self.match_units_sap_dead_count = 0
+    self.match_units_collision_dead_count = 0
+
     self.use_mirror = use_mirror
     self.use_hidden_relic_estimator = use_hidden_relic_estimator
     self.hidden_relic_estimator = HiddenRelicNodeEstimator(
@@ -1042,6 +1045,7 @@ class MapManager:
       self.team_point_probs = []
 
     self.last_sap_locations = set()
+    self.enemy_sap_mask = None
     self.energy_void_field_factor_estimator = EnergyVoidFieldFactorEstimator(
         self)
 
@@ -1079,6 +1083,16 @@ class MapManager:
 
   def has_found_relic_in_match(self):
     return self.is_relic_node.sum() > self.last_match_relic_cell_num
+
+  def add_enemy_sap_locations(self, enemy_sap_locations, mirror):
+    self.enemy_sap_mask = np.zeros(MAP_SHAPE2, dtype=bool)
+    for p in enemy_sap_locations:
+      if mirror:
+        p = anti_diag_sym_i(p)
+      self.enemy_sap_mask[p[0]][p[1]] = True
+    self.enemy_sap_mask = maximum_filter(self.enemy_sap_mask, size=3)
+    # print(
+    # f"pid={self.player_id} enemy_sap_mask.sum={self.enemy_sap_mask.sum()}")
 
   def add_sap_locations(self, sap_locations):
     self.last_sap_locations = {(int(p[0]), int(p[1])) for p in sap_locations}
@@ -1309,6 +1323,8 @@ class MapManager:
     self.units_position_energy_sum = 0
     self.units_energy_cost_change = 0
 
+    sap_death_num = 0
+
     n_units = 0
     for i in range(MAX_UNIT_NUM):
       is_dead, is_frozen = False, False
@@ -1316,6 +1332,17 @@ class MapManager:
       mask1, p1, e1 = self.get_unit_info(self.player_id, i, t=1)
       if mask1 and e0 < 0 and e1 >= 0:
         is_dead = True
+        is_sap = False
+
+        # use position1, since e0 < 0, it's position is (-1, -1)
+        if (self.enemy_sap_mask is not None
+            and self.enemy_sap_mask[p1[0]][p1[1]]):
+          sap_death_num += 1
+          is_sap = True
+        # print(
+        # f">>>>  step={self.game_step} dead={is_dead} is_sap={int(is_sap)}, p1={p1}, p0={p0}"
+        # )
+
       if mask and mask1:
         if (e0 == 0 and e1 >= 0
             and (not self.team_point_mass[p0[0], p0[1]] >= MIN_TP_VAL)):
@@ -1341,6 +1368,10 @@ class MapManager:
 
     self.total_units_dead_count += self.units_dead_count
     self.total_units_frozen_count += self.units_frozen_count
+
+    self.match_units_sap_dead_count += sap_death_num
+    self.match_units_collision_dead_count += (self.units_dead_count -
+                                              sap_death_num)
 
   @property
   def step_units_frozen_count(self):
@@ -1394,6 +1425,9 @@ class MapManager:
     if ob['match_steps'] == 0:
       self.prev_team_point = 0
       # self.past_obs.clear()
+      self.match_units_sap_dead_count = 0
+      self.match_units_collision_dead_count = 0
+
       self.total_units_dead_count = 0
       self.total_units_frozen_count = 0
       self.match_visited[:, :] = 0

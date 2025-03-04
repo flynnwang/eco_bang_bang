@@ -223,6 +223,11 @@ class LuxS3Env(gym.Env):
     self.mms[0].add_sap_locations(self.last_sap_locations[0])
     self.mms[1].add_sap_locations(self.last_sap_locations[1])
 
+    self.mms[0].add_enemy_sap_locations(self.last_sap_locations[1],
+                                        self.mms[1].use_mirror)
+    self.mms[1].add_enemy_sap_locations(self.last_sap_locations[0],
+                                        self.mms[0].use_mirror)
+
   def reset(self, seed=None):
     if seed is None:
       self._seed = randint(-(1 << 31), 1 << 31)
@@ -394,10 +399,7 @@ class LuxS3Env(gym.Env):
   def is_game_done(self, raw_obs, player):
     team_wins = raw_obs[player]['team_wins']
     game_step = raw_obs[player]['steps']
-    if self.reward_schema in ('game_win_loss4', ):
-      return (game_step >= MAX_GAME_STEPS)
-    else:
-      return (game_step >= MAX_GAME_STEPS) or (max(team_wins) >= MIN_TEAM_WINS)
+    return (game_step >= MAX_GAME_STEPS) or (max(team_wins) >= MIN_TEAM_WINS)
 
   def step(self, model_action):
     if self.use_single_player:
@@ -1001,17 +1003,24 @@ class LuxS3Env(gym.Env):
       # At each step, reward agent for more unit kill num
       r_sap = 0
       if mm.match_step == MAX_MATCH_STEPS:
-        team_match_sap_num = self.mms[mm.player_id].match_unit_sap_count
-        enemy_match_sap_num = self.mms[mm.enemy_id].match_unit_sap_count
+        team_match_sap_kill_num = self.mms[
+            mm.enemy_id].match_units_sap_dead_count
+        enemy_match_sap_kill_num = self.mms[
+            mm.player_id].match_units_sap_dead_count
 
-        if team_match_sap_num > enemy_match_sap_num:
+        if team_match_sap_kill_num > enemy_match_sap_kill_num:
           r_sap = wt['match_sap_num']
-        elif team_match_sap_num < enemy_match_sap_num:
+        elif team_match_sap_kill_num < enemy_match_sap_kill_num:
           r_sap = -wt['match_sap_num']
 
+        team_collision_kill = self.mms[
+            mm.enemy_id].match_units_collision_dead_count
+        enemy_collision_kill = self.mms[
+            mm.player_id].match_units_collision_dead_count
         print(
             f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
-            f'team-sap-num={team_match_sap_num}, enemy-sap-num={enemy_match_sap_num}'
+            f'team-sap-kill={team_match_sap_kill_num}, enemy-sap-kill={enemy_match_sap_kill_num} '
+            f'team-collision-kill={team_collision_kill}, enemy-collision-kill={enemy_collision_kill} '
         )
 
       r = r_sap + r_game
@@ -1282,6 +1291,9 @@ class LuxS3Env(gym.Env):
       info['_match_played_2'] = 0
       info['_match_played_3'] = 0
       info['_match_played_4'] = 0
+
+      info['_match_collision_units'] = 0
+      info['_match_sap_killed_units'] = 0
       if match_step == MAX_MATCH_STEPS:
         info['_match_observed_node_num'] = mm.match_observed.sum()
         info['_match_visited_node_num'] = mm.match_visited.sum()
@@ -1315,6 +1327,12 @@ class LuxS3Env(gym.Env):
 
         info['_match_dead_units'] = mm.total_units_dead_count
         info['_match_frozen_units'] = mm.total_units_frozen_count
+
+        info['_match_collision_units'] = mm.match_units_collision_dead_count
+        info['_match_sap_killed_units'] = mm.match_units_sap_dead_count
+        # print(
+        # f"step={mm.game_step}, collision_death={mm.match_units_collision_dead_count}, sap-killed={mm.match_units_sap_dead_count}"
+        # )
 
       info['_game_total_match_points'] = 0
       info['_game_observed_node_num'] = 0
