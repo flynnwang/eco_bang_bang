@@ -1001,8 +1001,8 @@ class LuxS3Env(gym.Env):
       # At each step, reward agent for more unit kill num
       r_sap = 0
       if mm.match_step == MAX_MATCH_STEPS:
-        team_match_sap_num = self.mms[mm.enemy_id].match_unit_sap_count
-        enemy_match_sap_num = self.mms[mm.player_id].match_unit_sap_count
+        team_match_sap_num = self.mms[mm.player_id].match_unit_sap_count
+        enemy_match_sap_num = self.mms[mm.enemy_id].match_unit_sap_count
 
         if team_match_sap_num > enemy_match_sap_num:
           r_sap = wt['match_sap_num']

@@ -6,7 +6,7 @@ hydra:
   run:
     dir: /root/autodl-tmp/ebb/${now:%m-%d}/${now:%H-%M-%S}
 
-name: run_20250304_b16_sapper_r0
+name: run_20250304_b16_sapper_r1
 
 ## WANDB params
 # The wandb project name
@@ -107,10 +107,11 @@ disable_upgo_pg_loss: True
 
 # Pretrained model for KL loss
 use_teacher: True
-teacher_load_dir: /root/autodl-tmp/ebb/03-03/23-59-10/
-teacher_checkpoint_file: 000000064_weights.pt
-#teacher_load_dir:  /root/autodl-tmp/ebb/03-04/00-38-19/
-#teacher_checkpoint_file: 010362240.pt
+teacher_load_dir: /root/autodl-tmp/ebb/03-04/10-24-28/
+teacher_checkpoint_file: 003891904_weights.pt
+
+#teacher_load_dir: /root/autodl-tmp/ebb/03-03/23-59-10/
+#teacher_checkpoint_file: 000000064_weights.pt
 
 # MISCELLANEOUS params
 use_mixed_precision: True
@@ -133,8 +134,8 @@ debug: False
 #debug: True
 #
 #
-load_dir:
-checkpoint_file:
+load_dir: /root/autodl-tmp/ebb/03-04/10-24-28/
+checkpoint_file: 003891904.pt
 
 #load_dir: /root/autodl-tmp/ebb/03-04/00-11-21/
 #checkpoint_file: 000838656.pt
