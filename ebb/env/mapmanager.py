@@ -5,6 +5,7 @@ import random
 import sys
 from datetime import datetime
 
+import torch
 import chex
 import jax
 import jax.numpy as jnp
@@ -1810,7 +1811,7 @@ class MapManager:
     energy_cost[np.isinf(energy_cost)] = 1.1
     return energy_cost
 
-  def to_last_sap_actions(self, model_action):
+  def to_last_sap_actions(self, model_action, action_taken_mask=None):
     sap_locations = []
 
     actions = model_action[UNITS_ACTION]
@@ -1820,6 +1821,15 @@ class MapManager:
         continue
 
       a = actions[i][0]
+      if isinstance(a, torch.Tensor):
+        a = a.item()
+
+      if action_taken_mask is not None and not action_taken_mask[i][a]:
+        # print(f"skip not taken action by action_taken_mask", file=sys.stderr)
+        continue
+
+      # print(f"type(a)={type(a)}, is_tensor={isinstance(a, torch.tensor)}")
+
       if a < MOVE_ACTION_NUM:
         continue
 
@@ -1831,6 +1841,7 @@ class MapManager:
 
       sap_loc = (pos[0] + x, pos[1] + y)
       if not is_pos_on_map(sap_loc):
-        __import__('ipdb').set_trace()
+        print(f"pos={pos} x={x}, y={y} sap_loc={sap_loc}", file=sys.stderr)
+      # __import__('ipdb').set_trace()
       sap_locations.append(sap_loc)
     return sap_locations

@@ -297,6 +297,14 @@ class Agent:
       USE_MIRROR_TRANS = False
 
     self.mm.update(raw_obs, self.prev_model_action)
+    if self.prev_model_action is not None:
+      sap_locations = self.mm.to_last_sap_actions(
+          self.prev_model_action, self.action_taken_mask[UNITS_ACTION])
+      self.mm.add_sap_locations(sap_locations)
+      print(
+          f'-- game_step={self.mm.game_step}, last sap locations={sap_locations}',
+          file=sys.stderr)
+
     self._available_action_mask = self.env._get_available_action_mask(self.mm)
     print(
         f'-- game_step={self.mm.game_step}, remaining={remainingOverageTime} mirror={USE_MIRROR_TRANS}',
@@ -316,6 +324,8 @@ class Agent:
     # file=sys.stderr)
 
     # model_action[UNITS_ACTION] = model_action[UNITS_ACTION].squeeze(0)
-    action_taken_mask = self.env.get_actions_taken_mask(model_action, self.mm)
-    action = self.env._encode_action(model_action, self.mm, action_taken_mask)
+    self.action_taken_mask = self.env.get_actions_taken_mask(
+        model_action, self.mm)
+    action = self.env._encode_action(model_action, self.mm,
+                                     self.action_taken_mask)
     return action
