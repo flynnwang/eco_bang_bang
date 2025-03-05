@@ -836,7 +836,10 @@ def train(flags):
   grad_scaler = torch.amp.GradScaler(flags.learner_device.type)
   scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
   if checkpoint_state is not None and not flags.weights_only:
-    scheduler.load_state_dict(checkpoint_state["scheduler_state_dict"])
+    scheduler_state_dict = checkpoint_state["scheduler_state_dict"]
+    scheduler_state_dict['base_lrs'] = [flags.optimizer_kwargs['lr']]
+    scheduler.load_state_dict(scheduler_state_dict)
+    scheduler.step()
 
   step, total_games_played, stats = 0, 0, {}
   if checkpoint_state is not None and not flags.weights_only:
