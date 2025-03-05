@@ -27,6 +27,8 @@ obs_space_kwargs:
   use_enemy_vision_map: True
   use_match_relic_hints: True
   use_more_game_params: True
+  use_energy_trace: True
+  use_futrue_map: True
 
 
 use_separate_base: False
@@ -117,10 +119,10 @@ sharing_strategy: file_system
 disable_wandb: True
 debug: True
 
-load_dir: /Users/flynnwang/repo/flynn/runs/new_md/luxs3_rl_exp_0301_v3_no_upgo/
-checkpoint_file: 145409408.pt
-#load_dir:
-#checkpoint_file:
+#load_dir: /Users/flynnwang/repo/flynn/runs/new_md/luxs3_rl_exp_0301_v3_no_upgo/
+#checkpoint_file: 145409408.pt
+load_dir:
+checkpoint_file:
 #
 weights_only: False
 n_value_warmup_batches: 0
