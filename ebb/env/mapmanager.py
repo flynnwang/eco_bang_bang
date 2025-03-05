@@ -1050,6 +1050,8 @@ class MapManager:
     self.energy_void_field_factor_estimator = EnergyVoidFieldFactorEstimator(
         self)
 
+    self.enemy_max_energy = np.zeros((MAP_SHAPE2), dtype=int)
+
   def get_valid_unit_mask(self, pid, t):
     ob = self.past_obs[t]
     unit_mask = ob['units_mask'][pid]
