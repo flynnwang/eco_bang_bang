@@ -436,6 +436,7 @@ class UnitSapDropoffFactorEstimator:
 
   def update_unit_energy_lost_map(self):
     self.unit_energy_lost = np.zeros(MAP_SHAPE2, dtype=int)
+
     for i in range(MAX_UNIT_NUM):
       m0, p0, e0 = self.mm.get_unit_info(self.mm.player_id, i, t=0)
       if not m0:
@@ -1423,6 +1424,9 @@ class MapManager:
 
     # Match restarted and reset some of the unit states
     if ob['match_steps'] == 0:
+      self.blindshot_enemy_trace = np.zeros(MAP_SHAPE2, dtype=float)
+      self.enemy_energy_trace = np.zeros(MAP_SHAPE2, dtype=float)
+
       self.prev_team_point = 0
       # self.past_obs.clear()
       self.match_units_sap_dead_count = 0
@@ -1480,6 +1484,8 @@ class MapManager:
 
     self.update_frozen_or_dead_units()
     self.update_vision_map()
+
+    self.update_blind_shot_trace()
     self.update_sap_position_by_enemy_position()
 
     if self.use_hidden_relic_estimator and ob['match_steps'] > 0:
@@ -1517,7 +1523,6 @@ class MapManager:
       if mask:
         self.enemy_max_energy[pos[0]][pos[1]] = max(
             self.enemy_max_energy[pos[0]][pos[1]], energy)
-    # self.enemy_max_energy = maximum_filter(self.enemy_max_energy, size=3)
 
     self.unit_count = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=int)
     self.unit_min_energy = np.ones(
@@ -1530,6 +1535,14 @@ class MapManager:
         if energy < self.unit_min_energy[pos[0]][pos[1]]:
           self.unit_min_energy[pos[0]][pos[1]] = energy
           self.min_energy_unit_id[pos[0]][pos[1]] = i
+
+    # Update enemy energy trace
+    self.enemy_energy_trace *= TRACE_DECAY
+    for i in range(MAX_UNIT_NUM):
+      mask1, pos1, energy1 = self.get_unit_info(self.enemy_id, i, t=1)
+      if (mask1 and energy1 >= 0 and not self.visible[pos1[0]][pos1[1]]):
+        self.enemy_energy_trace[pos1[0]][pos1[1]] += energy1
+    self.enemy_energy_trace[self.visible] = 0
 
   def update_vision_map(self):
     nebula_cell_mask = (self.visible <= 0) & (self.vision_map.vision > 0)
@@ -1770,6 +1783,7 @@ class MapManager:
 
   def get_global_sap_hit_map(self):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
       if not mask or energy < 0:
@@ -1781,6 +1795,15 @@ class MapManager:
         if not is_pos_on_map(next_pos):
           continue
         hit_map[next_pos[0]][next_pos[1]] = True
+
+    # Add enemy last step position
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=1)
+      if not mask or energy < 0 or self.visible[pos[0]][pos[1]]:
+        continue
+
+      # Only add one position for last step enemy position
+      hit_map[pos[0]][pos[1]] = True
 
     # Add unvisible team point positions
     init_pos = get_player_init_pos(self.enemy_id, self.use_mirror)
@@ -1879,3 +1902,79 @@ class MapManager:
       # __import__('ipdb').set_trace()
       sap_locations.append(sap_loc)
     return sap_locations
+
+  def update_blind_shot_trace(self):
+    candidate_loc = np.zeros(MAP_SHAPE2, dtype=float)
+    self.unit_energy_diff = np.zeros(MAP_SHAPE2, dtype=float)
+
+    # If there is no enemy in visible area (from enemy energy from last step)
+    if self.enemy_max_energy.sum() == 0:
+      for i in range(MAX_UNIT_NUM):
+        m1, p1, e1 = self.get_unit_info(self.player_id, i, t=1)
+        if not m1 or e1 < 0:
+          continue
+
+        # If unit was valid in last step but not current step, it's dead
+        m0, p0, e0 = self.get_unit_info(self.player_id, i, t=0)
+        if not m0:
+          e0 = 0
+
+        self.unit_energy_diff[p1[0]][p1[1]] += (e0 - e1)
+
+        pos = p1
+        if m0 and e0 >= 0:
+          pos = p0
+
+        # unit on relic point
+        is_unit_on_relic = False
+        if self.team_point_mass[pos[0]][pos[1]] > 0.8:
+          is_unit_on_relic = True
+
+        cell_energy = self.cell_energy[p0[0]][p0[1]]
+
+        nebula_energy = 0
+        if self.cell_type[p0[0]][p0[1]] == CELL_NEBULA:
+          nebula_energy = self.nebula_energy_reduction
+
+        move_cost = 0
+        if not pos_equal(p0, p1):
+          move_cost = self.unit_move_cost
+
+        sap_cost = 0
+        if self.unit_sapped_last_step[i]:
+          sap_cost = self.unit_sap_cost
+
+        action_cost = (move_cost + sap_cost)
+        energy_gain = cell_energy - nebula_energy
+        e1 += (-action_cost + energy_gain)
+
+        is_unit_sapped = False
+        if e1 - e0 >= self.unit_sap_cost:
+          is_unit_sapped = True
+          # print(
+          # f"step={self.game_step}, e1-e0={e1-e0} m1={m1}, p1={p1}, e1={e1}, m0={m0}, p0={p0}, e0={e0} "
+          # f"move_cost={move_cost}, sap_cost={sap_cost} cell_energy={cell_energy} nebula_energy={nebula_energy} "
+          # )
+
+        # enemy blind shot at unit
+        if is_unit_on_relic and is_unit_sapped:
+          sap_range = gen_sap_range(pos, self.unit_sap_range)
+
+          enemy_init_pos = get_player_init_pos(self.enemy_id, self.use_mirror)
+          dist = manhatten_distance(pos, enemy_init_pos)
+          x, y = np.ogrid[:MAP_WIDTH, :MAP_HEIGHT]
+          enemy_relic_dist = (np.abs(x - enemy_init_pos[0]) +
+                              np.abs(y - enemy_init_pos[1]))
+          enemy_candidate_range = (enemy_relic_dist < (dist + 1)) & sap_range
+
+          candidate_loc[enemy_candidate_range] = 1
+
+    # First clear the visible area
+    self.blindshot_enemy_trace *= TRACE_DECAY
+    self.blindshot_enemy_trace[candidate_loc > 0] = 1
+    self.blindshot_enemy_trace[self.visible] = 0
+
+    # if self.blindshot_enemy_trace.sum() > 0:
+    # print(
+    # f's={self.game_step}, trace.sum={self.blindshot_enemy_trace.sum()} cnt={(self.blindshot_enemy_trace > 0).sum()}'
+    # )

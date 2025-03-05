@@ -133,6 +133,20 @@ def get_ob_sapce(obs_space_kwargs):
     # ob['energy_node_location'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
     ob['enemy_energy_void_field'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
     ob['units_energy_void_field'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+
+  if obs_space_kwargs.get('use_energy_trace'):
+    ob['enemy_energy_trace'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['blindshot_enemy_trace'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+    ob['unit_energy_diff'] = spaces.Box(low=0, high=1, shape=MAP_SHAPE)
+
+  if obs_space_kwargs.get('use_futrue_map'):
+    ob['cell_type_t1'] = spaces.MultiDiscrete(
+        np.zeros(MAP_SHAPE) + N_CELL_TYPES)
+    ob['cell_type_t2'] = spaces.MultiDiscrete(
+        np.zeros(MAP_SHAPE) + N_CELL_TYPES)
+    ob['cell_type_t3'] = spaces.MultiDiscrete(
+        np.zeros(MAP_SHAPE) + N_CELL_TYPES)
+
   return spaces.Dict(ob)
 
 
@@ -597,9 +611,29 @@ class LuxS3Env(gym.Env):
     o['match_wins_delta'] = scalar(units_wins - enemy_wins, TEAM_WIN_NORM)
 
     # Map info
-    o['_a_cell_type'] = mm.cell_type.copy()
+    cell_type = mm.cell_type.copy()
+    o['_a_cell_type'] = cell_type
     if self.use_separate_base:
       o['_b_cell_type'] = mm.true_cell_type.copy()
+
+    if self.obs_space_kwargs.get('use_futrue_map'):
+      o['cell_type_t1'] = cell_type
+      o['cell_type_t2'] = cell_type
+      o['cell_type_t3'] = cell_type
+
+      drift_speed = mm.nebula_drift_estimator.drift_speed
+      if drift_speed is not None:
+        if is_drifted_step(mm.game_step, drift_speed):
+          cell_type = shift_map_by_sign(cell_type, drift_speed)
+        o['cell_type_t1'] = cell_type
+
+        if is_drifted_step(mm.game_step + 1, drift_speed):
+          cell_type = shift_map_by_sign(cell_type, drift_speed)
+        o['cell_type_t2'] = cell_type
+
+        if is_drifted_step(mm.game_step + 2, drift_speed):
+          cell_type = shift_map_by_sign(cell_type, drift_speed)
+        o['cell_type_t3'] = cell_type
 
     o['visible'] = mm.visible.astype(np.float32)
     ob_age = np.minimum((mm.game_step - mm.last_observed_step),
@@ -743,6 +777,11 @@ class LuxS3Env(gym.Env):
     add_unit_feature('enemy', mm.enemy_id, t=0)
     add_unit_feature('enemy', mm.enemy_id, t=1)
     add_unit_info(mm.player_id, t=0)
+
+    if self.obs_space_kwargs.get('use_energy_trace'):
+      o['unit_energy_diff'] = mm.unit_energy_diff / 200
+      o['enemy_energy_trace'] = mm.enemy_energy_trace / MAX_UNIT_ENERGY
+      o['blindshot_enemy_trace'] = mm.blindshot_enemy_trace.copy()
 
     o['units_total_energy'] = scalar(units_total_energy,
                                      MAX_UNIT_ENERGY * MAX_UNIT_NUM)
@@ -1017,11 +1056,11 @@ class LuxS3Env(gym.Env):
             mm.enemy_id].match_units_collision_dead_count
         enemy_collision_kill = self.mms[
             mm.player_id].match_units_collision_dead_count
-        print(
-            f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
-            f'team-sap-kill={team_match_sap_kill_num}, enemy-sap-kill={enemy_match_sap_kill_num} '
-            f'team-collision-kill={team_collision_kill}, enemy-collision-kill={enemy_collision_kill} '
-        )
+        # print(
+        # f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
+        # f'team-sap-kill={team_match_sap_kill_num}, enemy-sap-kill={enemy_match_sap_kill_num} '
+        # f'team-collision-kill={team_collision_kill}, enemy-collision-kill={enemy_collision_kill} '
+        # )
 
       r = r_sap + r_game
       return r
