@@ -1775,12 +1775,12 @@ class MapManager:
       if not mask or energy < 0:
         continue
 
-      d = 1
-      x0 = max(0, (pos[0] - d))
-      x1 = min(MAP_WIDTH, (pos[0] + d + 1))
-      y0 = max(0, (pos[1] - d))
-      y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
-      hit_map[x0:x1, y0:y1] += True
+      hit_map[pos[0]][pos[1]] = True
+      for k in range(4):
+        next_pos = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+        if not is_pos_on_map(next_pos):
+          continue
+        hit_map[next_pos[0]][next_pos[1]] = True
 
     # Add unvisible team point positions
     init_pos = get_player_init_pos(self.enemy_id, self.use_mirror)

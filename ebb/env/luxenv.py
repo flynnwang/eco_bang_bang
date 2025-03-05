@@ -1139,7 +1139,7 @@ class LuxS3Env(gym.Env):
           actions_mask[i][ACTION_CENTER] = 0
 
         # If the unit has enough energy
-        if (mm.team_point_mass[pos[0]][pos[1]] < 0.1 and energy >= 350):
+        if (mm.team_point_mass[pos[0]][pos[1]] < 0.1 and energy >= 395):
           actions_mask[i][ACTION_CENTER] = 0
 
       # If the unit can stay
