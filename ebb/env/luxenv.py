@@ -1017,11 +1017,11 @@ class LuxS3Env(gym.Env):
             mm.enemy_id].match_units_collision_dead_count
         enemy_collision_kill = self.mms[
             mm.player_id].match_units_collision_dead_count
-        print(
-            f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
-            f'team-sap-kill={team_match_sap_kill_num}, enemy-sap-kill={enemy_match_sap_kill_num} '
-            f'team-collision-kill={team_collision_kill}, enemy-collision-kill={enemy_collision_kill} '
-        )
+        # print(
+        # f'step={mm.game_step} match-step={mm.match_step}, r_sap={r_sap} '
+        # f'team-sap-kill={team_match_sap_kill_num}, enemy-sap-kill={enemy_match_sap_kill_num} '
+        # f'team-collision-kill={team_collision_kill}, enemy-collision-kill={enemy_collision_kill} '
+        # )
 
       r = r_sap + r_game
       return r
