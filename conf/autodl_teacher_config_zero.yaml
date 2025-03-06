@@ -30,6 +30,8 @@ obs_space_kwargs:
   use_energy_trace: True
   use_futrue_map: True
 
+  hide_relic: True
+
 
 use_separate_base: False
 

@@ -1052,6 +1052,15 @@ class MapManager:
 
     self.enemy_max_energy = np.zeros((MAP_SHAPE2), dtype=int)
 
+  @lru_cache(maxsize=None)
+  def gen_hidden_relic_mask(self, dist=16):
+    d1 = generate_manhattan_dist(MAP_SHAPE2, (0, 0))
+    d2 = generate_manhattan_dist(MAP_SHAPE2, (23, 23))
+    d = np.minimum(d1, d2)
+    m2 = (d >= dist)
+    m2 = maximum_filter(m2, size=3)
+    return m2
+
   def get_valid_unit_mask(self, pid, t):
     ob = self.past_obs[t]
     unit_mask = ob['units_mask'][pid]
