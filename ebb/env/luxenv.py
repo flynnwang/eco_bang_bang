@@ -696,9 +696,14 @@ class LuxS3Env(gym.Env):
     o['solved_relic'] = solved_relic
 
     # places need unit stay
-    o['_a_team_point_prob'] = mm.team_point_mass.astype(np.float32)
+    o['_a_team_point_prob'] = mm.team_point_mass.copy().astype(np.float32)
     if self.use_separate_base:
       o['_b_team_point_prob'] = mm.true_team_point_map.astype(np.float32)
+
+    hidden_relic_mask = mm.gen_hidden_relic_mask()
+    if self.obs_space_kwargs.get('hide_relic'):
+      o['solved_relic'][hidden_relic_mask] = 0.0
+      o['_a_team_point_prob'][hidden_relic_mask] = 0.0
 
     # o['_a_energy_cost_map'] = mm.get_erengy_cost_map_feature(
     # mm.energy_cost_map)
