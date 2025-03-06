@@ -144,6 +144,14 @@ def restore_action_probs(action_probs, mirror, transpose, sap_indexer):
   return restored_probs
 
 
+def load_config():
+  config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             CONFIG_FILE_NAME)
+  with open(config_path, 'r') as f:
+    flags = SimpleNamespace(**yaml.safe_load(f))
+  return flags
+
+
 class Agent:
 
   def __init__(self, player: str, env_cfg) -> None:
@@ -155,13 +163,14 @@ class Agent:
     if player == PLAYER1:
       use_mirror = True
 
-    obs_space_kwargs = {
-        'use_energy_cost_map': True,
-        'use_unit_energy_sum': True,
-        'use_enemy_vision_map': True,
-        "use_match_relic_hints": True,
-        "use_more_game_params": True,
-    }
+    self.flags = load_config()
+    # obs_space_kwargs = {
+    # 'use_energy_cost_map': True,
+    # 'use_unit_energy_sum': True,
+    # 'use_enemy_vision_map': True,
+    # "use_match_relic_hints": True,
+    # "use_more_game_params": True,
+    # }
 
     self.mm = MapManager(player,
                          env_cfg,
@@ -169,7 +178,8 @@ class Agent:
                          sap_indexer=SapIndexer(),
                          use_mirror=use_mirror,
                          use_hidden_relic_estimator=True)
-    self.env = LuxS3Env("", obs_space_kwargs=obs_space_kwargs,
+    self.env = LuxS3Env("",
+                        obs_space_kwargs=self.flags.obs_space_kwargs,
                         game_env=1)  # for calling _convert_observation
     self.env.sap_indexer = self.mm.sap_indexer
     assert self.env.sap_indexer is not None
@@ -185,12 +195,7 @@ class Agent:
     return n_players
 
   def load_model(self):
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               CONFIG_FILE_NAME)
-    with open(config_path, 'r') as f:
-      flags = SimpleNamespace(**yaml.safe_load(f))
-
-    model = create_model(flags,
+    model = create_model(self.flags,
                          self.env.observation_space,
                          device=DEVICE,
                          n_players=self.n_players)
@@ -292,7 +297,7 @@ class Agent:
 
         step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
-    if remainingOverageTime < 5:
+    if remainingOverageTime < 10:
       global USE_MIRROR_TRANS
       USE_MIRROR_TRANS = False
 
