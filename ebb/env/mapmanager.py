@@ -1816,8 +1816,12 @@ class MapManager:
     enemy_half = generate_manhattan_mask(MAP_SHAPE2,
                                          init_pos,
                                          range_limit=MAP_WIDTH - 1)
+    # hit_map[(self.visible == 0) & (self.team_point_mass > 0.8)
+    # & enemy_half] = True
+
+    non_hidden_relic_mask = ~self.gen_hidden_relic_mask()
     hit_map[(self.visible == 0) & (self.team_point_mass > 0.8)
-            & enemy_half] = True
+            & enemy_half & non_hidden_relic_mask] = True
     return hit_map
 
   @property
