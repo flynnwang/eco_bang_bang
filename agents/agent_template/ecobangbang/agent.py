@@ -16,6 +16,10 @@ from .env.luxenv import (
     anti_diag_sym,
     anti_diag_sym_i,
     EXT_ACTION_SHAPE,
+    gen_sap_range,
+    get_player_init_pos,
+    generate_manhattan_mask,
+    manhatten_distance,
 )
 from .model import create_model
 
@@ -291,6 +295,61 @@ class Agent:
                                   replacement=False)
     return actions
 
+  def skip_dup_attack(self, action):
+    mm = self.mm
+
+    def can_attack(pos, energy, mm):
+      return energy >= mm.unit_sap_cost
+
+    attack_actions = []
+    for unit_id in range(MAX_UNIT_NUM):
+      mask, unit_pos, unit_energy = mm.get_unit_info(mm.player_id,
+                                                     unit_id,
+                                                     t=0)
+      if not mask or not can_attack(unit_pos, unit_energy, mm):
+        continue
+
+      if action[unit_id][0] != ACTION_SAP:
+        continue
+
+      attacker = (unit_id, unit_pos, unit_energy)
+      attack_position = (action[unit_id][1], action[unit_id][2])
+      dist = manhatten_distance(unit_pos, attack_position)
+      attack_actions.append((attacker, attack_position, dist))
+
+    # use attack with longer range
+    attack_actions.sort(
+        key=(lambda a:
+             (-a[2], -a[0][-1], a[0][0])))  # (dist, unit_energy, unit_id)
+
+    enemy_energy = mm.enemy_max_energy.copy()
+    enemy_position = (mm.enemy_position_mask_can_negtive > 0)
+
+    init_pos = get_player_init_pos(mm.enemy_id, mm.use_mirror)
+    enemy_half = generate_manhattan_mask(MAP_SHAPE2,
+                                         init_pos,
+                                         range_limit=MAP_WIDTH - 1)
+    IS_RELIC_CELL_PROB = 0.8
+    blind_shot_targets = ((~mm.visible) &
+                          (mm.team_point_mass > IS_RELIC_CELL_PROB)
+                          & enemy_half)
+
+    for (unit_id, unit_pos, unit_energy), cpos, _ in attack_actions:
+      sap_mask = gen_sap_range(cpos, d=1)
+      is_blind_shot = blind_shot_targets[cpos[0]][cpos[1]]
+      if (enemy_energy[sap_mask & enemy_position].sum() < 0
+          and not is_blind_shot):
+        # if not SUBMIT_AGENT:
+        print(f'step={mm.game_step}, unit[{unit_pos}] sap saved',
+              file=sys.stderr)
+        action[unit_id][0] = ACTION_CENTER
+        continue
+
+      # dropoff_sap_cost = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+      dropoff_sap_cost = mm.unit_sap_cost
+      sap_cost = gen_sap_range(cpos, d=1, dtype=int, val=dropoff_sap_cost)
+      enemy_energy -= sap_cost
+
   def act(self, step: int, raw_obs, remainingOverageTime: int = 60):
     """implement this function to decide what actions to send to each available unit.
 
@@ -332,4 +391,6 @@ class Agent:
         model_action, self.mm)
     action = self.env._encode_action(model_action, self.mm,
                                      self.action_taken_mask)
+
+    self.skip_dup_attack(action)
     return action

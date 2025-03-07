@@ -1161,7 +1161,15 @@ class LuxS3Env(gym.Env):
 
       units.append((energy, i, pos))
 
+    # hidden_relic_mask = mm.gen_hidden_relic_mask()
+
     def update_move_action_mask(i, pos, energy):
+      # is_unit_on_ non hidden relic  do not move away
+      # if (mm.team_point_mass[pos[0]][pos[1]] > 0.8
+      # and pos in action_centered_positions
+      # and not hidden_relic_mask[pos[0]][pos[1]]):
+      # return
+
       # has enough energy to move
       can_move = False
       for k in range(1, MAX_MOVE_ACTION_IDX + 1):
@@ -1207,6 +1215,7 @@ class LuxS3Env(gym.Env):
         actions_mask[i][sap_id] = 1
 
     # sort units by energy
+    # units.sort(reverse=True)
     units.sort()
     action_centered_positions = set()
     for energy, i, pos in units:
