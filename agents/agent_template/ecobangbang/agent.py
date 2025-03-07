@@ -26,9 +26,8 @@ CONFIG_FILE_NAME = "config.yaml"
 
 DO_SAMPLE = True
 USE_MIRROR_TRANS = True
-USE_ARGMAX = True
-
-USE_B26 = True
+# USE_ARGMAX = True
+USE_ARGMAX = False
 
 DEVICE = 'cpu'
 if not SUBMIT_AGENT:
