@@ -549,6 +549,10 @@ class HiddenRelicSolver:
 
     start_time = datetime.now()
     positions_values = defaultdict(set)
+
+    if remainingOverageTime < 10:
+      return
+
     for s in range(2**n):
       pos_to_val = {}
       tmp = s
@@ -568,14 +572,11 @@ class HiddenRelicSolver:
         # print(f'valid solution: s={s}, pos_to_val={pos_to_val.items()}',
         # file=sys.stderr)
       now = datetime.now()
-      waitTime = min((remainingOverageTime - 5), 5)
+      waitTime = min((remainingOverageTime - 5), 2)
 
       if (now - start_time).total_seconds() > waitTime:
         # print(f" remainingOverageTime = {remainingOverageTime}",
         # file=sys.stderr)
-        raise HiddenRelicSolverTimeout
-
-      if remainingOverageTime < 5:
         raise HiddenRelicSolverTimeout
 
     # import time
@@ -593,6 +594,9 @@ class HiddenRelicSolver:
 
   def observe(self, ob, remainingOverageTime):
     self.obs.append(ob)
+    if len(self.obs) > self.MAX_OB_NUM:
+      self.obs = self.obs[-self.MAX_OB_NUM:]
+
     self.solve(remainingOverageTime)
 
     self.simplify_obs()
