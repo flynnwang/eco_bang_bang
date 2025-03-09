@@ -20,6 +20,16 @@ from .const import *
 SAVE_ALL_STEPS_TP_PROB = False
 
 
+def on_enemy_side(cpos, player_id, use_mirror):
+  target_pos = get_player_init_pos(player_id, use_mirror)
+  mdist = manhatten_distance(target_pos, cpos)
+  return mdist > MAP_WIDTH
+
+
+def on_team_side(cpos, player_id, use_mirror):
+  return not on_enemy_side(cpos, player_id, use_mirror)
+
+
 def sigmoid(x):
   return 1 / (1 + np.exp(-x))
 
@@ -1796,8 +1806,126 @@ class MapManager:
     to_visit[(~self.game_visited) & (self.is_relic_neighbour > 0)] = 1
     return to_visit
 
+  def get_sap_hit_map(self, factor):
+    IS_RELIC_CELL_PROB = 0.8
+    self.mm = self
+    mm = self.mm
+
+    def get_nearest_relic_position(upos):
+      min_dist = 99999
+      min_pos = None
+      for pos, is_relic in (
+          self.mm.hidden_relic_estimator.solver.position_to_relic.items()):
+        if not is_relic:
+          continue
+        if not on_team_side(pos, self.mm.player_id, self.mm.use_mirror):
+          continue
+        # already occupied by enemy, skip
+        if self.mm.enemy_max_energy[pos[0]][pos[1]] > 0:
+          continue
+
+        d = manhatten_distance(upos, pos)
+        if d < min_dist:
+          min_pos = pos
+          min_dist = d
+      return min_pos
+
+    hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=float)
+
+    def add_pos(pos, v):
+      hit_map[pos[0]][pos[1]] += v
+
+    def next_pos(pos, dx, dy):
+      np = (pos[0] + dx, pos[1] + dy)
+      valid = True
+      if not is_pos_on_map(np) or mm.cell_type[np[0]][np[1]] == CELL_ASTERIOD:
+        valid = False
+      return valid, np
+
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.mm.get_unit_info(self.mm.enemy_id, i, t=0)
+      if not mask or energy < 0:
+        continue
+
+      is_enemy_on_relic = False
+      if self.mm.team_point_mass[pos[0]][pos[1]] > IS_RELIC_CELL_PROB:
+        is_enemy_on_relic = True
+
+      # for current enemy position
+      hit_map[pos[0]][pos[1]] += self.mm.unit_sap_cost
+      # print(
+      # f' >>> enemy[{i}] at {pos} attack current pos = {pos} = {self.mm.unit_sap_cost}, on_relic={is_enemy_on_relic}',
+      # file=sys.stderr)
+
+      # For on-relic enemy, add extra score
+      if is_enemy_on_relic:
+        v = (MAX_SAP_COST + 1)
+        # For on-relic enemy on team side
+        if on_team_side(pos, mm.player_id, mm.use_mirror):
+          v *= 2
+        hit_map[pos[0]][pos[1]] += v
+
+      # For enemy next move (guessed: dist to nearest relic position)
+
+      relic_pos = get_nearest_relic_position(pos)
+      # print(f' >>> nearest relic = {relic_pos}', file=sys.stderr)
+      if relic_pos is not None:
+        rx, ry = relic_pos
+        px, py = pos
+        dx = 0
+        if rx != px:
+          dx = +1 if px < rx else -1
+
+        dy = 0
+        if ry != py:
+          dy = +1 if py < ry else -1
+
+        sap1 = mm.unit_sap_cost + 1
+        sap0 = mm.unit_sap_cost * mm.unit_sap_dropoff_factor
+        if dx != 0 and dy != 0:
+          # add_pos(pos, dx, dy, sap0)
+          v1, posx = next_pos(pos, dx, 0)
+          v2, posy = next_pos(pos, 0, dy)
+          if v1 and not v2:
+            add_pos(posx, sap1)
+          if not v1 and v2:
+            add_pos(posy, sap1)
+          if v1 and v2:
+            e1 = mm.cell_net_energy(posx)
+            e2 = mm.cell_net_energy(posy)
+            if e1 > e2:
+              add_pos(posx, sap1)
+            elif e1 < e2:
+              add_pos(posy, sap1)
+            else:
+              r1 = np.random.rand() * 0.1
+              r2 = np.random.rand() * 0.1
+              add_pos(posx, sap0 + r1)
+              add_pos(posy, sap0 + r2)
+
+        if (dx == 0 and dy != 0):
+          # add_pos(pos, -1, 0, sap0)
+          # add_pos(pos, +1, 0, sap0)
+          # add_pos(pos, -1, dy, sap0)
+          v, py = next_pos(pos, 0, dy)
+          if v:
+            add_pos(py, sap1)
+          # add_pos(pos, +1, dy, sap0)
+
+        if (dx != 0 and dy == 0):
+          # add_pos(pos, 0, -1, sap0)
+          # add_pos(pos, 0, +1, sap0)
+          # add_pos(pos, dx, -1, sap0)
+          v, px = next_pos(pos, dx, 0)
+          if v:
+            add_pos(px, sap1)
+          # add_pos(pos, dx, +1, sap0)
+
+    return hit_map
+
   def get_global_sap_hit_map(self):
-    hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    # hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
+    hit_map = self.get_sap_hit_map(1) > 0
 
     for i in range(MAX_UNIT_NUM):
       mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
@@ -1805,11 +1933,11 @@ class MapManager:
         continue
 
       hit_map[pos[0]][pos[1]] = True
-      for k in range(4):
-        next_pos = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
-        if not is_pos_on_map(next_pos):
-          continue
-        hit_map[next_pos[0]][next_pos[1]] = True
+      # for k in range(4):
+      # next_pos = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+      # if not is_pos_on_map(next_pos):
+      # continue
+      # hit_map[next_pos[0]][next_pos[1]] = True
 
     # Add enemy last step position
     for i in range(MAX_UNIT_NUM):
