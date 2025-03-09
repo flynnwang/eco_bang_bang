@@ -1799,21 +1799,26 @@ class MapManager:
   def get_global_sap_hit_map(self):
     hit_map = np.zeros((MAP_WIDTH, MAP_HEIGHT), dtype=bool)
 
-    def mask_sap_positions(pos):
-      d = 1
-      x0 = max(0, (pos[0] - d))
-      x1 = min(MAP_WIDTH, (pos[0] + d + 1))
-      y0 = max(0, (pos[1] - d))
-      y1 = min(MAP_HEIGHT, (pos[1] + d + 1))
-      hit_map[x0:x1, y0:y1] += True
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=0)
+      if not mask or energy < 0:
+        continue
 
-    # Add enemy position from current step and last step
-    for t in [0, 1]:
-      for i in range(MAX_UNIT_NUM):
-        mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=t)
-        if not mask or energy < 0:
+      hit_map[pos[0]][pos[1]] = True
+      for k in range(4):
+        next_pos = (pos[0] + DIRECTIONS[k][0], pos[1] + DIRECTIONS[k][1])
+        if not is_pos_on_map(next_pos):
           continue
-        mask_sap_positions(pos)
+        hit_map[next_pos[0]][next_pos[1]] = True
+
+    # Add enemy last step position
+    for i in range(MAX_UNIT_NUM):
+      mask, pos, energy = self.get_unit_info(self.enemy_id, i, t=1)
+      if not mask or energy < 0 or self.visible[pos[0]][pos[1]]:
+        continue
+
+      # Only add one position for last step enemy position
+      hit_map[pos[0]][pos[1]] = True
 
     # Add unvisible team point positions
     init_pos = get_player_init_pos(self.enemy_id, self.use_mirror)
