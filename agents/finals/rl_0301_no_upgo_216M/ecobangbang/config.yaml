@@ -1,0 +1,76 @@
+name: run_20250301_game_win_loss_r1
+project: lux_s3
+entity: pyflynn
+group: luxs3_rl_exp_0301_v3_no_upgo
+obs_space_kwargs:
+  use_energy_cost_map: true
+  use_single_player: false
+  use_agent: false
+  use_unit_energy_sum: true
+  use_enemy_vision_map: true
+  use_match_relic_hints: true
+  use_more_game_params: true
+reward_space_kwargs: {}
+reward_schema: game_win_loss2
+use_separate_base: false
+reward_shaping_params:
+  use_hidden_relic_estimator: true
+  energy_cost_change: 0
+  match_observed: 0
+  match_win: 0.2
+  match_result: 1
+  unit_kill: 0.01
+total_steps: 200000000.0
+num_actors: 14
+n_actor_envs: 4
+unroll_length: 16
+batch_size: 4
+discounting: 0.999
+model_arch: conv_model
+n_blocks: 16
+hidden_dim: 128
+base_out_channels: 128
+embedding_dim: 8
+n_merge_layers: 1
+normalize: false
+sum_player_embeddings: false
+use_index_select: false
+rescale_value_input: true
+rescale_se_input: true
+kernel_size: 5
+optimizer_class: Adam
+optimizer_kwargs:
+  lr: 5.0e-05
+  eps: 0.0003
+min_lr_mod: 0.01
+entropy_cost: 0.0002
+baseline_cost: 1.0
+teacher_kl_cost: 0.001
+teacher_baseline_cost: 0.0
+lmb: 0.9
+reduction: sum
+disable_upgo_pg_loss: true
+use_teacher: true
+teacher_load_dir: /home/flynnwang/runs/ebb/03-01/23-56-37
+teacher_checkpoint_file: 003204544_weights.pt
+use_mixed_precision: true
+max_one_gpu_actor_num: 0
+actor_device: cuda:0
+learner_device: cuda:1
+model_log_freq: 100
+checkpoint_freq: 30
+sharing_strategy: file_system
+disable_wandb: false
+debug: false
+load_dir: /home/flynnwang/runs/ebb/03-01/23-56-37
+checkpoint_file: 012871616.pt
+weights_only: false
+n_value_warmup_batches: 0
+seed: null
+num_buffers: 28
+ob_params: {}
+clip_grads: 10.0
+num_learner_threads: 1
+use_shared_base: true
+--config-name: null
+luxs3_teacher_stage1: null
